@@ -29,8 +29,8 @@ export default function Home() {
           ReviewLens AI
         </h1>
         <p className="mt-4 max-w-2xl text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-          Collect public reviews for a business or product, keep each dataset private to its
-          owner, and ask questions answered only from that review evidence.
+          Collect public reviews for a business or product, keep each dataset private to its owner,
+          and ask questions answered only from that review evidence.
         </p>
 
         <ul className="mt-10 grid gap-4 sm:grid-cols-3">
@@ -40,9 +40,7 @@ export default function Home() {
               className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900"
             >
               <h2 className="font-semibold text-zinc-950 dark:text-zinc-50">{area.name}</h2>
-              <p className="mt-1 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                {area.path}
-              </p>
+              <p className="mt-1 font-mono text-xs text-zinc-500 dark:text-zinc-400">{area.path}</p>
               <p className="mt-3 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
                 {area.description}
               </p>

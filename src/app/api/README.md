@@ -14,8 +14,8 @@ Route Handlers stay thin (see `docs/engineering-standards.md`, sections 3 and 7)
 
 Current endpoints:
 
-| Method | Path          | Purpose                                      | Added by |
-| ------ | ------------- | -------------------------------------------- | -------- |
+| Method | Path          | Purpose                                               | Added by |
+| ------ | ------------- | ----------------------------------------------------- | -------- |
 | GET    | `/api/health` | Confirms the server is running. No auth, no database. | S1-005   |
 
 Protected endpoints (analysis targets, ingestion, reviews) arrive with S1-009 onward.
