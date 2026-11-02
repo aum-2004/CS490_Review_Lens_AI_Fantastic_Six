@@ -225,7 +225,6 @@ response shapes, testing) are in `docs/engineering-standards.md` (S1-001).
 
 ---
 
-
 ## Environment variables and secrets
 
 ReviewLens AI uses environment variables to configure Supabase and external services without exposing private credentials.
@@ -241,10 +240,10 @@ The S1-005 starter application runs without environment variables. Supabase conf
 
 ### Required environment variables
 
-| Variable | Description | Visibility |
-|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Public |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key | Public |
+| Variable                               | Description              | Visibility |
+| -------------------------------------- | ------------------------ | ---------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL     | Public     |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key | Public     |
 
 The Supabase URL and publishable key can be obtained from the team's Supabase project dashboard.
 
@@ -261,6 +260,7 @@ Additional server-side configuration for the review-data provider will be docume
 - Never expose credentials through logs or error messages.
 - Restart the development server after modifying `.env.local`.
 
+- If a secret is ever committed, tell the team immediately and rotate the key. Deleting it in a later commit does not remove it from Git history.
 
 ### Configuration validation
 
@@ -281,13 +281,11 @@ The starter application does not require Supabase
 credentials to start. Supabase client initialization
 is handled separately in S1-009.
 
-
 ### Deployment configuration
 
 For deployment on Vercel, required environment variables must be configured through the Vercel project's environment settings.
 
 Public variables must be available during the appropriate build process. Private credentials must remain server-side and must never be committed to GitHub.
-
 
 ### Testing
 
