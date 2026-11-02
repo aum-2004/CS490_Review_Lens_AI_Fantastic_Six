@@ -1,3 +1,5 @@
+# ReviewLens UI/UX Standards
+
 This document defines the visual and interaction conventions that each ReviewLens developer must follow. Upon reading this document, any two developers can build pages that are recognizably consistent with each other. 
 
 Rules applied to this document:
@@ -25,16 +27,16 @@ Rules:
 1. **AppShell:** AppShell wraps every authenticated page. Contains the top bar and the page content area.  
 2. **Top bar contents from left to right:** ReviewLens wordmark that links to /analysis-targets, navigation link "My Targets", a primary button "New Target", and, at the far right of the top bar, an account menu showing the signed in email plus a "Sign out" item.  
 3. **Active context:** When the user is inside a target(/analysis-targets/{targetId})(not including /analysis-targets/new), the page header always shows the target name and platform. The top bar never changes between pages.   
-4. **Breadcrumbs:** The Target Workspace and Create Target pages shows a breadcrumb above the page title: \| My Targets \> {Target name} \| or \| My Targets \> New Target \|."My Targets" is a link.  
+4. **Breadcrumbs:** The Target Workspace and Create Target shows a breadcrumb above the page title: (My Targets > {Target name}) or (My Targets > New Target)."My Targets" is a link.  
 5. **Route map:**
 
 | Screen | Route | Access |
 | :---- | :---- | :---- |
 | Sign In/ Register | /login | Public  |
+| Home | / | Public. Redirects to /analysis-targets if signed in, /login if not |
 | My Targets | /analysis-targets | Protected |
 | Create Target | /analysis-targets/new | Protected |
 | Target Workspace | /analysis-targets/{targetId} | Protected |
-| If signed in: /analysis-targetsIf not signed in: /login | / |  |
 | Page not found | Any other route | Public |
 
 6. **Protected-route behavior (S1-BR-003**): An unauthenticated visit to any protected route listed in the route map redirects to /login and after a successful sign-in, returns the user to the originally requested route. The sign-in page shows the neutral notice "Please sign in to continue.". Until the session is resolved, the page shows a loading skeleton and renders no protected data. Route guards such as this are UX conveniences only and the backend independently rejects unauthenticated requests. A 401 or expired session redirects to /login.  
@@ -60,7 +62,7 @@ Applies to: AuthForm, TargetForm, and any other future form.
 1. **Library:** Form built with React Hook Form and shared Zod schemas(or other equivalent), using shadcn/ui Form, Input, Label, and Button. Do not hand-roll form styling.  
 2. **Layout:** Single column, fields stacked with space-y-4. Label above the input, never placeholder-only labels. Every input has a visible \<label\> bound via htmlFor/id.   
 3. **Required fields:** marked with a trailing asterisk in the label and described once at the top of the form ("\*Required"). Also set aria-required="true".  
-4. **Help text:**Muted text-sm text beneath the input linked with aria-describedby.   
+4. **Help text:** Muted text-sm text beneath the input linked with aria-describedby.   
 5. **Field order and Naming for TargetForm:**   
    1. **Target name \*:** text input, e.g "NJIT, Newark".  
    2. **Review platform:**  Shown as a read-only field/badge fixed to Google Maps.  
@@ -101,7 +103,7 @@ Error presentation:
 | Validation failure | Inline under fields | See 4.1 |
 | Authentication failure | Alert on /login, or redirect to /login with notice | Bad credentials: "We couldn't sign you in. Check your email and password and try again."  Session expiration: "Your session has ended. Please sign in again." |
 | Authorization denial | Full-page error state in the content area | "This target isn't available to your account. Go back to My Targets." No target data is rendered, and the page does not confirm whether the target exists.  |
-| Ingestion failure |  | See 4.4 |
+| Ingestion failure | Inline ErrorAlert in the IngestionPanel | See 4.4 |
 | Unexpected application failure | ErrorAlert or full-page error boundary | "Something went wrong on our side. Please try again in a moment." |
 
 4.4 Ingestion errors (S1-BR-025)
@@ -136,7 +138,7 @@ Errors that appear after an action use role="alert" so screen readers announce t
 
    
 
-6. **Processing context:While ingesting, the panel states the active target and source ("Collecting reviews for {target name} from Google Maps…") so the user knows what is happening and where results will go.**  
+6. **Processing context:** While ingesting, the panel states the active target and source ("Collecting reviews for {target name} from Google Maps…") so the user knows what is happening and where results will go.  
 7. **Navigating away:** Leaving the workspace during ingestion does not cancel it. Returning shows the current state fetched from the server.  
 8. **Reduced motion:** Respect prefers-reduced-motion by replacing spinner/skeleton animation with static indicators
 
