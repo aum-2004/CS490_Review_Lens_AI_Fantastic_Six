@@ -73,14 +73,14 @@ Generated code is accepted only when all of the following pass:
 
 ## 6. Retaining AI session transcripts
 
-The team keeps transcripts of AI sessions that produced or shaped committed code.
+The team keeps the complete available transcript of every AI session that produced or shaped committed code. A summary does not replace the original conversation.
 
-- **Where:** `docs/ai-sessions/` in the repository.
-- **Naming:** `YYYY-MM-DD_<author>_<issue-id>_<tool>.md` (for example `2026-11-02_deep_S1-004_claude.md`).
-- **What to save:** the prompts, the AI responses that were used, and a short note on what was accepted, changed, or rejected.
+- **Where:** `ai-transcripts/` at the root of the repository.
+- **Naming:** `YYYY-MM-DD_<author>_<issue-id>_<tool>.md` (for example `2026-11-02_shahdp2_S1-007_claude.md`).
+- **What to save:** the original prompts and AI responses, including failed approaches, errors, corrections, and dead ends, plus a short note on what was accepted, changed, or rejected.
 - **Redact first:** remove secrets, credentials, and personal data before committing a transcript.
-- **Link it:** reference the transcript path in the pull request description.
 - **Assume visibility:** transcripts are committed to the repository, so assume they may be seen by the whole team and the instructor.
+- **Link it:** reference the transcript path in the pull request description.
 - **Retain** transcripts for the duration of the course project. They are part of the project record and may be reviewed by the instructor.
 
 ## 7. When generated code requires additional security review
