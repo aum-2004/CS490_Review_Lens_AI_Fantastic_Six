@@ -261,15 +261,26 @@ Additional server-side configuration for the review-data provider will be docume
 - Never expose credentials through logs or error messages.
 - Restart the development server after modifying `.env.local`.
 
+
 ### Configuration validation
 
-Supabase environment configuration is validated through `src/lib/supabase/config.ts`.
+Supabase environment configuration is validated in
+`src/lib/supabase/config.ts`.
 
-The `getSupabasePublicConfig()` function checks whether the required Supabase URL and publishable key are present.
+The `getSupabasePublicConfig()` function:
 
-If configuration is missing, the function throws a clear error identifying the missing configuration without exposing credential values.
+- Checks that the required environment variables exist.
+- Rejects missing or empty values.
+- Validates the Supabase URL format and protocol.
+- Produces understandable errors without exposing credentials.
 
-Validation occurs when the function is called by Supabase-dependent code. The starter application does not require Supabase configuration to launch.
+Validation occurs when the function is called by
+Supabase-dependent code.
+
+The starter application does not require Supabase
+credentials to start. Supabase client initialization
+is handled separately in S1-009.
+
 
 ### Deployment configuration
 
@@ -277,20 +288,29 @@ For deployment on Vercel, required environment variables must be configured thro
 
 Public variables must be available during the appropriate build process. Private credentials must remain server-side and must never be committed to GitHub.
 
+
 ### Testing
 
-Configuration validation is covered by `tests/unit/supabase-config.test.ts`.
+Supabase environment configuration is tested in
+`tests/unit/supabase-config.test.ts`.
 
 Tests cover:
 
 - Valid Supabase configuration.
-- Missing Supabase URL.
-- Missing Supabase publishable key.
-- Both required variables missing.
-- Error messages that do not expose credential values.
+- Missing required environment variables.
+- Empty or whitespace-only values.
+- Invalid Supabase URLs.
+- Unsupported URL protocols.
+- Error messages that do not expose configuration values.
 
-Automated tests will run once the S1-006 testing configuration is available.
+Run the configuration tests using:
 
+```bash
+npm run test -- supabase-config.test.ts --runInBand
+```
+
+These tests use dummy configuration values and do not
+require a live Supabase connection.
 
 ---
 
