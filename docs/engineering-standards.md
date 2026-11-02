@@ -1,12 +1,5 @@
 # ReviewLens AI Engineering Standards
 
-## Purpose
-
-This document defines the engineering standards that all developers and AI coding tools must follow when contributing to ReviewLens AI.
-
-The goal is to keep the codebase consistent, secure, maintainable, and aligned with the Sprint 1 architecture and security requirements.
-
-
 ## 1. Purpose and Authority
 
 This document defines the engineering standards that developers and AI coding tools must follow when contributing to ReviewLens AI. Its purpose is to keep the codebase consistent, secure, maintainable, and aligned with the team's architecture and active sprint requirements.
