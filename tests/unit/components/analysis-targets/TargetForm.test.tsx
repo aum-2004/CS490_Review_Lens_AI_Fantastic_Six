@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { TargetForm } from "@/components/analysis-targets/TargetForm";
 import { AnalysisTargetCreationError } from "@/lib/api/analysis-targets";
@@ -56,8 +56,54 @@ describe("TargetForm", () => {
 
     expect(screen.getByText("Enter a name for this target.")).toBeInTheDocument();
     expect(screen.getByText("Enter the Google Maps link for this target.")).toBeInTheDocument();
+    const summary = screen
+      .getByText("Please fix the highlighted fields.")
+      .closest('[role="alert"]');
+    expect(summary).not.toBeNull();
+    expect(screen.getAllByRole("img", { name: "Error" })).toHaveLength(2);
     expect(screen.getByLabelText(/target name/i)).toHaveFocus();
     expect(createTarget).not.toHaveBeenCalled();
+  });
+
+  it("does not validate untouched fields before the first failed submission", () => {
+    render(<TargetForm createTarget={jest.fn()} />);
+    const sourceUrlInput = screen.getByLabelText(/google maps source url/i);
+
+    fireEvent.change(sourceUrlInput, { target: { value: "not a URL" } });
+    fireEvent.blur(sourceUrlInput);
+
+    expect(screen.queryByText(/doesn't look like a valid web address/i)).not.toBeInTheDocument();
+    expect(sourceUrlInput).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("revalidates affected fields on change after the first failed submission", () => {
+    render(<TargetForm createTarget={jest.fn()} />);
+    submitForm();
+
+    const nameInput = screen.getByLabelText(/target name/i);
+    const sourceUrlInput = screen.getByLabelText(/google maps source url/i);
+
+    fireEvent.change(sourceUrlInput, { target: { value: "not a URL" } });
+
+    expect(
+      screen.queryByText("Enter the Google Maps link for this target."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "That doesn't look like a valid web address. Paste the full link, starting with https://.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Please fix the highlighted fields.")).toBeInTheDocument();
+
+    fireEvent.change(nameInput, { target: { value: "NJIT" } });
+
+    expect(screen.queryByText("Enter a name for this target.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Please fix the highlighted fields.")).not.toBeInTheDocument();
+
+    fireEvent.change(nameInput, { target: { value: "a".repeat(121) } });
+
+    expect(screen.getByText("Target names can be up to 120 characters.")).toBeInTheDocument();
+    expect(screen.getByText("Please fix the highlighted fields.")).toBeInTheDocument();
   });
 
   it("focuses the missing source URL when the name is valid", () => {
@@ -91,6 +137,11 @@ describe("TargetForm", () => {
     submitForm();
 
     expect(screen.getByText(message)).toBeInTheDocument();
+    const inlineError = screen.getByText(message).closest('[role="alert"]');
+    expect(inlineError).toBeInstanceOf(HTMLElement);
+    expect(
+      within(inlineError as HTMLElement).getByRole("img", { name: "Error" }),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText(/google maps source url/i)).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -210,7 +261,17 @@ describe("TargetForm", () => {
     expect(
       await screen.findByText("The server no longer supports this source URL."),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveFocus();
+    const sourceUrlInput = screen.getByLabelText(/google maps source url/i);
+    expect(sourceUrlInput).toHaveFocus();
+
+    fireEvent.blur(sourceUrlInput);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("The server no longer supports this source URL."),
+      ).not.toBeInTheDocument(),
+    );
+    expect(sourceUrlInput).toHaveAttribute("aria-invalid", "false");
   });
 
   it("redirects an expired session to sign-in with the return path", async () => {

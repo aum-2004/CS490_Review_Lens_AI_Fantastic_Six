@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { LoaderCircle } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -22,6 +22,11 @@ interface TargetFormProps {
 
 type FieldErrors = Partial<Record<AnalysisTargetInputField, string>>;
 
+interface FieldErrorProps {
+  id: string;
+  message: string;
+}
+
 function fieldErrorsFromIssues(issues: readonly AnalysisTargetValidationIssue[]): FieldErrors {
   const errors: FieldErrors = {};
 
@@ -32,6 +37,29 @@ function fieldErrorsFromIssues(issues: readonly AnalysisTargetValidationIssue[])
   }
 
   return errors;
+}
+
+function fieldErrorFromInput(
+  field: AnalysisTargetInputField,
+  name: string,
+  sourceUrl: string,
+): string | undefined {
+  const validation = validateAnalysisTargetInput({ name, sourceUrl });
+
+  if (validation.success) {
+    return undefined;
+  }
+
+  return validation.error.issues.find((issue) => issue.field === field)?.message;
+}
+
+function FieldError({ id, message }: FieldErrorProps) {
+  return (
+    <p id={id} className="flex items-start gap-1.5 text-sm text-destructive" role="alert">
+      <CircleAlert aria-label="Error" className="mt-0.5 size-4 shrink-0" role="img" />
+      <span>{message}</span>
+    </p>
+  );
 }
 
 export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormProps) {
@@ -45,6 +73,9 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
   const [formError, setFormError] = useState<string>();
   const [successMessage, setSuccessMessage] = useState<string>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hasValidationAttempted, setHasValidationAttempted] = useState(false);
+
+  const fieldErrorCount = Object.values(fieldErrors).filter(Boolean).length;
 
   const focusFirstInvalidField = (errors: FieldErrors) => {
     if (errors.name) {
@@ -54,14 +85,29 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
     }
   };
 
+  const revalidateField = (
+    field: AnalysisTargetInputField,
+    nextName: string,
+    nextSourceUrl: string,
+  ) => {
+    if (!hasValidationAttempted) {
+      return;
+    }
+
+    const error = fieldErrorFromInput(field, nextName, nextSourceUrl);
+    setFieldErrors((current) => ({ ...current, [field]: error }));
+  };
+
   const updateName = (event: ChangeEvent<HTMLInputElement>) => {
-    setName(event.target.value);
-    setFieldErrors((current) => ({ ...current, name: undefined }));
+    const nextName = event.target.value;
+    setName(nextName);
+    revalidateField("name", nextName, sourceUrl);
   };
 
   const updateSourceUrl = (event: ChangeEvent<HTMLInputElement>) => {
-    setSourceUrl(event.target.value);
-    setFieldErrors((current) => ({ ...current, sourceUrl: undefined }));
+    const nextSourceUrl = event.target.value;
+    setSourceUrl(nextSourceUrl);
+    revalidateField("sourceUrl", name, nextSourceUrl);
   };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -78,11 +124,13 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
 
     if (!validation.success) {
       const errors = fieldErrorsFromIssues(validation.error.issues);
+      setHasValidationAttempted(true);
       setFieldErrors(errors);
       focusFirstInvalidField(errors);
       return;
     }
 
+    setFieldErrors({});
     submissionInFlight.current = true;
     setIsSubmitting(true);
 
@@ -99,8 +147,12 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         }
 
         const errors = fieldErrorsFromIssues(error.issues);
+        const hasFieldErrors = Object.values(errors).some(Boolean);
         setFieldErrors(errors);
-        setFormError(error.message);
+        if (hasFieldErrors) {
+          setHasValidationAttempted(true);
+        }
+        setFormError(hasFieldErrors ? undefined : error.message);
         focusFirstInvalidField(errors);
       } else {
         setFormError("We couldn't create this target. Please try again.");
@@ -124,6 +176,13 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         </Alert>
       ) : null}
 
+      {fieldErrorCount >= 2 ? (
+        <Alert variant="destructive" role="alert">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>Please fix the highlighted fields.</AlertTitle>
+        </Alert>
+      ) : null}
+
       {successMessage ? (
         <Alert role="status">
           <AlertTitle>Target created</AlertTitle>
@@ -144,6 +203,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
           placeholder="NJIT, Newark"
           value={name}
           onChange={updateName}
+          onBlur={() => revalidateField("name", name, sourceUrl)}
           aria-required="true"
           aria-invalid={fieldErrors.name ? "true" : "false"}
           aria-describedby={`target-name-help${fieldErrors.name ? " target-name-error" : ""}`}
@@ -156,11 +216,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
             {Array.from(name).length}/120
           </span>
         </div>
-        {fieldErrors.name ? (
-          <p id="target-name-error" className="text-sm text-destructive" role="alert">
-            {fieldErrors.name}
-          </p>
-        ) : null}
+        {fieldErrors.name ? <FieldError id="target-name-error" message={fieldErrors.name} /> : null}
       </div>
 
       <div className="space-y-2">
@@ -192,6 +248,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
           placeholder="https://www.google.com/maps/place/..."
           value={sourceUrl}
           onChange={updateSourceUrl}
+          onBlur={() => revalidateField("sourceUrl", name, sourceUrl)}
           aria-required="true"
           aria-invalid={fieldErrors.sourceUrl ? "true" : "false"}
           aria-describedby={`source-url-help${fieldErrors.sourceUrl ? " source-url-error" : ""}`}
@@ -200,9 +257,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
           Open the business in Google Maps and paste its full place link.
         </p>
         {fieldErrors.sourceUrl ? (
-          <p id="source-url-error" className="text-sm text-destructive" role="alert">
-            {fieldErrors.sourceUrl}
-          </p>
+          <FieldError id="source-url-error" message={fieldErrors.sourceUrl} />
         ) : null}
       </div>
 
