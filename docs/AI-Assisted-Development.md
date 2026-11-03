@@ -19,7 +19,7 @@ AI-generated code is treated as team-authored code. The developer who prompts, a
 Context we will provide (as relevant to the task):
 - The user story or issue text, including its acceptance criteria and the business rules it touches (for example S1-BR-004, S1-BR-008, S1-BR-011).
 - The tech stack: Next.js, React, TypeScript, Supabase PostgreSQL, Supabase Auth, Vercel.
-- The domain entities and relationships: User → AnalysisTarget → Reviews and IngestionRuns.
+- The domain entities and relationships: User → AnalysisTarget → Reviews and IngestionAttempt.
 - The API model: Next.js route handlers that validate input and enforce authentication and ownership.
 - The specific files, types, and schema involved, not the whole repository.
 - Existing conventions: naming, folder structure, error response shape, validation approach.
