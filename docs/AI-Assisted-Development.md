@@ -3,20 +3,22 @@
 **Project:** ReviewLens AI | **Team:** Fantastic Six | **Story:** S1-004 | **Related rules:** S1-BR-004, S1-BR-008, S1-BR-011
 
 ## Core principle
+
 AI-generated code is treated as team-authored code. The developer who prompts, accepts, and commits it is its author and is fully responsible for it. It goes through the same pull request, review, testing, and Definition of Done as hand-written code.
 
 ## 1. AI coding tools the team expects to use
 
-| Tool | Typical use |
-|---|---|
-| Claude (chat) | Design questions, debugging, explaining errors, drafting docs |
-| ChatGPT | Same as above; second opinion on generated code |
-| Claude Code | Agentic coding in the repo (scaffolding, config, tests, CI). Used in S1-005 and S1-007 |
-| OpenAI Codex | Agentic coding in the repo. Used in S1-006 |
+| Tool          | Typical use                                                                            |
+| ------------- | -------------------------------------------------------------------------------------- |
+| Claude (chat) | Design questions, debugging, explaining errors, drafting docs                          |
+| ChatGPT       | Same as above; second opinion on generated code                                        |
+| Claude Code   | Agentic coding in the repo (scaffolding, config, tests, CI). Used in S1-005 and S1-007 |
+| OpenAI Codex  | Agentic coding in the repo. Used in S1-006                                             |
 
 ## 2. Context supplied to AI tools
 
 Context we will provide (as relevant to the task):
+
 - The user story or issue text, including its acceptance criteria and the business rules it touches (for example S1-BR-004, S1-BR-008, S1-BR-011).
 - The tech stack: Next.js, React, TypeScript, Supabase PostgreSQL, Supabase Auth, Vercel.
 - The domain entities and relationships: User → AnalysisTarget → Reviews and IngestionAttempt.
@@ -25,6 +27,7 @@ Context we will provide (as relevant to the task):
 - Existing conventions: naming, folder structure, error response shape, validation approach.
 
 Context we will NOT provide:
+
 - API keys, service-role keys, database connection strings, tokens, or `.env` contents.
 - Real user data, personal information, or private review data that is not approved for sharing.
 - Credentials of any kind, even "temporary" ones.
