@@ -1,0 +1,21 @@
+# Dependencies and generated output
+node_modules/
+.next/
+out/
+build/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+*.tsbuildinfo
+next-env.d.ts
+
+# Generated or externally maintained files
+package-lock.json
+Sprint1Issues.csv
+AGENTS.md
+.env*
+.github/workflows/**
+
+# Preserve AI conversations verbatim after required redaction.
+ai-transcripts/**
