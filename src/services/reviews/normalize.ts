@@ -15,7 +15,7 @@ const cleanDate = (value: unknown): Date | undefined => {
     return undefined;
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
+  return Number.isNaN(date.getTime()) || date.getTime() > Date.now() ? undefined : date;
 };
 
 const cleanUrl = (value: unknown): string | undefined => {
@@ -31,15 +31,17 @@ const cleanUrl = (value: unknown): string | undefined => {
 
 const cleanMetadata = (value: unknown): Record<string, unknown> | undefined =>
   typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+    ? { ...(value as Record<string, unknown>) }
     : undefined;
 
 /** Returns "missing" when absent/blank, a number when valid, or "invalid". */
 const parseRating = (value: unknown): number | "missing" | "invalid" => {
   if (value === undefined || value === null) return "missing";
   if (typeof value === "string") {
-    if (value.trim() === "") return "missing";
-    value = Number(value);
+    const trimmed = value.trim();
+    if (trimmed === "") return "missing";
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) return "invalid";
+    value = Number(trimmed);
   }
   if (typeof value !== "number" || !Number.isFinite(value)) return "invalid";
   return value >= MIN_RATING && value <= MAX_RATING ? value : "invalid";
@@ -49,7 +51,7 @@ const parseRating = (value: unknown): number | "missing" | "invalid" => {
  * Rejection policy (S1-BR-020, S1-BR-024):
  * - missing/blank text -> rejected
  * - missing/invalid rating -> rejected
- * - malformed optional metadata -> dropped, review kept
+ * - malformed or future optional date, bad URL, bad metadata -> dropped, review kept
  * Required fields are never defaulted or fabricated.
  */
 export function normalizeReview(raw: unknown, index = 0): NormalizeResult {

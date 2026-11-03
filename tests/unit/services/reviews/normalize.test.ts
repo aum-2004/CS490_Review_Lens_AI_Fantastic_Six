@@ -42,12 +42,15 @@ describe("normalizeReview", () => {
     });
   });
 
-  it.each([0, 6, -1, "abc", NaN, Infinity, true, {}])("rejects invalid rating: %p", (rating) => {
-    expect(normalizeReview({ ...valid, rating })).toMatchObject({
-      ok: false,
-      reason: "INVALID_RATING",
-    });
-  });
+  it.each([0, 6, -1, "abc", "0x5", "5e0", "0b101", NaN, Infinity, true, {}])(
+    "rejects invalid rating: %p",
+    (rating) => {
+      expect(normalizeReview({ ...valid, rating })).toMatchObject({
+        ok: false,
+        reason: "INVALID_RATING",
+      });
+    },
+  );
 
   it("accepts a numeric-string rating", () => {
     expect(normalizeReview({ ...valid, rating: "4" })).toMatchObject({
@@ -85,6 +88,19 @@ describe("normalizeReview", () => {
       expect(result.review.reviewUrl).toBeUndefined();
       expect(result.review.sourceMetadata).toBeUndefined();
     }
+  });
+
+  it("does not share the metadata object with the input", () => {
+    const metadata = { helpfulVotes: 3 };
+    const result = normalizeReview({ ...valid, metadata });
+    metadata.helpfulVotes = 99;
+    expect(result).toMatchObject({ ok: true, review: { sourceMetadata: { helpfulVotes: 3 } } });
+  });
+
+  it("drops future review dates but keeps the review", () => {
+    const result = normalizeReview({ ...valid, reviewDate: "2099-01-01" });
+    expect(result).toMatchObject({ ok: true });
+    if (result.ok) expect(result.review.reviewDate).toBeUndefined();
   });
 
   it.each([null, undefined, "string", 5])("rejects a non-object record: %p", (raw) => {
