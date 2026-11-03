@@ -227,20 +227,88 @@ response shapes, testing) are in `docs/engineering-standards.md` (S1-001).
 
 ## Environment variables and secrets
 
-- Real values live in **`.env.local`**, which Git ignores (`.gitignore` ignores every `.env*`
-  file except `.env.example`).
-- **`.env.example`** lists variable names with empty values. Never put a real key in it.
-- Variables prefixed with `NEXT_PUBLIC_` are bundled into browser code. Only values the provider
-  documents as public (Supabase project URL and publishable/anon key) may use that prefix.
-- Server-only secrets — the Supabase service-role key, database passwords, review-provider and
-  OpenAI API keys — must **never** use `NEXT_PUBLIC_`, appear in client code, or be logged.
-- After changing `.env.local`, restart `npm run dev`.
-- If a secret is ever committed, tell the team immediately and rotate the key; deleting it in a
-  later commit does not remove it from Git history.
+ReviewLens AI uses environment variables to configure Supabase and external services without exposing private credentials.
 
-**Ownership:** S1-008 (Configure Environment and Secret Management) owns the complete variable
-list, documentation, and missing-configuration validation. This README and `.env.example` only
-reserve the initial Supabase names.
+### Local environment setup
+
+1. Copy `.env.example` to `.env.local`.
+2. Add your Supabase project URL and publishable key to `.env.local`.
+3. Install dependencies using `npm ci`.
+4. Start the application using `npm run dev`.
+
+The S1-005 starter application runs without environment variables. Supabase configuration is required when Supabase-dependent features are initialized.
+
+### Required environment variables
+
+| Variable                               | Description              | Visibility |
+| -------------------------------------- | ------------------------ | ---------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL     | Public     |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key | Public     |
+
+The Supabase URL and publishable key can be obtained from the team's Supabase project dashboard.
+
+Additional server-side configuration for the review-data provider will be documented once the provider is finalized.
+
+### Security requirements
+
+- Store local configuration values in `.env.local`.
+- Never commit `.env.local` or files containing real credentials.
+- `.gitignore` excludes environment files except `.env.example`.
+- Only browser-safe configuration may use the `NEXT_PUBLIC_` prefix.
+- Supabase service-role keys, database credentials, and review-provider API keys must remain server-side.
+- Never hard-code credentials or environment-specific values into source files.
+- Never expose credentials through logs or error messages.
+- Restart the development server after modifying `.env.local`.
+
+- If a secret is ever committed, tell the team immediately and rotate the key. Deleting it in a later commit does not remove it from Git history.
+
+### Configuration validation
+
+Supabase environment configuration is validated in
+`src/lib/supabase/config.ts`.
+
+The `getSupabasePublicConfig()` function:
+
+- Checks that the required environment variables exist.
+- Rejects missing or empty values.
+- Validates the Supabase URL format and protocol.
+- Produces understandable errors without exposing credentials.
+
+Validation occurs when the function is called by
+Supabase-dependent code.
+
+The starter application does not require Supabase
+credentials to start. Supabase client initialization
+is handled separately in S1-009.
+
+### Deployment configuration
+
+For deployment on Vercel, required environment variables must be configured through the Vercel project's environment settings.
+
+Public variables must be available during the appropriate build process. Private credentials must remain server-side and must never be committed to GitHub.
+
+### Testing
+
+Supabase environment configuration is tested in
+`tests/unit/supabase-config.test.ts`.
+
+Tests cover:
+
+- Valid Supabase configuration.
+- Missing required environment variables.
+- Empty or whitespace-only values.
+- Invalid Supabase URLs.
+- Unsupported URL protocols.
+- Error messages that do not expose configuration values.
+
+Run the configuration tests using:
+
+```bash
+npm run test -- supabase-config.test.ts --runInBand
+```
+
+These tests use dummy configuration values and do not
+require a live Supabase connection.
 
 ---
 
