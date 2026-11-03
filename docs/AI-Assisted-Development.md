@@ -11,7 +11,7 @@ AI-generated code is treated as team-authored code. The developer who prompts, a
 |---|---|
 | Claude (chat) | Design questions, debugging, explaining errors, drafting docs |
 | ChatGPT | Same as above; second opinion on generated code |
-| Claude Code | Agentic coding in the repo (scaffolding, config, tests, CI). Used in S1-005 |
+| Claude Code | Agentic coding in the repo (scaffolding, config, tests, CI). Used in S1-005 and S1-007 |
 | OpenAI Codex | Agentic coding in the repo. Used in S1-006 |
 
 ## 2. Context supplied to AI tools
@@ -31,7 +31,6 @@ Context we will NOT provide:
 
 If a snippet contains a secret, redact it first. If a secret is accidentally pasted into an AI tool, treat it as leaked: rotate it immediately and tell the team.
 
-
 ## 3. Reviewing generated code
 
 - Before opening a pull request, the author must read and understand every line of generated code. Reviewers apply the same standard.
@@ -43,7 +42,6 @@ If a snippet contains a secret, redact it first. If a secret is accidentally pas
 - Check for hallucination. Confirm that functions, methods, options, and imports actually exist.
 - At least one teammate other than the author reviews every pull request. The author does not approve their own PR.
 - The PR description states whether AI assistance was used and which tool.
-
 
 ## 4. Validating generated dependencies and APIs
 
