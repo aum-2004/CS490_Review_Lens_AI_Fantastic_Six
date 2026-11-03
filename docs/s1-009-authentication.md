@@ -59,6 +59,11 @@ Confirmation URLs contain sensitive one-time tokens; do not paste them into logs
 - S1-010 must independently verify protected server operations and pages; Proxy alone never
   authorizes data. S1-011–013 own resource ownership, RLS, and cross-user resource denial tests.
 
+The [Supabase handoff](../src/lib/supabase/README.md#s1-010-handoff) specifies the identity helper,
+client modes, refresh matcher, and cookie-preservation requirements for S1-010. The
+[shared UI export inventory](../src/components/ui/README.md#supported-exports-and-reuse) lists the
+current component APIs so later stories can extend them without generating duplicates.
+
 ## Verification
 
 Automated tests mock Supabase; no live account, external API, credentials, or paid service is needed.
@@ -69,7 +74,7 @@ Run formatting, lint, typecheck, Jest, and build using the repository scripts. R
 Playwright smoke suite when its Chromium browser is available. Passing mocks do not establish that
 the team's live dashboard settings, email delivery, or deployed sessions work.
 
-Manual acceptance checklist (requires the team's configured project):
+### Isolated browser integration tests
 
 The isolated browser integration suite runs the real Next.js app and Supabase SDK against a local
 test provider with dummy credentials. It does not load real credentials into that app process.
@@ -79,7 +84,7 @@ verified identity, logout/back-navigation, and registration's confirmation state
 ```powershell
 # Use Playwright's installed Chromium, or select an existing supported browser:
 $env:PLAYWRIGHT_CHANNEL = 'msedge'
-npm.cmd run test:e2e -- --config=playwright.auth.config.ts
+npm.cmd run test:e2e:auth
 ```
 
 The configuration starts and stops isolated servers on ports 3100 and 54329. If using bundled
@@ -87,6 +92,13 @@ Chromium, omit the channel override and install Chromium through the team's norm
 The provider fixture under `tests/fixtures/` is test-only and must never be deployed as auth code.
 It intentionally issues dummy tokens and includes test controls; it does not implement Supabase
 security. The real project's policies and hosted behavior still require manual acceptance below.
+
+Auth specifications live under `tests/e2e/auth/`. The ordinary `npm run test:e2e` command keeps
+running the foundation smoke suite; it excludes the auth directory because those tests require
+the isolated provider started by `npm run test:e2e:auth`. Both commands accept the optional
+`PLAYWRIGHT_CHANNEL` override; without it, they use Playwright's installed Chromium.
+
+### Manual acceptance checklist (requires the team's configured project)
 
 - Register a fresh test account; verify confirmation instructions and email delivery.
 - Confirm using the email link; verify `/login` shows the authenticated email.

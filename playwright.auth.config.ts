@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Deterministic integration test: the real app + SDK talk only to a local fixture.
 export default defineConfig({
-  testDir: "./tests/auth-e2e",
+  testDir: "./tests/e2e/auth",
   workers: 1,
   reporter: "list",
   use: {

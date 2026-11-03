@@ -110,19 +110,20 @@ Stop the server with `Ctrl+C`.
 
 ## Available scripts
 
-| Command                 | What it does                                                         |
-| ----------------------- | -------------------------------------------------------------------- |
-| `npm run dev`           | Starts the development server at <http://localhost:3000>             |
-| `npm run build`         | Creates an optimized production build in `.next/`                    |
-| `npm run start`         | Serves the production build (run `npm run build` first)              |
-| `npm run lint`          | Runs ESLint across the project                                       |
-| `npm run format`        | Formats supported project files with Prettier                        |
-| `npm run format:check`  | Verifies formatting without changing files                           |
-| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting |
-| `npm run test`          | Runs Jest unit and component tests; no browser is required           |
-| `npm run test:watch`    | Re-runs relevant Jest tests while files change                       |
-| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`     |
-| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium        |
+| Command                 | What it does                                                              |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `npm run dev`           | Starts the development server at <http://localhost:3000>                  |
+| `npm run build`         | Creates an optimized production build in `.next/`                         |
+| `npm run start`         | Serves the production build (run `npm run build` first)                   |
+| `npm run lint`          | Runs ESLint across the project                                            |
+| `npm run format`        | Formats supported project files with Prettier                             |
+| `npm run format:check`  | Verifies formatting without changing files                                |
+| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting      |
+| `npm run test`          | Runs Jest unit and component tests; no browser is required                |
+| `npm run test:watch`    | Re-runs relevant Jest tests while files change                            |
+| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`          |
+| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium             |
+| `npm run test:e2e:auth` | Runs authentication browser tests against an isolated local test provider |
 
 ### Run automated tests
 
@@ -146,6 +147,12 @@ npm run test:e2e
 
 `npm run test:e2e` starts and stops the Next.js development server automatically. Playwright runs
 headlessly by default; reports and temporary test results are generated locally and ignored by Git.
+
+Authentication specifications live under `tests/e2e/auth/` and run separately with
+`npm run test:e2e:auth`, which starts a local dummy provider and an isolated app instance.
+The smoke command excludes those tests so it does not require the provider. Neither auth test
+accounts nor live Supabase credentials are needed. Both suites can use an existing supported
+browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they use bundled Chromium.
 
 ### Run a production build locally
 

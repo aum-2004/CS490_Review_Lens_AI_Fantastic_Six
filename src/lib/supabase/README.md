@@ -22,6 +22,31 @@ It does not authorize resources. Backend operations must independently call
 The helper calls Supabase `getUser()` for a server-verified identity and returns only ID/email.
 Never authorize using a cookie payload or `getSession()` alone.
 
+## S1-010 handoff
+
+- Extend the existing `src/proxy.ts`; Next.js supports a single Proxy entry point. Keep
+  `updateSession(request)` and its cookie/cache-header propagation when adding navigation guards.
+- The current matcher covers only the paths listed above. A future `/api/analysis-targets` path
+  is not covered. Include newly protected pages and API paths in the refresh matcher before relying
+  on the read-only identity helper there. Do not assume all `/api/*` paths already run Proxy.
+- If a guard returns a new redirect or error response, transfer all refreshed cookies and private
+  cache headers from the response returned by `updateSession`. Otherwise the browser can keep
+  stale tokens even when a backend check succeeded.
+- Inside every protected server operation, independently call `getAuthenticatedUser()` from
+  `@/services/auth/auth-service`. It returns `{ id, email }` for a verified user, `null` for missing
+  or invalid identity, and throws a safe error when authentication is unavailable. S1-010 owns
+  the page redirect/API rejection behavior for those results.
+- `id` is the stable Supabase user ID later ownership logic should use. S1-011–013 own resource
+  authorization; neither client-supplied owner IDs nor the email address establish ownership.
+- Server Components use `createSupabaseServerClient()` in read-only mode behind a request/loading
+  boundary. Actions and handlers that write auth cookies use `createSupabaseServerClient(true)`.
+  Create a new server client for each request and let cookie-write failures propagate.
+- Reuse the existing sign-out action in `@/app/login/actions` when building the AppShell account
+  menu. The current signed-in `/login` panel demonstrates S1-009 sessions; it is not a new workspace.
+
+This is an integration contract for later stories, not an implementation of their guards, target
+pages, database ownership, or RLS policies.
+
 See [authentication setup](../../../docs/s1-009-authentication.md) for confirmation email
 configuration, test coverage, and limitations. Auth responses must not be shared-cacheable.
 
