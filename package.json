@@ -16,9 +16,11 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --runInBand",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:db": "bash tests/db/run.sh"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0"

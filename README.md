@@ -16,17 +16,17 @@ NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 
 ## Technology stack
 
-| Layer           | Technology                                               | Status                   |
-| --------------- | -------------------------------------------------------- | ------------------------ |
-| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                 |
-| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                 |
-| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                 |
-| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Planned (S1-009, S1-014) |
-| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                 |
-| Tests           | Jest, React Testing Library, Playwright                  | In place                 |
-| CI              | GitHub Actions                                           | Planned (S1-007)         |
-| Hosting         | Vercel                                                   | Planned (Sprint 3)       |
-| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                 |
+| Layer           | Technology                                               | Status                                         |
+| --------------- | -------------------------------------------------------- | ---------------------------------------------- |
+| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                                       |
+| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                                       |
+| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                                       |
+| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Schema started (S1-014); Auth planned (S1-009) |
+| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                                       |
+| Tests           | Jest, React Testing Library, Playwright                  | In place                                       |
+| CI              | GitHub Actions                                           | Planned (S1-007)                               |
+| Hosting         | Vercel                                                   | Planned (Sprint 3)                             |
+| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                                       |
 
 Exact versions are pinned in `package-lock.json`.
 
@@ -34,11 +34,11 @@ Exact versions are pinned in `package-lock.json`.
 
 ## Prerequisites
 
-| Tool    | Version                                         | Check with       |
-| ------- | ----------------------------------------------- | ---------------- |
-| Node.js | **22.x or 24.x LTS** recommended (minimum 20.9) | `node --version` |
-| npm     | 10 or newer (bundled with Node.js)              | `npm --version`  |
-| Git     | Any recent version                              | `git --version`  |
+| Tool    | Version                                          | Check with       |
+| ------- | ------------------------------------------------ | ---------------- |
+| Node.js | **24.x LTS** (pinned in `.nvmrc`; run `nvm use`) | `node --version` |
+| npm     | 10 or newer (bundled with Node.js)               | `npm --version`  |
+| Git     | Any recent version                               | `git --version`  |
 
 Install Node.js from <https://nodejs.org> (choose the LTS download). This installs npm too.
 
@@ -109,19 +109,20 @@ Stop the server with `Ctrl+C`.
 
 ## Available scripts
 
-| Command                 | What it does                                                         |
-| ----------------------- | -------------------------------------------------------------------- |
-| `npm run dev`           | Starts the development server at <http://localhost:3000>             |
-| `npm run build`         | Creates an optimized production build in `.next/`                    |
-| `npm run start`         | Serves the production build (run `npm run build` first)              |
-| `npm run lint`          | Runs ESLint across the project                                       |
-| `npm run format`        | Formats supported project files with Prettier                        |
-| `npm run format:check`  | Verifies formatting without changing files                           |
-| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting |
-| `npm run test`          | Runs Jest unit and component tests; no browser is required           |
-| `npm run test:watch`    | Re-runs relevant Jest tests while files change                       |
-| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`     |
-| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium        |
+| Command                 | What it does                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `npm run dev`           | Starts the development server at <http://localhost:3000>                                     |
+| `npm run build`         | Creates an optimized production build in `.next/`                                            |
+| `npm run start`         | Serves the production build (run `npm run build` first)                                      |
+| `npm run lint`          | Runs ESLint across the project                                                               |
+| `npm run format`        | Formats supported project files with Prettier                                                |
+| `npm run format:check`  | Verifies formatting without changing files                                                   |
+| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting                         |
+| `npm run test`          | Runs Jest unit and component tests; no browser is required                                   |
+| `npm run test:watch`    | Re-runs relevant Jest tests while files change                                               |
+| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
+| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium                                |
+| `npm run test:db`       | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
 
 ### Run automated tests
 
@@ -145,6 +146,18 @@ npm run test:e2e
 
 `npm run test:e2e` starts and stops the Next.js development server automatically. Playwright runs
 headlessly by default; reports and temporary test results are generated locally and ignored by Git.
+
+### Run database tests
+
+`npm run test:db` checks the real schema and Row Level Security policies, not a mock. It creates a
+throwaway PostgreSQL database, applies a small test-only stand-in for Supabase Auth
+(`tests/db/supabase-auth-shim.sql`), applies every migration in `supabase/migrations/`, runs each
+`tests/db/*.test.sql` file, and drops the database. The tests use two users, A and B, to prove
+cross-user access is denied at the database.
+
+It needs PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
+`brew services start postgresql@16`). Connection settings come from the standard `PG*` variables.
+CI runs them in the "Database tests" job against a PostgreSQL 16 container.
 
 ### Run a production build locally
 
@@ -173,8 +186,11 @@ Then open <http://localhost:3000>.
 │   ├── services/             # BACKEND server-side business logic and data access
 │   └── lib/
 │       └── supabase/         # DATA boundary: the only place Supabase clients are created
+├── supabase/
+│   └── migrations/           # DATA schema and Row Level Security policies (SQL)
 ├── tests/
 │   ├── unit/                 # Jest and React Testing Library tests
+│   ├── db/                   # SQL tests for migrations and RLS (`npm run test:db`)
 │   └── e2e/                  # Playwright browser tests
 ├── docs/                     # Team engineering, UX, security, and AI-development documents
 ├── .github/workflows/        # GitHub Actions (currently the sprint-issue importer)
@@ -209,7 +225,8 @@ Then open <http://localhost:3000>.
 - `src/lib/supabase/` — Supabase client configuration. Reserved; nothing connects to a database
   yet.
 - `.env.example` / `.env.local` — Connection settings. Values are never hard-coded in source.
-- `supabase/migrations/` — Database schema (to be added by S1-014).
+- `supabase/migrations/` — Database schema and RLS policies, applied in filename order. S1-014
+  added `analysis_targets`.
 
 **Shared code**
 
@@ -318,7 +335,7 @@ require a live Supabase connection.
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm ci` says the lockfile is out of sync                                | Someone changed `package.json` without updating the lockfile. Pull the latest branch; if it persists, tell the author. Don't delete `package-lock.json`. |
 | `next: command not found` / `'next' is not recognized`                   | Dependencies aren't installed. Run `npm ci` from the repository root.                                                                                    |
-| Node version error, or `npm ci` warns `EBADENGINE`                       | Install Node.js 22 or 24 LTS and open a new terminal.                                                                                                    |
+| Node version error, or `npm ci` warns `EBADENGINE`                       | Install Node.js 24 LTS (`nvm install && nvm use` reads `.nvmrc`) and open a new terminal.                                                                |
 | Port 3000 is already in use                                              | Stop the other process, or run `npm run dev -- -p 3001` and open <http://localhost:3001>.                                                                |
 | Build fails fetching Google Fonts                                        | The Geist font downloads at build time. Check your internet connection or proxy, then retry.                                                             |
 | Changes to `.env.local` are ignored                                      | Restart the dev server. Browser-side variables must start with `NEXT_PUBLIC_`.                                                                           |
