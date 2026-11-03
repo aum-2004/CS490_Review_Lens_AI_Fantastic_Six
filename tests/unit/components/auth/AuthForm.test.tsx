@@ -3,7 +3,8 @@ import { AuthForm } from "@/components/auth/AuthForm";
 import { register, signIn } from "@/app/login/actions";
 
 const refresh = jest.fn();
-jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+const replace = jest.fn();
+jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh, replace }) }));
 jest.mock("@/app/login/actions", () => ({ register: jest.fn(), signIn: jest.fn() }));
 beforeEach(() => jest.resetAllMocks());
 
@@ -45,6 +46,19 @@ it("refreshes server-rendered identity after successful login and clears the pas
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
   expect(screen.getByLabelText("Password *")).toHaveValue("");
   expect(signIn).toHaveBeenCalledWith({ email: "a@example.com", password: " dummy-password " });
+});
+
+it.each([
+  ["/analysis-targets/new", "/analysis-targets/new"],
+  ["https://example.com", null],
+])("uses only an allowed post-login return destination %s", async (returnTo, destination) => {
+  jest.mocked(signIn).mockResolvedValue({ success: true });
+  render(<AuthForm returnTo={returnTo} />);
+  enterCredentials();
+  submit();
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  if (destination) expect(replace).toHaveBeenCalledWith(destination);
+  else expect(replace).not.toHaveBeenCalled();
 });
 it("uses one form for registration and explains confirmation without claiming login", async () => {
   jest.mocked(register).mockResolvedValue({

@@ -16,26 +16,28 @@ Contents:
 - `proxy.ts`: refreshes sessions and forwards updated cookies to the downstream request
   and browser, with private cache headers.
 
-`src/proxy.ts` applies refresh to `/login`, `/auth/*`, `/api/auth/*`, and `/analysis-targets/*`.
-It does not authorize resources. Backend operations must independently call
+`src/proxy.ts` applies refresh to `/login`, `/auth/*`, `/api/auth/*`, `/analysis-targets/*`, and
+`/api/analysis-targets/*`. S1-010 redirects unauthenticated target-page navigation to login;
+API handlers still verify independently. Proxy does not authorize resources. Backend operations call
 `getAuthenticatedUser()` in `src/services/auth/auth-service.ts` and check ownership as appropriate.
 The helper calls Supabase `getUser()` for a server-verified identity and returns only ID/email.
 Never authorize using a cookie payload or `getSession()` alone.
 
-## S1-010 handoff
+## S1-010 and target-story handoff
 
 - Extend the existing `src/proxy.ts`; Next.js supports a single Proxy entry point. Keep
   `updateSession(request)` and its cookie/cache-header propagation when adding navigation guards.
-- The current matcher covers only the paths listed above. A future `/api/analysis-targets` path
-  is not covered. Include newly protected pages and API paths in the refresh matcher before relying
+- The current matcher covers the paths listed above, including `/api/analysis-targets`. Include
+  additional protected pages and API paths in the refresh matcher before relying
   on the read-only identity helper there. Do not assume all `/api/*` paths already run Proxy.
 - If a guard returns a new redirect or error response, transfer all refreshed cookies and private
   cache headers from the response returned by `updateSession`. Otherwise the browser can keep
   stale tokens even when a backend check succeeded.
-- Inside every protected server operation, independently call `getAuthenticatedUser()` from
-  `@/services/auth/auth-service`. It returns `{ id, email }` for a verified user, `null` for missing
-  or invalid identity, and throws a safe error when authentication is unavailable. S1-010 owns
-  the page redirect/API rejection behavior for those results.
+- Inside every protected server operation, use S1-010's `requireApiUser()` or `requirePageUser()`
+  from `@/services/auth/access-control`. These independently call `getAuthenticatedUser()` from
+  `@/services/auth/auth-service`. The low-level helper returns `{ id, email }` for a verified user,
+  `null` for missing or invalid identity, and throws a safe error when authentication is unavailable.
+  Return immediately on the API guard's `response`; invoke a resource service only with its `user.id`.
 - `id` is the stable Supabase user ID later ownership logic should use. S1-011–013 own resource
   authorization; neither client-supplied owner IDs nor the email address establish ownership.
 - Server Components use `createSupabaseServerClient()` in read-only mode behind a request/loading
@@ -44,8 +46,9 @@ Never authorize using a cookie payload or `getSession()` alone.
 - Reuse the existing sign-out action in `@/app/login/actions` when building the AppShell account
   menu. The current signed-in `/login` panel demonstrates S1-009 sessions; it is not a new workspace.
 
-This is an integration contract for later stories, not an implementation of their guards, target
-pages, database ownership, or RLS policies.
+See [S1-010 integration guidance](../../../docs/s1-010-route-protection.md). Navigation and reusable
+backend guards are implemented; target pages/handlers must adopt them as those features arrive.
+Database ownership and RLS policies remain with their respective stories.
 
 See [authentication setup](../../../docs/s1-009-authentication.md) for confirmation email
 configuration, test coverage, and limitations. Auth responses must not be shared-cacheable.

@@ -7,8 +7,10 @@ import { SessionPanel } from "@/components/auth/SessionPanel";
 import { Card } from "@/components/ui/Card";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import type { AuthIdentity } from "@/lib/validation/auth";
+import { getProtectedReturnTo } from "@/lib/validation/return-to";
+import { redirect } from "next/navigation";
 
-type LoginPageProps = { searchParams: Promise<{ notice?: string }> };
+type LoginPageProps = { searchParams: Promise<{ notice?: string; next?: string | string[] }> };
 
 export default function LoginPage(props: LoginPageProps) {
   return (
@@ -22,7 +24,8 @@ async function AccountPage({ searchParams }: LoginPageProps) {
   // Explicit request boundary also prevents safe error handling from masking
   // a prerender bailout when configuration is absent.
   await connection();
-  const { notice } = await searchParams;
+  const { notice, next } = await searchParams;
+  const returnTo = getProtectedReturnTo(next);
   let user: AuthIdentity | null = null;
   let unavailable = false;
   try {
@@ -30,6 +33,8 @@ async function AccountPage({ searchParams }: LoginPageProps) {
   } catch {
     unavailable = true;
   }
+  // redirect throws; keep it outside the provider-error catch.
+  if (user && returnTo) redirect(returnTo);
 
   return (
     <main className="flex flex-1 items-center justify-center bg-background px-4 py-16 text-foreground">
@@ -53,7 +58,7 @@ async function AccountPage({ searchParams }: LoginPageProps) {
                   Try signing in, or request a new confirmation email from your team administrator.
                 </p>
               )}
-              <AuthForm />
+              <AuthForm returnTo={returnTo} />
             </>
           )}
         </Card>
