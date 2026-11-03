@@ -1,6 +1,6 @@
 # ReviewLens AI-Assisted Development and Review Standards
 
-**Project:** ReviewLens | **Team:** Fantastic Six | **Story:** S1-004 | **Related rules:** S1-BR-004, S1-BR-008, S1-BR-011
+**Project:** ReviewLens AI | **Team:** Fantastic Six | **Story:** S1-004 | **Related rules:** S1-BR-004, S1-BR-008, S1-BR-011
 
 ## Core principle
 AI-generated code is treated as team-authored code. The developer who prompts, accepts, and commits it is its author and is fully responsible for it. It goes through the same pull request, review, testing, and Definition of Done as hand-written code.
@@ -11,7 +11,8 @@ AI-generated code is treated as team-authored code. The developer who prompts, a
 |---|---|
 | Claude (chat) | Design questions, debugging, explaining errors, drafting docs |
 | ChatGPT | Same as above; second opinion on generated code |
-
+| Claude Code | Agentic coding in the repo (scaffolding, config, tests, CI). Used in S1-005 |
+| OpenAI Codex | Agentic coding in the repo. Used in S1-006 |
 
 ## 2. Context supplied to AI tools
 
@@ -60,15 +61,15 @@ AI tools can invent packages, functions, and endpoints, or suggest outdated or u
 
 Generated code is accepted only when all of the following pass:
 
-- The project builds and type-checks (`tsc` / `next build`) with no new errors.
-- Lint passes once a linter is configured for the project.
-- Unit tests cover the new logic, including invalid input and failure cases.
+- `npm run typecheck` and `npm run build` pass with no new errors.
+- `npm run format:check` and `npm run lint` pass.
+- `npm test` passes, and unit tests cover the new logic, including invalid input and failure cases.
 - Tests exist for the security rules the change touches:
   - **S1-BR-004:** a protected endpoint called without a valid session is rejected.
   - **S1-BR-008:** a user cannot read, write, update, or ingest data belonging to another user.
   - **S1-BR-011:** no secrets or provider credentials appear in source code or browser-delivered bundles.
 - The author manually exercises the feature (happy path and at least one failure path).
-- CI checks pass on the pull request once CI is configured. Until then, the author runs the build, type-check, and tests locally and records the results in the PR description.
+- The GitHub Actions check "Lint, typecheck, test, build" (S1-007) passes on the pull request before merge. If CI is unavailable, run the same commands locally and paste the results into the PR.
 - Tests are written or reviewed by a human. A test that the AI wrote must be read to confirm it actually asserts something meaningful.
 
 ## 6. Retaining AI session transcripts
@@ -100,7 +101,7 @@ Any pull request that includes AI-generated code in the areas below needs a seco
 
 - [ ] Meets the story's acceptance criteria
 - [ ] Reviewed and approved by a teammate other than the author
-- [ ] Build, type-check, and tests pass (in CI once configured, otherwise locally with results in the PR)
+- [ ] `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass, and the GitHub Actions check "Lint, typecheck, test, build" passes on the PR
 - [ ] Security rules S1-BR-004, S1-BR-008, and S1-BR-011 verified where applicable
 - [ ] Dependencies and APIs verified against official sources
 - [ ] No secrets in source control or client-delivered code
