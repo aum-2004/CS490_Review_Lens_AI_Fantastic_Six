@@ -25,7 +25,7 @@ NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 | Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Auth implemented; schema planned (S1-014) |
 | Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                                  |
 | Tests           | Jest, React Testing Library, Playwright                  | In place                                  |
-| CI              | GitHub Actions                                           | Planned (S1-007)                          |
+| CI              | GitHub Actions                                           | In place (S1-007)                         |
 | Hosting         | Vercel                                                   | Planned (Sprint 3)                        |
 | Package manager | npm (only — do not use Yarn or pnpm)                     | In place                                  |
 
@@ -35,11 +35,11 @@ Exact versions are pinned in `package-lock.json`.
 
 ## Prerequisites
 
-| Tool    | Version                                         | Check with       |
-| ------- | ----------------------------------------------- | ---------------- |
-| Node.js | **22.x or 24.x LTS** recommended (minimum 20.9) | `node --version` |
-| npm     | 10 or newer (bundled with Node.js)              | `npm --version`  |
-| Git     | Any recent version                              | `git --version`  |
+| Tool    | Version                                    | Check with       |
+| ------- | ------------------------------------------ | ---------------- |
+| Node.js | **24.x LTS** (team baseline; see `.nvmrc`) | `node --version` |
+| npm     | 10 or newer (bundled with Node.js)         | `npm --version`  |
+| Git     | Any recent version                         | `git --version`  |
 
 Install Node.js from <https://nodejs.org> (choose the LTS download). This installs npm too.
 
@@ -178,7 +178,7 @@ Then open <http://localhost:3000>.
 │   ├── unit/                 # Jest and React Testing Library tests
 │   └── e2e/                  # Playwright browser tests
 ├── docs/                     # Team engineering, UX, security, and AI-development documents
-├── .github/workflows/        # GitHub Actions (currently the sprint-issue importer)
+├── .github/workflows/        # Pull-request CI and the sprint-issue importer
 ├── .env.example              # Environment variable names, no real values
 ├── AGENTS.md                 # Next.js-provided notes for AI coding agents
 ├── eslint.config.mjs         # ESLint configuration
@@ -320,7 +320,7 @@ require a live Supabase connection.
 | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm ci` says the lockfile is out of sync                                | Someone changed `package.json` without updating the lockfile. Pull the latest branch; if it persists, tell the author. Don't delete `package-lock.json`. |
 | `next: command not found` / `'next' is not recognized`                   | Dependencies aren't installed. Run `npm ci` from the repository root.                                                                                    |
-| Node version error, or `npm ci` warns `EBADENGINE`                       | Install Node.js 22 or 24 LTS and open a new terminal.                                                                                                    |
+| Node version error, or `npm ci` warns `EBADENGINE`                       | Install Node.js 24 LTS (the `.nvmrc` baseline) and open a new terminal.                                                                                  |
 | Port 3000 is already in use                                              | Stop the other process, or run `npm run dev -- -p 3001` and open <http://localhost:3001>.                                                                |
 | Build fails fetching Google Fonts                                        | The Geist font downloads at build time. Check your internet connection or proxy, then retry.                                                             |
 | Changes to `.env.local` are ignored                                      | Restart the dev server. Browser-side variables must start with `NEXT_PUBLIC_`.                                                                           |
@@ -333,7 +333,7 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005, S1-006, S1-008, and S1-009)**
+**Implemented (S1-005 through S1-009)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
 - Responsive starter page.
@@ -345,6 +345,7 @@ require a live Supabase connection.
 - Clean-checkout type-checking with Next.js route type generation.
 - Jest and React Testing Library unit/component tests for the starter frontend and health endpoint.
 - Separate Playwright headless end-to-end smoke tests.
+- Pull-request CI running formatting, lint, typecheck, unit tests, and build.
 - Supabase environment validation and unit tests.
 - Supabase sign-in, registration/confirmation, cookie sessions, verified server identity, and logout.
 - `/login` and `/api/auth/session`; live verification and human security review remain required.
@@ -353,7 +354,6 @@ require a live Supabase connection.
 
 | Capability                                                        | Story           |
 | ----------------------------------------------------------------- | --------------- |
-| Pull-request CI (lint, build, test) and branch protection         | S1-007          |
 | Broad route protection using the S1-009 authentication foundation | S1-010          |
 | Ownership and cross-user authorization                            | S1-011 – S1-013 |
 | Analysis targets (model, create, validate, list, workspace)       | S1-014 – S1-018 |
@@ -365,9 +365,9 @@ require a live Supabase connection.
 
 ## Next steps for the team
 
-- **S1-007 — Pull-request CI:** add a GitHub Actions workflow that consumes the S1-006 commands:
-  `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-  Browser CI may additionally install Chromium and run `npm run test:e2e`.
+- Pull-request CI now runs the S1-006 commands. Confirm the required-check and branch-protection
+  settings in GitHub; workflow configuration alone does not establish those settings.
+- Browser CI may additionally install Chromium and run `npm run test:e2e`.
 
 Work branches off `main` using `feature/<story-id>-<short-name>` and merges through a reviewed pull
 request.

@@ -2,9 +2,8 @@
 
 ## Local setup
 
-1. Use a compatible runtime: the installed Supabase SDK requires Node 22 or later.
-   The repository's existing `engines.node >=20.9.0` declaration is deliberately unchanged
-   at Shawn's request; Node 20 is not sufficient for the newly installed SDK.
+1. Use **Node 24 LTS**, the merged team's baseline in `.nvmrc` and `package.json`.
+   This satisfies the installed Supabase SDK's Node 22-or-later requirement.
 2. Run `npm ci` (use `npm.cmd ci` if PowerShell blocks `npm.ps1`).
 3. Copy `.env.example` to `.env.local` and fill in the team's Supabase project URL and
    publishable key. Do not share `.env.local`, credentials, tokens, or real account passwords.
@@ -104,8 +103,9 @@ These live checks remain pending until performed; do not mark the issue Done fro
 
 ## Deliberately deferred decisions
 
-The Node minimum remains unchanged despite the SDK requirement, and Geist remains until the
-team approves the font change. Development-tool audit findings require separate review; do not run
+The upstream Node 24 baseline was adopted when S1-001–008 were merged into this branch.
+The earlier independent proposal to change the minimum to Node 22 was not applied.
+Geist remains until the team approves the font change. Development-tool audit findings require separate review; do not run
 `npm audit fix --force` or approve native install scripts without understanding the resulting changes.
 
 ## Sources
