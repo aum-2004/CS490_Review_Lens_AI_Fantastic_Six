@@ -18,4 +18,4 @@ AGENTS.md
 .github/workflows/**
 
 # Preserve AI conversations verbatim after required redaction.
-docs/ai-sessions/**
+ai-transcripts/**
