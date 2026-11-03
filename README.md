@@ -9,24 +9,25 @@ NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 
 > **Status:** Sprint 1 foundation. The application starts and serves a starter page and a health
 > endpoint, with automated formatting, static analysis, unit tests, and headless end-to-end tests.
-> Authentication, analysis targets, and review ingestion are not built yet — see
+> Supabase authentication is implemented in S1-009; live project verification is still required.
+> Analysis targets and review ingestion are not built yet — see
 > [Implemented vs. planned](#implemented-vs-planned).
 
 ---
 
 ## Technology stack
 
-| Layer           | Technology                                               | Status                   |
-| --------------- | -------------------------------------------------------- | ------------------------ |
-| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                 |
-| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                 |
-| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                 |
-| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Planned (S1-009, S1-014) |
-| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                 |
-| Tests           | Jest, React Testing Library, Playwright                  | In place                 |
-| CI              | GitHub Actions                                           | Planned (S1-007)         |
-| Hosting         | Vercel                                                   | Planned (Sprint 3)       |
-| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                 |
+| Layer           | Technology                                               | Status                                    |
+| --------------- | -------------------------------------------------------- | ----------------------------------------- |
+| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                                  |
+| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                                  |
+| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                                  |
+| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Auth implemented; schema planned (S1-014) |
+| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                                  |
+| Tests           | Jest, React Testing Library, Playwright                  | In place                                  |
+| CI              | GitHub Actions                                           | Planned (S1-007)                          |
+| Hosting         | Vercel                                                   | Planned (Sprint 3)                        |
+| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                                  |
 
 Exact versions are pinned in `package-lock.json`.
 
@@ -169,7 +170,7 @@ Then open <http://localhost:3000>.
 │   │   ├── page.tsx          # Home / starter page
 │   │   └── globals.css       # Tailwind CSS entry point and theme tokens
 │   ├── components/
-│   │   └── ui/               # FRONTEND shadcn/ui primitives (not initialized yet)
+│   │   └── ui/               # FRONTEND shared form/UI primitives
 │   ├── services/             # BACKEND server-side business logic and data access
 │   └── lib/
 │       └── supabase/         # DATA boundary: the only place Supabase clients are created
@@ -206,8 +207,8 @@ Then open <http://localhost:3000>.
 
 **Data / persistent storage**
 
-- `src/lib/supabase/` — Supabase client configuration. Reserved; nothing connects to a database
-  yet.
+- `src/lib/supabase/` — Supabase client configuration and Auth cookie/session integration.
+  Application database schema remains planned.
 - `.env.example` / `.env.local` — Connection settings. Values are never hard-coded in source.
 - `supabase/migrations/` — Database schema (to be added by S1-014).
 
@@ -278,8 +279,9 @@ Validation occurs when the function is called by
 Supabase-dependent code.
 
 The starter application does not require Supabase
-credentials to start. Supabase client initialization
-is handled separately in S1-009.
+credentials to start. S1-009 adds Supabase client initialization and authentication.
+See [authentication setup and verification](docs/s1-009-authentication.md) for dashboard settings,
+email confirmation, `/login`, the session endpoint, and pending manual checks.
 
 ### Deployment configuration
 
@@ -331,7 +333,7 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005 and S1-006)**
+**Implemented (S1-005, S1-006, S1-008, and S1-009)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
 - Responsive starter page.
@@ -343,19 +345,21 @@ require a live Supabase connection.
 - Clean-checkout type-checking with Next.js route type generation.
 - Jest and React Testing Library unit/component tests for the starter frontend and health endpoint.
 - Separate Playwright headless end-to-end smoke tests.
+- Supabase environment validation and unit tests.
+- Supabase sign-in, registration/confirmation, cookie sessions, verified server identity, and logout.
+- `/login` and `/api/auth/session`; live verification and human security review remain required.
 
 **Planned (not implemented)**
 
-| Capability                                                  | Story           |
-| ----------------------------------------------------------- | --------------- |
-| Pull-request CI (lint, build, test) and branch protection   | S1-007          |
-| Full environment configuration and validation               | S1-008          |
-| Supabase Auth sign-in, sign-out, and route protection       | S1-009, S1-010  |
-| Ownership and cross-user authorization                      | S1-011 – S1-013 |
-| Analysis targets (model, create, validate, list, workspace) | S1-014 – S1-018 |
-| Review ingestion, normalization, persistence, result state  | S1-019 – S1-023 |
-| AI question answering, ingestion summaries                  | Sprint 2        |
-| Production deployment                                       | Sprint 3        |
+| Capability                                                        | Story           |
+| ----------------------------------------------------------------- | --------------- |
+| Pull-request CI (lint, build, test) and branch protection         | S1-007          |
+| Broad route protection using the S1-009 authentication foundation | S1-010          |
+| Ownership and cross-user authorization                            | S1-011 – S1-013 |
+| Analysis targets (model, create, validate, list, workspace)       | S1-014 – S1-018 |
+| Review ingestion, normalization, persistence, result state        | S1-019 – S1-023 |
+| AI question answering, ingestion summaries                        | Sprint 2        |
+| Production deployment                                             | Sprint 3        |
 
 ---
 
