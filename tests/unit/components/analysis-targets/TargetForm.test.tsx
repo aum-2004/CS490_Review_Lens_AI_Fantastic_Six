@@ -125,7 +125,17 @@ describe("TargetForm", () => {
     [
       "unsupported",
       "https://example.com/maps/place/NJIT",
-      "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
+      "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
+    ],
+    [
+      "missing a business identifier",
+      "https://www.google.com/maps",
+      "This Google Maps link doesn't identify a business. Open a specific business and copy its link.",
+    ],
+    [
+      "shortened Google Maps",
+      "https://maps.app.goo.gl/abc123",
+      "Shortened Google Maps links aren't supported yet. Open the full Google Maps URL in your browser and copy it from the address bar.",
     ],
   ])("shows a field-level error for a %s source URL", (_case, sourceUrl, message) => {
     render(<TargetForm createTarget={jest.fn()} />);
@@ -161,6 +171,83 @@ describe("TargetForm", () => {
 
     expect(screen.getByText("Target names can be up to 120 characters.")).toBeInTheDocument();
     expect(screen.getByText("121/120")).toBeInTheDocument();
+  });
+
+  it("rejects target names containing unsafe control characters", () => {
+    const createTarget = jest.fn();
+    render(<TargetForm createTarget={createTarget} />);
+    fireEvent.change(screen.getByLabelText(/target name/i), {
+      target: { value: "NJ\u0007IT" },
+    });
+    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+      target: { value: validSourceUrl },
+    });
+
+    submitForm();
+
+    expect(screen.getByText("Target names can't contain control characters.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/target name/i)).toHaveFocus();
+    expect(createTarget).not.toHaveBeenCalled();
+  });
+
+  it("treats a target name made only of invisible format characters as missing", () => {
+    const createTarget = jest.fn();
+    render(<TargetForm createTarget={createTarget} />);
+    fireEvent.change(screen.getByLabelText(/target name/i), {
+      target: { value: "\u200b\u2060\ufeff" },
+    });
+    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+      target: { value: validSourceUrl },
+    });
+
+    submitForm();
+
+    expect(screen.getByText("Enter a name for this target.")).toBeInTheDocument();
+    expect(screen.getByLabelText(/target name/i)).toHaveFocus();
+    expect(createTarget).not.toHaveBeenCalled();
+  });
+
+  it("shows the source URL length limit without submitting", () => {
+    const createTarget = jest.fn();
+    const prefix = `${validSourceUrl}?data=`;
+    const overlongSourceUrl = `${prefix}${"a".repeat(2_049 - prefix.length)}`;
+    render(<TargetForm createTarget={createTarget} />);
+    fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
+    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+      target: { value: overlongSourceUrl },
+    });
+
+    submitForm();
+
+    expect(
+      screen.getByText("Google Maps links can be up to 2,048 characters."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/google maps source url/i)).toHaveFocus();
+    expect(createTarget).not.toHaveBeenCalled();
+  });
+
+  it("submits the canonical URL returned by the shared validator", async () => {
+    const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn().mockResolvedValue({
+      id: "target-1",
+      name: "NJIT",
+      sourceUrl: validSourceUrl,
+      platform: "google_maps",
+    });
+    render(<TargetForm createTarget={createTarget} />);
+    fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
+    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+      target: { value: "https:www.google.com/maps/place/NJIT/@40.742,-74.179,17z" },
+    });
+
+    submitForm();
+
+    await waitFor(() =>
+      expect(createTarget).toHaveBeenCalledWith({
+        name: "NJIT",
+        sourceUrl: validSourceUrl,
+        platform: "google_maps",
+      }),
+    );
   });
 
   it("submits normalized valid data, confirms creation, and navigates to the workspace", async () => {
