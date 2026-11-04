@@ -113,6 +113,36 @@ the isolated provider started by `npm run test:e2e:auth`. Both commands accept t
 
 These live checks remain pending until performed; do not mark the issue Done from mocks alone.
 
+### User-reported hosted acceptance (2026-11-03)
+
+Shawn reports successful registration, email confirmation, sign-in, navigation/reload persistence,
+verified session API identity, logout with signed-out API rejection, incorrect-password rejection,
+and distinct identities in two browser sessions. These checks ran on the dependent S1-010 branch,
+which contains S1-009. They have not yet been repeated manually on the isolated S1-009 branch.
+
+The hosted expiry-refresh check was reported as passed after proposing a temporary JWT duration
+of 300 seconds and a six-minute idle interval. No tokens were inspected by the assistant; this is
+user-reported acceptance evidence. The PM's restoration to the original 3600-second duration is
+**outstanding**, explicitly deferred by the user because the PM is unavailable. No shared project
+setting was changed by the assistant. Confirm restoration before closing the setup follow-up.
+
+Expired/invalid confirmation-link acceptance, exact hosted email-template configuration, isolated
+S1-009 manual acceptance, PR CI, and the required teammate/security review remain pending. The
+automated checks below cover the implementation independently of the shared project.
+
+Original live-test exchanges, with personal values redacted, are preserved in the supplementary
+[S1-010 session transcript](../ai-transcripts/2026-11-03_shawn_S1-010_codex.md). Its inclusion here is
+conversation evidence; no S1-010 production changes are included in the S1-009 branch.
+
+### Isolated S1-009 automated verification for PR preparation
+
+After preserving S1-010 as a separate local checkpoint, the S1-009 branch independently passed
+67 unit tests (11 suites), 2 local-provider auth browser tests, 2 home/health smoke browser tests,
+lint, explicit typecheck, formatting, and production build. Browser checks used existing Edge.
+These are local results, not GitHub CI or new hosted manual acceptance. The initial auth browser
+attempt could not acquire Next's dev lock while the user's server was running; it was stopped
+briefly, both suites/build were verified, and the user's dev server was restarted on S1-009.
+
 ## Deliberately deferred decisions
 
 The upstream Node 24 baseline was adopted when S1-001–008 were merged into this branch.
