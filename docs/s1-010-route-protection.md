@@ -3,9 +3,11 @@
 S1-010 depends on the S1-009 authentication branch. The PM has created the shared Supabase project.
 The user reports successful live registration/confirmation, sign-in, navigation/reload persistence,
 session API identity, logout, incorrect-password rejection, and two distinct account identities.
-These checks ran on the dependent S1-010 branch. Actual token-expiry refresh (configured lifetime:
-3600 seconds), isolated S1-009 acceptance, human/security review, CI, and target integration remain
-pending. Do not change shared JWT settings to shorten the wait without team agreement.
+These hosted checks ran on the dependent S1-010 branch. The user subsequently reports successful
+hosted refresh using a temporary 300-second duration, restoration to 3600 seconds, and passing
+S1-009 PR CI. Dashboard restoration and CI were not independently inspected by the assistant.
+S1-009 remains unmerged and awaiting review. Its isolated automated checks passed; manual
+acceptance on that branch, human/security review, S1-010 CI, and target integration remain pending.
 
 ## Boundaries implemented here
 
@@ -106,3 +108,58 @@ No teammate branch was merged, modified, or deployed during this review.
 Continue local/live navigation checks on this branch while the owning target stories integrate.
 Until a protected target page exists here, authenticated navigation reaches 404; that verifies
 routing only and does not establish target UI, resource authorization, or RLS behavior.
+
+## Local HTTP protection checks after resuming S1-010
+
+After bringing S1-009's transcript/evidence commits into S1-010, direct requests to the running
+local app were sent with cookies disabled and redirects not followed:
+
+| Request                      | Observed result                                                          |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `/analysis-targets/new`      | 303 to `/login?next=%2Fanalysis-targets%2Fnew`; private/no-store         |
+| `/analysis-targets/target-a` | 303 to login with the original path; private/no-store                    |
+| `/api/auth/session`          | 401 `AUTH_REQUIRED`, no user/data payload, no redirect, private/no-store |
+| `/api/health`                | 200                                                                      |
+| `/login`                     | 200, no-store                                                            |
+
+No credentials or user cookies were supplied by the assistant. The user subsequently restarted
+the manual test and reports that signed-out navigation redirected to login and successful sign-in
+returned to `/analysis-targets/new` (currently a 404). This is live return-to-page acceptance, not
+target-page/data authorization verification. These checks do not establish protection of a target
+API that has not yet been implemented or integrated. The user also reports post-logout target
+navigation redirects back to login and the session API returns `AUTH_REQUIRED` without user data.
+Live navigation/session checks for the currently implemented guards have passed; real target
+page/API adoption, target data checks, S1-010 PR CI, and human/security review remain pending.
+
+## Team integration handoff and draft review
+
+S1-010's shared branch is `feature/S1-010-protected-routes`.
+Its draft PR should target `feature/S1-009-managed-authentication` while S1-009 is unmerged, so
+reviewers see only the S1-010 changes. After S1-009 merges, update this branch as appropriate and
+retarget the draft to `main`; inspect the resulting diff, resolve any squash-merge duplication,
+and rerun required checks before marking it ready. Do not merge 010 into 009 to complete review.
+
+The following is a proposed division of integration work for the story owners to confirm. It
+does not assign teammates externally or claim their routes have been modified.
+
+| Story / boundary                     | Integration action                                                                                                                                                                                              |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 011 / target creation handler        | Call `requireApiUser()` before reading/processing protected input or invoking services. Return its failure response immediately; pass `auth.user.id` and a user-scoped Supabase client into the target service. |
+| 015 / `/analysis-targets/new`        | Put `requirePageUser("/analysis-targets/new")` before rendering the form inside an async component behind Suspense. Reconcile shared UI filenames/exports with the existing auth primitives.                    |
+| 017 / `/analysis-targets`            | Verify the page/data operation and constrain target queries by the verified identity. Do not fetch every user's targets and filter in the browser.                                                              |
+| 018 / `/analysis-targets/[targetId]` | Verify identity before loading target data, then enforce ownership through the repository/service. Use the agreed 404 behavior for missing or foreign targets. Check protected child operations independently.  |
+| 012/013 / ownership tests            | Keep cross-user resource tests with the ownership stories. Authentication guards establish identity; they do not establish ownership by themselves.                                                             |
+
+Helpers are exported from `@/services/auth/access-control`. Normal user database operations use
+the existing `createSupabaseServerClient` in `@/lib/supabase/server`, preserving session cookies;
+they do not use service-role credentials or an owner ID supplied by the browser. Document any
+new API namespace so the existing Proxy matcher can cover refresh there.
+
+Owner-side acceptance should cover signed-in success, signed-out 401/redirect with no protected
+data, safe provider failure, direct handler/action invocation, post-logout navigation, and User A/B
+ownership checks where applicable. The current session endpoint's tests do not prove future target
+handlers are guarded. No endpoint, page, migration, or UI primitive should be duplicated merely to
+make this authentication PR appear complete.
+
+Latest fetched S1-012 snapshot includes target repository and database isolation tests but no
+target `route.ts` handler. No S1-012 code or migrations were merged during this handoff review.
