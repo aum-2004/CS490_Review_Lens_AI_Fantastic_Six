@@ -142,7 +142,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
     } catch (error) {
       if (error instanceof AnalysisTargetCreationError) {
         if (error.code === "AUTHENTICATION_REQUIRED") {
-          router.push("/login?returnTo=%2Fanalysis-targets%2Fnew");
+          router.push("/login?next=%2Fanalysis-targets%2Fnew");
           return;
         }
 

@@ -376,7 +376,7 @@ describe("TargetForm", () => {
     submitForm();
 
     await waitFor(() =>
-      expect(mockPush).toHaveBeenCalledWith("/login?returnTo=%2Fanalysis-targets%2Fnew"),
+      expect(mockPush).toHaveBeenCalledWith("/login?next=%2Fanalysis-targets%2Fnew"),
     );
   });
 
