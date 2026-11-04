@@ -7,9 +7,9 @@ persisted review evidence. Each user's targets and reviews are private to that u
 
 NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 
-> **Status:** Sprint 1 foundation. The application starts and serves a starter page and a health
-> endpoint, with automated formatting, static analysis, unit tests, and headless end-to-end tests.
-> Authentication, analysis targets, and review ingestion are not built yet — see
+> **Status:** Sprint 1 in progress. The application serves a starter page and a health endpoint,
+> pull-request CI runs on every PR, and the AnalysisTarget database schema exists. Authentication,
+> the target screens, and review ingestion are not merged yet — see
 > [Implemented vs. planned](#implemented-vs-planned).
 
 ---
@@ -24,7 +24,7 @@ NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 | Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Schema started (S1-014); Auth planned (S1-009) |
 | Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                                       |
 | Tests           | Jest, React Testing Library, Playwright                  | In place                                       |
-| CI              | GitHub Actions                                           | Planned (S1-007)                               |
+| CI              | GitHub Actions                                           | In place (S1-007)                              |
 | Hosting         | Vercel                                                   | Planned (Sprint 3)                             |
 | Package manager | npm (only — do not use Yarn or pnpm)                     | In place                                       |
 
@@ -193,7 +193,7 @@ Then open <http://localhost:3000>.
 │   ├── db/                   # SQL tests for migrations and RLS (`npm run test:db`)
 │   └── e2e/                  # Playwright browser tests
 ├── docs/                     # Team engineering, UX, security, and AI-development documents
-├── .github/workflows/        # GitHub Actions (currently the sprint-issue importer)
+├── .github/workflows/        # GitHub Actions: pull-request CI and the sprint-issue importer
 ├── .env.example              # Environment variable names, no real values
 ├── AGENTS.md                 # Next.js-provided notes for AI coding agents
 ├── eslint.config.mjs         # ESLint configuration
@@ -222,8 +222,8 @@ Then open <http://localhost:3000>.
 
 **Data / persistent storage**
 
-- `src/lib/supabase/` — Supabase client configuration. Reserved; nothing connects to a database
-  yet.
+- `src/lib/supabase/` — Supabase configuration, validated by S1-008. Client factories arrive with
+  S1-009.
 - `.env.example` / `.env.local` — Connection settings. Values are never hard-coded in source.
 - `supabase/migrations/` — Database schema and RLS policies, applied in filename order. S1-014
   added `analysis_targets`.
@@ -348,7 +348,7 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005 and S1-006)**
+**Implemented (S1-005 to S1-008, S1-014)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
 - Responsive starter page.
@@ -360,27 +360,30 @@ require a live Supabase connection.
 - Clean-checkout type-checking with Next.js route type generation.
 - Jest and React Testing Library unit/component tests for the starter frontend and health endpoint.
 - Separate Playwright headless end-to-end smoke tests.
+- Pull-request CI with required checks and branch protection on `main` (S1-007).
+- Node 24 pinned in `.nvmrc` (S1-007).
+- Supabase environment configuration and validation (S1-008).
+- `analysis_targets` table with owner-only Row Level Security, a server-side repository, and
+  database tests in CI (S1-014).
 
 **Planned (not implemented)**
 
-| Capability                                                  | Story           |
-| ----------------------------------------------------------- | --------------- |
-| Pull-request CI (lint, build, test) and branch protection   | S1-007          |
-| Full environment configuration and validation               | S1-008          |
-| Supabase Auth sign-in, sign-out, and route protection       | S1-009, S1-010  |
-| Ownership and cross-user authorization                      | S1-011 – S1-013 |
-| Analysis targets (model, create, validate, list, workspace) | S1-014 – S1-018 |
-| Review ingestion, normalization, persistence, result state  | S1-019 – S1-023 |
-| AI question answering, ingestion summaries                  | Sprint 2        |
-| Production deployment                                       | Sprint 3        |
+| Capability                                                 | Story           |
+| ---------------------------------------------------------- | --------------- |
+| Supabase Auth sign-in, sign-out, and route protection      | S1-009, S1-010  |
+| Ownership and cross-user authorization                     | S1-011 – S1-013 |
+| Analysis targets (create, validate, list, workspace)       | S1-015 – S1-018 |
+| Review ingestion, normalization, persistence, result state | S1-019 – S1-023 |
+| AI question answering, ingestion summaries                 | Sprint 2        |
+| Production deployment                                      | Sprint 3        |
 
 ---
 
 ## Next steps for the team
 
-- **S1-007 — Pull-request CI:** add a GitHub Actions workflow that consumes the S1-006 commands:
-  `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`.
-  Browser CI may additionally install Chromium and run `npm run test:e2e`.
+- Before pushing, run `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`,
+  and `npm run build`; CI runs the same commands and blocks merging when any of them fail.
+- Apply new files in `supabase/migrations/` to the team Supabase project after their PR merges.
 
 Work branches off `main` using `feature/<story-id>-<short-name>` and merges through a reviewed pull
 request.
