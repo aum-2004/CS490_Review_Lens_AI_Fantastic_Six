@@ -1,14 +1,22 @@
 const MAX_TARGET_NAME_LENGTH = 120;
+const MAX_SOURCE_URL_LENGTH = 2_048;
 
 const TARGET_NAME_REQUIRED_MESSAGE = "Enter a name for this target.";
+const TARGET_NAME_INVALID_CHARACTERS_MESSAGE = "Target names can't contain control characters.";
 const TARGET_NAME_TOO_LONG_MESSAGE = "Target names can be up to 120 characters.";
 const SOURCE_URL_REQUIRED_MESSAGE = "Enter the Google Maps link for this target.";
 const SOURCE_URL_INVALID_MESSAGE =
   "That doesn't look like a valid web address. Paste the full link, starting with https://.";
-const SOURCE_URL_UNSUPPORTED_MESSAGE =
-  "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.";
+const SOURCE_URL_TOO_LONG_MESSAGE = "Google Maps links can be up to 2,048 characters.";
+const SOURCE_URL_UNSUPPORTED_PLATFORM_MESSAGE =
+  "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.";
+const SOURCE_URL_MISSING_BUSINESS_MESSAGE =
+  "This Google Maps link doesn't identify a business. Open a specific business and copy its link.";
+const SOURCE_URL_SHORT_LINK_UNSUPPORTED_MESSAGE =
+  "Shortened Google Maps links aren't supported yet. Open the full Google Maps URL in your browser and copy it from the address bar.";
 
 const GOOGLE_MAPS_HOSTNAMES = new Set(["google.com", "www.google.com", "maps.google.com"]);
+const SHORTENED_GOOGLE_MAPS_HOSTNAMES = new Set(["maps.app.goo.gl"]);
 const GOOGLE_MAPS_PLACE_IDENTIFIER_PARAMETERS = ["cid", "place_id", "query_place_id"];
 
 export const SUPPORTED_REVIEW_PLATFORM = "google_maps" as const;
@@ -27,11 +35,13 @@ export type AnalysisTargetValidationErrorCode =
   | "INVALID_INPUT_TYPE"
   | "TARGET_NAME_REQUIRED"
   | "TARGET_NAME_INVALID_TYPE"
+  | "TARGET_NAME_INVALID_CHARACTERS"
   | "TARGET_NAME_TOO_LONG"
   | "SOURCE_URL_REQUIRED"
   | "SOURCE_URL_INVALID_TYPE"
   | "SOURCE_URL_MALFORMED"
   | "SOURCE_URL_UNSUPPORTED_PROTOCOL"
+  | "SOURCE_URL_TOO_LONG"
   | "SOURCE_URL_UNSUPPORTED_PLATFORM";
 
 export interface AnalysisTargetValidationIssue {
@@ -66,6 +76,14 @@ function characterCount(value: string): number {
   return Array.from(value).length;
 }
 
+function normalizeTargetName(value: string): string {
+  return value.replace(/\p{Cf}/gu, "").trim();
+}
+
+function hasUnsafeControlCharacters(value: string): boolean {
+  return /\p{Cc}/u.test(value);
+}
+
 function hasPlaceIdentifier(url: URL): boolean {
   return GOOGLE_MAPS_PLACE_IDENTIFIER_PARAMETERS.some((parameter) => {
     const value = url.searchParams.get(parameter);
@@ -84,7 +102,7 @@ function hasMeaningfulPlacePath(path: string): boolean {
 
   try {
     const decodedPlaceSegment = decodeURIComponent(firstPlaceSegment);
-    return decodedPlaceSegment.replaceAll("/", "").trim().length > 0;
+    return decodedPlaceSegment.replace(/[\/+\s\p{C}]/gu, "").length > 0;
   } catch {
     return false;
   }
@@ -109,6 +127,32 @@ function isGoogleMapsBusinessUrl(url: URL): boolean {
     (url.hostname === "maps.google.com" && path === "/");
 
   return acceptsBusinessQuery && hasPlaceIdentifier(url);
+}
+
+function isGoogleMapsUrl(url: URL): boolean {
+  if (!GOOGLE_MAPS_HOSTNAMES.has(url.hostname) || url.username || url.password || url.port) {
+    return false;
+  }
+
+  const path = url.pathname.toLowerCase();
+  return url.hostname === "maps.google.com" || path === "/maps" || path.startsWith("/maps/");
+}
+
+function unsupportedGoogleMapsMessage(url: URL): string {
+  if (
+    SHORTENED_GOOGLE_MAPS_HOSTNAMES.has(url.hostname) &&
+    !url.username &&
+    !url.password &&
+    !url.port
+  ) {
+    return SOURCE_URL_SHORT_LINK_UNSUPPORTED_MESSAGE;
+  }
+
+  if (isGoogleMapsUrl(url)) {
+    return SOURCE_URL_MISSING_BUSINESS_MESSAGE;
+  }
+
+  return SOURCE_URL_UNSUPPORTED_PLATFORM_MESSAGE;
 }
 
 function failure(issues: AnalysisTargetValidationIssue[]): AnalysisTargetValidationResult {
@@ -163,13 +207,19 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
       message: TARGET_NAME_REQUIRED_MESSAGE,
     });
   } else {
-    normalizedName = rawName.trim();
+    normalizedName = normalizeTargetName(rawName);
 
     if (normalizedName.length === 0) {
       issues.push({
         field: "name",
         code: "TARGET_NAME_REQUIRED",
         message: TARGET_NAME_REQUIRED_MESSAGE,
+      });
+    } else if (hasUnsafeControlCharacters(rawName)) {
+      issues.push({
+        field: "name",
+        code: "TARGET_NAME_INVALID_CHARACTERS",
+        message: TARGET_NAME_INVALID_CHARACTERS_MESSAGE,
       });
     } else if (characterCount(normalizedName) > MAX_TARGET_NAME_LENGTH) {
       issues.push({
@@ -201,6 +251,12 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
         code: "SOURCE_URL_REQUIRED",
         message: SOURCE_URL_REQUIRED_MESSAGE,
       });
+    } else if (normalizedSourceUrl.length > MAX_SOURCE_URL_LENGTH) {
+      issues.push({
+        field: "sourceUrl",
+        code: "SOURCE_URL_TOO_LONG",
+        message: SOURCE_URL_TOO_LONG_MESSAGE,
+      });
     } else {
       let parsedUrl: URL | undefined;
 
@@ -225,8 +281,10 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
           issues.push({
             field: "sourceUrl",
             code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
-            message: SOURCE_URL_UNSUPPORTED_MESSAGE,
+            message: unsupportedGoogleMapsMessage(parsedUrl),
           });
+        } else {
+          normalizedSourceUrl = parsedUrl.href;
         }
       }
     }
