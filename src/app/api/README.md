@@ -14,13 +14,14 @@ Route Handlers stay thin (see `docs/engineering-standards.md`, sections 3 and 7)
 
 Current endpoints:
 
-| Method | Path                | Purpose                                                      | Added by   |
-| ------ | ------------------- | ------------------------------------------------------------ | ---------- |
-| GET    | `/api/health`       | Confirms the server is running. No auth, no database.        | S1-005     |
-| GET    | `/api/auth/session` | Returns verified identity; rejects missing/invalid sessions. | S1-009/010 |
+| Method | Path                    | Purpose                                                      | Added by   |
+| ------ | ----------------------- | ------------------------------------------------------------ | ---------- |
+| GET    | `/api/health`           | Confirms the server is running. No auth, no database.        | S1-005     |
+| GET    | `/api/auth/session`     | Returns verified identity; rejects missing/invalid sessions. | S1-009/010 |
+| POST   | `/api/analysis-targets` | Creates a target owned by the verified session user.         | S1-011     |
 
-Target, ingestion, and review endpoints arrive with their respective stories. Every protected
+Other target, ingestion, and review endpoints arrive with their respective stories. Every protected
 handler must independently use `requireApiUser()` from `@/services/auth/access-control` and return
 its failure `response` before invoking services. Proxy refreshes cookies but does not guard APIs.
 See [S1-010 integration guidance](../../../docs/s1-010-route-protection.md) for ownership handoff
-and private response caching.
+and private response caching, and [S1-011 ownership rules](../../../docs/s1-011-ownership.md).
