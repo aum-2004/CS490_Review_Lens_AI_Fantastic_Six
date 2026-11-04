@@ -139,6 +139,49 @@ describe("validateAnalysisTargetInput", () => {
         ],
       );
     });
+
+    it.each([
+      ["embedded NUL", "a\u0000b"],
+      ["NUL only", "\u0000"],
+      ["embedded bell", "NJ\u0007IT"],
+      ["embedded newline", "New\nJersey"],
+    ])("rejects a name containing an unsafe control character: %s", (_description, name) => {
+      expectFailure(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl }), [
+        {
+          field: "name",
+          code: "TARGET_NAME_INVALID_CHARACTERS",
+          message: "Target names can't contain control characters.",
+        },
+      ]);
+    });
+
+    it.each(["\u200b", " \t\u200b \n", "\u200b\u2060\ufeff"])(
+      "treats an invisible-only name as missing: %p",
+      (name) => {
+        expectFailure(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl }), [
+          {
+            field: "name",
+            code: "TARGET_NAME_REQUIRED",
+            message: "Enter a name for this target.",
+          },
+        ]);
+      },
+    );
+
+    it.each([
+      ["NJIT", "NJIT"],
+      ["  Café 東京  ", "Café 東京"],
+      ["\u200b  New Jersey Institute of Technology \u2060", "New Jersey Institute of Technology"],
+    ])("accepts and consistently normalizes a meaningful name: %p", (name, expectedName) => {
+      expect(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl })).toEqual({
+        success: true,
+        data: {
+          name: expectedName,
+          sourceUrl: validSourceUrl,
+          platform: "google_maps",
+        },
+      });
+    });
   });
 
   describe("source URL", () => {
@@ -224,34 +267,149 @@ describe("validateAnalysisTargetInput", () => {
     });
 
     it.each([
+      [
+        "missing both slashes",
+        "https:www.google.com/maps/place/NJIT",
+        "https://www.google.com/maps/place/NJIT",
+      ],
+      [
+        "missing one slash",
+        "https:/www.google.com/maps/place/NJIT",
+        "https://www.google.com/maps/place/NJIT",
+      ],
+      [
+        "backslashes instead of URL slashes",
+        "https:\\\\www.google.com\\maps\\place\\NJIT",
+        "https://www.google.com/maps/place/NJIT",
+      ],
+      ["leading control character", `\u0001${validSourceUrl}`, validSourceUrl],
+      [
+        "embedded carriage return and newline",
+        "https://www.google.com/maps/place/NJ\r\nIT/@40.742,-74.179,17z",
+        validSourceUrl,
+      ],
+      ["trailing NUL", `${validSourceUrl}\u0000`, validSourceUrl],
+      [
+        "backslash before an apparent alternate hostname",
+        "https://www.google.com\\maps\\place\\x@evil.example/",
+        "https://www.google.com/maps/place/x@evil.example/",
+      ],
+    ])("returns the parsed canonical URL for %s", (_description, sourceUrl, expectedSourceUrl) => {
+      expect(validateAnalysisTargetInput({ name: "NJIT", sourceUrl })).toEqual({
+        success: true,
+        data: {
+          name: "NJIT",
+          sourceUrl: expectedSourceUrl,
+          platform: "google_maps",
+        },
+      });
+    });
+
+    it("rejects username/hostname ambiguity after parsing", () => {
+      expectFailure(
+        validateAnalysisTargetInput({
+          name: "NJIT",
+          sourceUrl: "https://www.google.com%5c@evil.example/maps/place/NJIT",
+        }),
+        [
+          {
+            field: "sourceUrl",
+            code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
+            message:
+              "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
+          },
+        ],
+      );
+    });
+
+    it("accepts a source URL at the 2,048-character boundary", () => {
+      const prefix = `${validSourceUrl}?data=`;
+      const sourceUrl = `${prefix}${"a".repeat(2_048 - prefix.length)}`;
+
+      expect(validateAnalysisTargetInput({ name: "NJIT", sourceUrl })).toEqual({
+        success: true,
+        data: {
+          name: "NJIT",
+          sourceUrl,
+          platform: "google_maps",
+        },
+      });
+    });
+
+    it("rejects a source URL longer than 2,048 characters", () => {
+      const prefix = `${validSourceUrl}?data=`;
+      const sourceUrl = `${prefix}${"a".repeat(2_049 - prefix.length)}`;
+
+      expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
+        {
+          field: "sourceUrl",
+          code: "SOURCE_URL_TOO_LONG",
+          message: "Google Maps links can be up to 2,048 characters.",
+        },
+      ]);
+    });
+
+    it.each([
       "https://example.com/maps/place/NJIT",
       "https://google.com.evil.example/maps/place/NJIT",
       "https://maps.google.com.evil.example/maps/place/NJIT",
       "https://evilgoogle.com/maps/place/NJIT",
       "https://www.g00gle.com/maps/place/NJIT",
-      "https://maps.app.goo.gl/abc123",
       "https://example.com/?next=https://www.google.com/maps/place/NJIT",
       "https://www.google.com/search?q=NJIT",
       "https://google.com/?cid=123456789",
-      "https://www.google.com/maps",
-      "https://www.google.com/maps/place/",
-      "https://www.google.com/maps/place//",
-      "https://www.google.com/maps/place/%20",
-      "https://www.google.com/maps/place///",
-      "https://www.google.com/maps/search/?query=",
-      "https://maps.google.com/?q=pizza",
-      "https://www.google.com/maps/search/?query=restaurants",
-      "https://maps.google.com/",
       "https://www.google.com:8443/maps/place/NJIT",
-    ])("rejects an unsupported or non-business URL: %s", (sourceUrl) => {
+    ])("rejects a non-Google-Maps source URL: %s", (sourceUrl) => {
       expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
         {
           field: "sourceUrl",
           code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
           message:
-            "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
+            "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
         },
       ]);
+    });
+
+    it.each([
+      "https://www.google.com/maps",
+      "https://www.google.com/maps/place/",
+      "https://www.google.com/maps/place//",
+      "https://www.google.com/maps/place/%20",
+      "https://www.google.com/maps/place///",
+      "https://www.google.com/maps/place/+",
+      "https://www.google.com/maps/place/+++/",
+      "https://www.google.com/maps/place/%E2%80%8B",
+      "https://www.google.com/maps/place/%00",
+      "https://www.google.com/maps/search/?query=",
+      "https://maps.google.com/?q=pizza",
+      "https://www.google.com/maps/search/?query=restaurants",
+      "https://maps.google.com/",
+    ])("rejects a Google Maps URL without a meaningful business identifier: %s", (sourceUrl) => {
+      expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
+        {
+          field: "sourceUrl",
+          code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
+          message:
+            "This Google Maps link doesn't identify a business. Open a specific business and copy its link.",
+        },
+      ]);
+    });
+
+    it("rejects a shortened Google Maps URL with actionable guidance", () => {
+      expectFailure(
+        validateAnalysisTargetInput({
+          name: "NJIT",
+          sourceUrl: "https://maps.app.goo.gl/abc123",
+        }),
+        [
+          {
+            field: "sourceUrl",
+            code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
+            message:
+              "Shortened Google Maps links aren't supported yet. Open the full Google Maps URL in your browser and copy it from the address bar.",
+          },
+        ],
+      );
     });
 
     it.each([
@@ -264,7 +422,7 @@ describe("validateAnalysisTargetInput", () => {
           field: "sourceUrl",
           code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
           message:
-            "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
+            "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
         },
       ]);
     });
