@@ -9,7 +9,7 @@ const SOURCE_URL_INVALID_MESSAGE =
   "That doesn't look like a valid web address. Paste the full link, starting with https://.";
 const SOURCE_URL_TOO_LONG_MESSAGE = "Google Maps links can be up to 2,048 characters.";
 const SOURCE_URL_UNSUPPORTED_PLATFORM_MESSAGE =
-  "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.";
+  "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.";
 const SOURCE_URL_MISSING_BUSINESS_MESSAGE =
   "This Google Maps link doesn't identify a business. Open a specific business and copy its link.";
 const SOURCE_URL_SHORT_LINK_UNSUPPORTED_MESSAGE =
@@ -77,7 +77,11 @@ function characterCount(value: string): number {
 }
 
 function normalizeTargetName(value: string): string {
-  return value.replace(/\p{Cf}/gu, "").trim();
+  return value.replace(/(?![\u200C\u200D])\p{Cf}/gu, "").trim();
+}
+
+function hasMeaningfulTargetName(value: string): boolean {
+  return value.replace(/\p{Cf}/gu, "").trim().length > 0;
 }
 
 function hasUnsafeControlCharacters(value: string): boolean {
@@ -209,13 +213,13 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
   } else {
     normalizedName = normalizeTargetName(rawName);
 
-    if (normalizedName.length === 0) {
+    if (!hasMeaningfulTargetName(normalizedName)) {
       issues.push({
         field: "name",
         code: "TARGET_NAME_REQUIRED",
         message: TARGET_NAME_REQUIRED_MESSAGE,
       });
-    } else if (hasUnsafeControlCharacters(rawName)) {
+    } else if (!normalizedName.isWellFormed() || hasUnsafeControlCharacters(normalizedName)) {
       issues.push({
         field: "name",
         code: "TARGET_NAME_INVALID_CHARACTERS",
@@ -257,6 +261,12 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
         code: "SOURCE_URL_TOO_LONG",
         message: SOURCE_URL_TOO_LONG_MESSAGE,
       });
+    } else if (!normalizedSourceUrl.isWellFormed()) {
+      issues.push({
+        field: "sourceUrl",
+        code: "SOURCE_URL_MALFORMED",
+        message: SOURCE_URL_INVALID_MESSAGE,
+      });
     } else {
       let parsedUrl: URL | undefined;
 
@@ -282,6 +292,12 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
             field: "sourceUrl",
             code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
             message: unsupportedGoogleMapsMessage(parsedUrl),
+          });
+        } else if (parsedUrl.href.length > MAX_SOURCE_URL_LENGTH) {
+          issues.push({
+            field: "sourceUrl",
+            code: "SOURCE_URL_TOO_LONG",
+            message: SOURCE_URL_TOO_LONG_MESSAGE,
           });
         } else {
           normalizedSourceUrl = parsedUrl.href;
