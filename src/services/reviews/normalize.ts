@@ -6,16 +6,48 @@ import {
   type RawReview,
 } from "./types";
 
-const cleanString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+/** Postgres rejects \u0000 in text and jsonb, so it is removed before any other check. */
+const stripNul = (value: string): string => value.split("\u0000").join("");
 
+const cleanString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const cleaned = stripNul(value).trim();
+  return cleaned === "" ? undefined : cleaned;
+};
+
+/** Source ids may arrive as numbers; keep them as strings so persistence can dedupe on them. */
+const cleanId = (value: unknown): string | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return cleanString(value);
+};
+
+// ISO 8601 date, or date-time WITH a timezone (no timezone would depend on the server's zone).
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2}))?$/;
+
+const isRealCalendarDay = (iso: string): boolean => {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  const check = new Date(Date.UTC(year, month - 1, day));
+  return (
+    check.getUTCFullYear() === year &&
+    check.getUTCMonth() === month - 1 &&
+    check.getUTCDate() === day
+  );
+};
+
+/** Accepts only Date objects and ISO 8601 strings. Everything else is dropped. */
 const cleanDate = (value: unknown): Date | undefined => {
-  if (value === undefined || value === null || value === "") return undefined;
-  if (!(typeof value === "string" || typeof value === "number" || value instanceof Date)) {
+  let date: Date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === "string") {
+    const iso = value.trim();
+    if (!ISO_DATE.test(iso) || !isRealCalendarDay(iso)) return undefined;
+    date = new Date(iso);
+  } else {
     return undefined;
   }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) || date.getTime() > Date.now() ? undefined : date;
+  const time = date.getTime();
+  return Number.isNaN(time) || time > Date.now() ? undefined : date;
 };
 
 const cleanUrl = (value: unknown): string | undefined => {
@@ -23,7 +55,9 @@ const cleanUrl = (value: unknown): string | undefined => {
   if (!raw) return undefined;
   try {
     const url = new URL(raw);
-    return url.protocol === "http:" || url.protocol === "https:" ? raw : undefined;
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    if (url.username !== "" || url.password !== "") return undefined;
+    return url.href;
   } catch {
     return undefined;
   }
@@ -49,9 +83,9 @@ const parseRating = (value: unknown): number | "missing" | "invalid" => {
 
 /**
  * Rejection policy (S1-BR-020, S1-BR-024):
- * - missing/blank text -> rejected
+ * - missing/blank text (after NUL removal) -> rejected
  * - missing/invalid rating -> rejected
- * - malformed or future optional date, bad URL, bad metadata -> dropped, review kept
+ * - non-ISO or future date, bad URL, bad metadata -> dropped, review kept
  * Required fields are never defaulted or fabricated.
  */
 export function normalizeReview(raw: unknown, index = 0): NormalizeResult {
@@ -69,7 +103,7 @@ export function normalizeReview(raw: unknown, index = 0): NormalizeResult {
     review: {
       text,
       rating,
-      sourceReviewId: cleanString(record.sourceReviewId),
+      sourceReviewId: cleanId(record.sourceReviewId),
       reviewerName: cleanString(record.reviewerName),
       reviewDate: cleanDate(record.reviewDate),
       reviewUrl: cleanUrl(record.reviewUrl),
