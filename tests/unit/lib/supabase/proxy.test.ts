@@ -12,6 +12,7 @@ const getClaims = jest.fn();
 beforeEach(() => {
   jest.resetAllMocks();
   jest.spyOn(console, "warn").mockImplementation(() => {});
+  getClaims.mockResolvedValue({ data: null, error: null });
   jest
     .mocked(getSupabasePublicConfig)
     .mockReturnValue({ url: "https://test.supabase.co", publishableKey: "dummy-key" });
@@ -68,4 +69,64 @@ it("does not treat refresh failure as authenticated access", async () => {
   const response = await updateSession(new NextRequest("http://localhost/login"));
   expect(response.headers.get("Cache-Control")).toContain("no-store");
   expect(JSON.stringify(jest.mocked(console.warn).mock.calls)).not.toContain("private-token-data");
+});
+
+it.each(["/analysis-targets", "/analysis-targets/new", "/analysis-targets/target-a"])(
+  "redirects signed-out navigation to %s before rendering",
+  async (path) => {
+    const response = await updateSession(new NextRequest(`http://localhost${path}?tab=reviews`));
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin).toBe("http://localhost");
+    expect(location.pathname).toBe("/login");
+    expect(location.searchParams.get("next")).toBe(`${path}?tab=reviews`);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+  },
+);
+
+it("allows verified claims through but still leaves backend verification to the handler", async () => {
+  getClaims.mockResolvedValue({ data: { claims: { sub: "verified-user" } }, error: null });
+  const response = await updateSession(new NextRequest("http://localhost/analysis-targets"));
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+  expect(response.headers.get("location")).toBeNull();
+});
+
+it("preserves cleared session cookies on a redirect after invalid claims", async () => {
+  getClaims.mockImplementation(async () => {
+    await cookieAdapter.setAll!(
+      [{ name: "session", value: "", options: { path: "/", maxAge: 0 } }],
+      { "Cache-Control": "private, no-store" },
+    );
+    return { data: null, error: { status: 401 } };
+  });
+  const response = await updateSession(new NextRequest("http://localhost/analysis-targets"));
+  expect(response.status).toBe(303);
+  expect(response.cookies.get("session")?.maxAge).toBe(0);
+  expect(response.headers.get("Cache-Control")).toContain("no-store");
+});
+
+it.each(["configuration", "provider"])(
+  "returns safe 503 for a protected page on %s failure",
+  async (failure) => {
+    if (failure === "configuration") {
+      jest.mocked(getSupabasePublicConfig).mockImplementation(() => {
+        throw new Error("private-config");
+      });
+    } else
+      getClaims.mockResolvedValue({
+        data: null,
+        error: { status: 503, message: "private-provider" },
+      });
+    const response = await updateSession(new NextRequest("http://localhost/analysis-targets"));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("location")).toBeNull();
+    expect(await response.text()).not.toContain("private-");
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+  },
+);
+
+it("does not redirect API requests to HTML login; the handler independently verifies them", async () => {
+  const response = await updateSession(new NextRequest("http://localhost/api/analysis-targets"));
+  expect(response.headers.get("x-middleware-next")).toBe("1");
+  expect(response.headers.get("location")).toBeNull();
 });

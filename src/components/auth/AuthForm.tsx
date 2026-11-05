@@ -17,8 +17,9 @@ import {
 } from "@/components/ui/Form";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/shared/Spinner";
+import { getProtectedReturnTo } from "@/lib/validation/return-to";
 
-export function AuthForm() {
+export function AuthForm({ returnTo }: { returnTo?: string | null }) {
   const router = useRouter();
   const [mode, setMode] = useState<"sign-in" | "register">("sign-in");
   const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
@@ -44,7 +45,11 @@ export function AuthForm() {
       if (result.message) setFeedback({ message: result.message, error: !result.success });
       if (result.success) {
         form.resetField("password");
-        if (!result.requiresConfirmation) router.refresh();
+        if (!result.requiresConfirmation) {
+          const destination = getProtectedReturnTo(returnTo);
+          if (destination) router.replace(destination);
+          router.refresh();
+        }
       }
     } catch {
       setFeedback({

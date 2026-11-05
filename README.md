@@ -340,7 +340,7 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005 through S1-009)**
+**Implemented (S1-005 through S1-009, plus S1-010 foundation)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
 - Responsive starter page.
@@ -356,17 +356,20 @@ require a live Supabase connection.
 - Supabase environment validation and unit tests.
 - Supabase sign-in, registration/confirmation, cookie sessions, verified server identity, and logout.
 - `/login` and `/api/auth/session`; live verification and human security review remain required.
+- Protected target-page navigation, safe post-login return, and independent backend guard helpers.
+  See [S1-010 integration guidance](docs/s1-010-route-protection.md); target-route adoption and live
+  verification remain pending. No target feature or database ownership is supplied by these guards.
 
 **Planned (not implemented)**
 
-| Capability                                                        | Story           |
-| ----------------------------------------------------------------- | --------------- |
-| Broad route protection using the S1-009 authentication foundation | S1-010          |
-| Ownership and cross-user authorization                            | S1-011 – S1-013 |
-| Analysis targets (model, create, validate, list, workspace)       | S1-014 – S1-018 |
-| Review ingestion, normalization, persistence, result state        | S1-019 – S1-023 |
-| AI question answering, ingestion summaries                        | Sprint 2        |
-| Production deployment                                             | Sprint 3        |
+| Capability                                                      | Story              |
+| --------------------------------------------------------------- | ------------------ |
+| Integrate guards with target pages/APIs as their stories arrive | S1-010 integration |
+| Ownership and cross-user authorization                          | S1-011 – S1-013    |
+| Analysis targets (model, create, validate, list, workspace)     | S1-014 – S1-018    |
+| Review ingestion, normalization, persistence, result state      | S1-019 – S1-023    |
+| AI question answering, ingestion summaries                      | Sprint 2           |
+| Production deployment                                           | Sprint 3           |
 
 ---
 
