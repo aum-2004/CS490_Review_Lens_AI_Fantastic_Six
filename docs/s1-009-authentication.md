@@ -376,3 +376,19 @@ with 67 unit tests passing afterward. The request for an additional person is th
 according to this latest user-reported reviewer direction. This is author review, not independent
 review, and does not itself establish final PR approval. Earlier pending-review statements above
 are historical; this clarification supersedes them for this PR only.
+
+## Original conversation recovery (2026-11-05)
+
+The previously missing saved 009 dialogue has been recovered directly from the matching local
+Codex session log into ai-transcripts/2026-11-04_shawn_S1-009_codex.md. It now contains 143
+user messages and 236 assistant messages, with saved ordering/timestamps and declared privacy
+redactions. This replaces the partial summary-based Nov4 record and supersedes earlier text-gap
+notices. Related initial context and handoff discussion are included; separate 010 execution and
+standalone 014 review were excluded. Earlier Nov3 records remain as implementation/action
+records with intentional overlap. No unrecorded web-chat messages were reconstructed.
+
+Recovery includes shared UI coordination, SMTP restrictions/setup and failed Gmail approach,
+confirmation/expiry tests, and the original guided author-review instructions and confirmations.
+Screenshot pixels, attachment file bodies, internal reasoning and raw tool events are not embedded;
+textless user messages are explicitly identified. The file describes selection and coverage limits.
+No application code or hosted configuration changed during recovery.

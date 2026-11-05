@@ -106,8 +106,8 @@ of every previously issued access JWT or logout on other devices.
 Following these confirmations, Codex reran the existing isolated-009 Jest suite: 67 tests passed
 in 11 suites. This is automated supporting evidence, not a substitute for independent review.
 No application change was required by this guided inspection. The temporary personal SMTP
-sender, variable inbox placement, sender/credential replacement, and transcript-export gaps
-remain documented handoff/evidence items. Final security-review acceptance belongs to the
+sender, variable inbox placement, and sender/credential replacement remain documented
+handoff items. The previously missing transcript dialogue was recovered on 2026-11-05. Final security-review acceptance belongs to the
 PR reviewer under the team's process; no approval or policy exception is invented here.
 
 ### Reviewer clarification of review responsibility
