@@ -6,8 +6,10 @@ Reviewed implementation: `feature/S1-009-managed-authentication`, commit
 
 Result: no blocking security issue identified in the reviewed authentication implementation.
 This is a scoped source/test review, not a penetration test or verification of hosted settings.
-Shawn explicitly stated that a teammate review is unnecessary for this step. This record does
-not claim human approval or change the repository-wide S1-004 review policy.
+The PR reviewer subsequently clarified that independent security-focused review is still
+required under S1-004 section 7. This AI report is supporting evidence and does not satisfy
+that requirement. Shawn later reported being instructed to self-review; acceptance of that
+alternative has not been documented here. No human review or approval is claimed.
 
 ## Scope and observations
 
@@ -46,21 +48,29 @@ Earlier full local checks and hosted failure-case checks are recorded in
 and the PR reviewer; the current remote run was not independently inspected here.
 No application code, dependency, dashboard setting, migration, or real credential changed.
 
-## Outstanding acceptance evidence
+## Latest acceptance evidence and remaining review (2026-11-04)
 
-- A genuinely expired, previously unused hosted confirmation link, with known Email OTP
-  Expiration and issuance time, remains untested.
-- Actual hosted Site URL and email-template settings remain unconfirmed by this review.
+- Custom SMTP is configured using a temporary personal Gmail sender. A supplied dashboard
+  screenshot shows the required TokenHash template. Shawn confirmed a fresh confirmation
+  automatically established the app session on 009 and the session API returned his identity.
+- For the subsequent timed-expiry procedure, screenshots show the safe login error notice
+  and session API AUTH_REQUIRED without user data. The test conditions were user-controlled;
+  exact issuance/open timestamps and unused-link history were not independently observed.
+  This is hosted callback-rejection evidence, not an independently measured token lifetime.
+- PM confirmed JWT expiry 3600, and Shawn confirmed Email OTP Expiration restored and saved
+  at 3600 after the temporary five-minute tests.
 - Subsequent isolated-009 checks were confirmed by Shawn: sign-in, refresh/navigation,
   session API identity, logout with signed-out API rejection, and signing in again. Shawn
   subsequently also reported fresh registration/email confirmation passing on 009. These
   are user-reported observations; the assistant did not access the inbox or credentials.
-- Shawn's latest update says restoration of JWT expiry to 3600 needs final confirmation
-  from Aryan. This supersedes earlier reports that restoration was confirmed.
+- The exact Site URL dashboard value has not been supplied; successful local confirmation
+  demonstrates the tested email reached the app, not an independent settings inspection.
 - The 015 owner agreed to merge 009 first, then reconcile PascalCase shared components/APIs
   in 015 while resolving its 016 dependency. That later implementation remains pending.
 
-These items prevent calling all acceptance checks complete, despite the source-review result.
+Independent security-review acceptance and final PR approval remain unresolved. SMTP sender
+replacement is a documented handoff item. Check Spam/Junk if email is missing from the inbox;
+one test reached Spam and a later test reached the inbox.
 
 ## References
 

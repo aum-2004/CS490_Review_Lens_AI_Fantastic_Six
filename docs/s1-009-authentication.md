@@ -296,3 +296,74 @@ The AI-assisted security review is complete within its documented scope. Prior C
 reported by author/reviewer; this documentation push requires a new passing run. PR metadata
 must use Refs #9 and remain Draft pending acceptance. No claim that remote metadata was edited
 is made. This guide and the security report are the current reviewer handoff evidence.
+
+### Custom SMTP and TokenHash confirmation acceptance (2026-11-04)
+
+Shawn reports configuring custom SMTP using a temporary personal Gmail sender and its separate
+App Password. No SMTP credential or personal sender address was supplied to or inspected by
+the assistant. The project mailbox was created but Google blocked App Password access during
+identity verification, so migration to that mailbox remains a handoff item.
+
+The supplied dashboard screenshot shows Confirm signup source using
+`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`.
+A fresh signup email was delivered to Spam rather than the main inbox. After opening that new
+confirmation link, Shawn confirmed both acceptance checks passed on the running isolated 009:
+
+- `/login` displayed the authenticated account without manually signing in.
+- `/api/auth/session` returned success with the account's identity in the same browser.
+
+This is user-confirmed hosted callback/session acceptance and screenshot evidence of the template;
+it is not an independent dashboard inspection by the assistant. Delivery to Spam is a known
+limitation of the temporary SMTP sender; inbox placement is not guaranteed. Replace the sender
+and SMTP credentials with the team's chosen sender, retest delivery, then revoke the temporary
+personal App Password. Merely replacing the sender address is insufficient.
+
+PM confirmed JWT expiry 3600; Shawn reports restoring Email OTP Expiration to 3600 after testing.
+The prior timed, unused-link rejection test used Supabase's default template and ended with
+`otp_expired` plus session API `AUTH_REQUIRED` without user data. It does not certify a genuinely
+expired link through the newly configured TokenHash callback. That specific callback-expiry
+check remains separate. Actual Site URL value has not been directly inspected; the successful
+callback demonstrates that the tested email reached the local application.
+
+### TokenHash rejection test result (2026-11-04)
+
+After requesting the timed expired-TokenHash callback test, Shawn supplied screenshots showing
+`/login?notice=confirmation-error` with the safe visible confirmation-failure message and
+`/api/auth/session` returning `success: false`, `AUTH_REQUIRED`, and no user data. This confirms
+the observed callback rejection and unauthenticated result. The screenshot alone cannot establish
+issuance time, elapsed duration, or whether the link was previously consumed; exact timing and
+unused-link history are user-controlled test conditions rather than independently observed facts.
+No issuance/open timestamps were supplied in this result. No real link or token was retained.
+
+This test email reached the inbox, while an earlier SMTP test reached Spam. Setup/test guidance:
+if the confirmation email is not initially visible, check Spam/Junk as well as the main inbox.
+Inbox placement varies; delivery to Spam is a possible outcome, not a consistent failure.
+
+After the temporary 300-second Email OTP Expiration test, restore that setting to 3600 seconds.
+Restoration following this latest test has not yet been confirmed. JWT expiry stays at 3600.
+
+### Expiry setting restored after TokenHash test
+
+Shawn confirmed that Email OTP Expiration was restored to 3600 seconds and saved after the
+latest TokenHash rejection test. This is user-confirmed dashboard evidence. JWT expiry remains
+PM-confirmed at 3600; the assistant did not inspect or change either shared setting.
+
+## Current handoff status after SMTP acceptance (2026-11-04)
+
+This dated status supersedes older pending lists above. The new TokenHash signup callback
+established a session without manual sign-in, confirmed by Shawn with a successful session API
+result on 009. The timed-rejection procedure produced the visible safe confirmation-error notice
+and AUTH_REQUIRED without user data, evidenced by screenshots. Timing and unused-link conditions
+were controlled by the tester; no exact timestamps or real tokens were retained. PM confirmed
+JWT expiry 3600; Shawn confirmed Email OTP Expiration restored and saved at 3600 after testing.
+
+SMTP uses a temporary personal sender. Delivery reached Spam in one test and the inbox in the
+next; check Spam/Junk if needed. Replace sender and SMTP credentials together when the team
+mailbox is usable, retest, then revoke the temporary App Password. The required template was
+visible in the supplied screenshot. The actual Site URL setting has not been separately supplied.
+
+The reviewer expressly requested an independent security-focused review under S1-004 section 7;
+the AI report alone was not accepted. Shawn later reported being told to self-review, but no
+completed author review or accepted waiver is claimed. Resolve this directly with the reviewer
+and retain the resulting human review evidence. Keep Refs #9 and Draft until outstanding review
+and acceptance decisions are resolved. A new documentation push requires a new passing CI run.
