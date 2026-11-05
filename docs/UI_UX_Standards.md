@@ -79,13 +79,17 @@ Validation runs in two places: client for fast feedback and server as authoritat
 4.1 Target input validation  
 A target is rejected and nothing is persisted unless all of these rules are met. These rules are implemented once in a shared schema and re-run on the server.
 
-| Field       | Rule                                                                                                        | Message shown to the user                                                                   |
-| :---------- | :---------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------ |
-| Target name | Required, cannot be whitespace, cannot be empty                                                             | "Enter a name for this target."                                                             |
-| Target name | Max Length 120                                                                                              | "Target names can be up to 120 characters."                                                 |
-| Source URL  | Required, cannot be whitespace, cannot be empty.                                                            | "Enter the Google Maps link for this target."                                               |
-| Source URL  | Must be a well-formed http(s) URL                                                                           | "That doesn't look like a valid web address. Paste the full link, starting with https\://." |
-| Source URL  | Must correspond to Google Maps. Accepted Google Maps hostnames are defined in the shared validation schema. | "This link isn't a Google Maps link. Open the business in Google Maps and copy its link."   |
+| Field       | Rule                                                                                                        | Message shown to the user                                                                                                           |
+| :---------- | :---------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| Target name | Required, cannot be whitespace, cannot be empty                                                             | "Enter a name for this target."                                                                                                     |
+| Target name | Cannot contain unsafe control characters.                                                                   | "Target names can't contain control characters."                                                                                    |
+| Target name | Max Length 120                                                                                              | "Target names can be up to 120 characters."                                                                                         |
+| Source URL  | Required, cannot be whitespace, cannot be empty.                                                            | "Enter the Google Maps link for this target."                                                                                       |
+| Source URL  | Must be a well-formed http(s) URL                                                                           | "That doesn't look like a valid web address. Paste the full link, starting with https\://."                                         |
+| Source URL  | Cannot exceed 2,048 characters, including after canonical URL encoding.                                     | "Google Maps links can be up to 2,048 characters."                                                                                  |
+| Source URL  | Must correspond to Google Maps. Accepted Google Maps hostnames are defined in the shared validation schema. | "This link isn't a Google Maps link. Open the business in Google Maps and copy its link."                                           |
+| Source URL  | Google Maps links must identify a specific business.                                                        | "This Google Maps link doesn't identify a business. Open a specific business and copy its link."                                    |
+| Source URL  | Shortened Google Maps links are not supported.                                                              | "Shortened Google Maps links aren't supported yet. Open the full Google Maps URL in your browser and copy it from the address bar." |
 
 4.2 Valid input succeeds and each message above is covered by an automated test for both accepted and rejected input.
 

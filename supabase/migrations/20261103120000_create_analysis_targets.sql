@@ -18,7 +18,13 @@ create table public.analysis_targets (
   constraint analysis_targets_name_present check (char_length(btrim(name)) > 0),
   constraint analysis_targets_name_length check (char_length(name) <= 120),
   constraint analysis_targets_platform_supported check (platform in ('google_maps')),
-  constraint analysis_targets_source_url_http check (source_url ~* '^https?://'),
+  -- Canonical S1-016 output only: Google Maps host and path, no credentials or port, no raw
+  -- whitespace, control characters, or backslashes, at most 2,048 characters.
+  constraint analysis_targets_source_url_google_maps check (
+    source_url ~ '^https?://((www\.)?google\.com/maps([/?#]|$)|maps\.google\.com/)'
+    and source_url !~ '[[:space:][:cntrl:]\\]'
+    and char_length(source_url) <= 2048
+  ),
   constraint analysis_targets_google_place_id_present check (
     google_place_id is null or char_length(btrim(google_place_id)) > 0
   )
@@ -30,7 +36,8 @@ comment on column public.analysis_targets.platform is
   'Supported review platform. Sprint 1 supports google_maps only.';
 comment on column public.analysis_targets.google_place_id is
   'Optional Google place ID resolved during ingestion (S1-020), reused so later imports skip '
-  'resolving the business again. Not unique: different users may analyze the same business.';
+  'resolving the business again. Not unique: different users may analyze the same business. '
+  'Clients cannot write it: a verified server-side write path is still to be agreed.';
 
 -- Supports listing a user's targets newest first (S1-017).
 create index analysis_targets_owner_id_created_at_idx
@@ -40,8 +47,13 @@ create index analysis_targets_owner_id_created_at_idx
 -- Server code must still check ownership itself; RLS is defense in depth.
 alter table public.analysis_targets enable row level security;
 
-revoke all on table public.analysis_targets from anon;
-grant select, insert, update, delete on table public.analysis_targets to authenticated;
+--
+-- Supabase exposes this table to signed-in users through its Data API, so these grants are the
+-- write boundary. Clients cannot update a target or choose its id, creation time, or Google place
+-- ID, which stops an owner replacing a target's source identity directly.
+revoke all on table public.analysis_targets from anon, authenticated;
+grant select, delete on table public.analysis_targets to authenticated;
+grant insert (owner_id, name, platform, source_url) on table public.analysis_targets to authenticated;
 
 create policy analysis_targets_select_own
   on public.analysis_targets
@@ -53,13 +65,6 @@ create policy analysis_targets_insert_own
   on public.analysis_targets
   for insert
   to authenticated
-  with check ((select auth.uid()) = owner_id);
-
-create policy analysis_targets_update_own
-  on public.analysis_targets
-  for update
-  to authenticated
-  using ((select auth.uid()) = owner_id)
   with check ((select auth.uid()) = owner_id);
 
 create policy analysis_targets_delete_own
