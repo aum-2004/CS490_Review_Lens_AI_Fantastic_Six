@@ -1,8 +1,8 @@
 -- S1-012: direct-ID authorization checks at the PostgreSQL Row Level Security boundary.
 --
 -- This scenario intentionally uses identities and a target that are independent from the S1-014
--- persistence tests. It proves that failed cross-user mutations leave the victim's complete row
--- unchanged, not only that PostgreSQL reports zero affected rows.
+-- persistence tests. It proves that prohibited cross-user and direct client mutations leave the
+-- victim's complete row unchanged, not only that PostgreSQL reports zero affected rows.
 
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -13,27 +13,39 @@ insert into auth.users (id) values
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 
--- User A owns and can retrieve Target A by its known identifier.
+-- User A creates Target A through the restricted client insert boundary. PostgreSQL generates
+-- the target id and creation time; the known id is retained for every subsequent direct-ID check.
 set role authenticated;
 set request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}';
 
-insert into public.analysis_targets (
-  id,
-  owner_id,
-  name,
-  platform,
-  source_url,
-  google_place_id,
-  created_at
-) values (
-  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  'Target A',
-  'google_maps',
-  'https://maps.google.com/?cid=12345',
-  'place-id-a',
-  '2026-11-03 12:00:00+00'
-);
+do $$
+declare
+  target public.analysis_targets;
+begin
+  insert into public.analysis_targets (owner_id, name, platform, source_url)
+  values (
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'Target A',
+    'google_maps',
+    'https://maps.google.com/?cid=12345'
+  )
+  returning * into target;
+
+  assert target.id is not null, 'PostgreSQL did not generate Target A''s id';
+  assert target.owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'Target A has an unexpected owner';
+  assert target.name = 'Target A', 'Target A has an unexpected name';
+  assert target.platform = 'google_maps', 'Target A has an unexpected platform';
+  assert target.source_url = 'https://maps.google.com/?cid=12345',
+    'Target A has an unexpected source URL';
+  assert target.google_place_id is null, 'Target A''s Google place ID was not initially null';
+  assert target.created_at is not null, 'PostgreSQL did not generate Target A''s creation time';
+  assert target.created_at <= clock_timestamp(), 'Target A''s creation time is in the future';
+
+  perform set_config('test.s1_012_target_id', target.id::text, false);
+  perform set_config('test.s1_012_target_created_at', target.created_at::text, false);
+end
+$$;
 
 do $$
 declare
@@ -41,16 +53,19 @@ declare
 begin
   select * into strict target
   from public.analysis_targets
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  where id = current_setting('test.s1_012_target_id')::uuid;
 
+  assert target.id = current_setting('test.s1_012_target_id')::uuid,
+    'User A retrieved a target with an unexpected id';
   assert target.owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'User A did not retrieve the owned target';
-  assert target.name = 'Target A', 'User A retrieved unexpected target data';
 end
 $$;
-\echo 'ok - User A can retrieve Target A by id'
+\echo 'ok - User A creates and retrieves Target A using its database-generated id'
 
--- User B knows Target A's identifier but cannot read, update, or delete it.
+-- User B knows Target A's identifier but cannot read, update, or delete it. UPDATE must fail at
+-- the privilege boundary; if it unexpectedly succeeds, even with zero affected rows, the explicit
+-- exception below fails the test.
 set request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}';
 
 do $$
@@ -60,20 +75,20 @@ begin
   assert not exists (
     select 1
     from public.analysis_targets
-    where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    where id = current_setting('test.s1_012_target_id')::uuid
   ), 'User B retrieved User A''s target by its known id';
 
-  update public.analysis_targets
-  set
-    name = 'Changed by User B',
-    source_url = 'https://attacker.example/changed',
-    google_place_id = 'changed-by-user-b'
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-  get diagnostics affected = row_count;
-  assert affected = 0, 'User B updated User A''s target by its known id';
+  begin
+    update public.analysis_targets
+    set name = 'Changed by User B'
+    where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'User B''s direct UPDATE unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
 
   delete from public.analysis_targets
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  where id = current_setting('test.s1_012_target_id')::uuid;
   get diagnostics affected = row_count;
   assert affected = 0, 'User B deleted User A''s target by its known id';
 end
@@ -89,8 +104,10 @@ declare
 begin
   select * into strict target
   from public.analysis_targets
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  where id = current_setting('test.s1_012_target_id')::uuid;
 
+  assert target.id = current_setting('test.s1_012_target_id')::uuid,
+    'the unauthorized attempts changed Target A''s id';
   assert target.owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'the unauthorized attempts changed Target A''s owner';
   assert target.name = 'Target A',
@@ -99,15 +116,17 @@ begin
     'the unauthorized attempts changed Target A''s platform';
   assert target.source_url = 'https://maps.google.com/?cid=12345',
     'the unauthorized attempts changed Target A''s source URL';
-  assert target.google_place_id = 'place-id-a',
+  assert target.google_place_id is null,
     'the unauthorized attempts changed Target A''s Google place ID';
-  assert target.created_at = '2026-11-03 12:00:00+00'::timestamptz,
+  assert target.created_at = current_setting('test.s1_012_target_created_at')::timestamptz,
     'the unauthorized attempts changed Target A''s creation time';
 end
 $$;
 \echo 'ok - User A retrieves Target A unchanged after User B modification attempts'
 
--- An authenticated database role without a verified user identity cannot access Target A.
+-- An authenticated database role without a verified user identity cannot access or modify Target
+-- A. UPDATE must be rejected by the immutable-source privilege boundary, and DELETE remains
+-- ownership-filtered by RLS.
 set request.jwt.claims to '';
 
 do $$
@@ -117,24 +136,28 @@ begin
   assert not exists (
     select 1
     from public.analysis_targets
-    where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    where id = current_setting('test.s1_012_target_id')::uuid
   ), 'a request without a user identity retrieved Target A';
 
-  update public.analysis_targets
-  set name = 'Changed without an identity'
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-  get diagnostics affected = row_count;
-  assert affected = 0, 'a request without a user identity updated Target A';
+  begin
+    update public.analysis_targets
+    set name = 'Changed without an identity'
+    where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'a request without a user identity unexpectedly updated Target A';
+  exception
+    when insufficient_privilege then null;
+  end;
 
   delete from public.analysis_targets
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  where id = current_setting('test.s1_012_target_id')::uuid;
   get diagnostics affected = row_count;
   assert affected = 0, 'a request without a user identity deleted Target A';
 end
 $$;
 \echo 'ok - requests without a verified user identity cannot access or modify Target A'
 
--- The anon role has no table privileges, so PostgreSQL rejects even a direct-ID query.
+-- The anon role has no table privileges, so PostgreSQL rejects even a direct-ID query. Only the
+-- expected privilege error is accepted; a successful query reaches the explicit failure.
 reset role;
 set role anon;
 
@@ -142,15 +165,16 @@ do $$
 begin
   perform 1
   from public.analysis_targets
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-  raise exception 'an anonymous request queried Target A';
+  where id = current_setting('test.s1_012_target_id')::uuid;
+  raise exception 'an anonymous request unexpectedly queried Target A';
 exception
   when insufficient_privilege then null;
 end
 $$;
 \echo 'ok - anonymous direct-ID requests are rejected'
 
--- The owner can modify and delete the same target, proving the policies deny by ownership.
+-- Under the immutable-source model, even the owner cannot directly UPDATE the target. The owner
+-- retains legitimate read and DELETE access.
 reset role;
 set role authenticated;
 set request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}';
@@ -158,30 +182,47 @@ set request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}';
 do $$
 declare
   affected integer;
+  target public.analysis_targets;
 begin
-  update public.analysis_targets
-  set name = 'Changed by User A'
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-  get diagnostics affected = row_count;
-  assert affected = 1, 'User A could not update the owned target';
-  assert (
-    select name = 'Changed by User A'
-    from public.analysis_targets
-    where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-  ), 'User A''s update was not persisted';
+  begin
+    update public.analysis_targets
+    set name = 'Changed by User A'
+    where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'User A''s direct UPDATE unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  select * into strict target
+  from public.analysis_targets
+  where id = current_setting('test.s1_012_target_id')::uuid;
+
+  assert target.id = current_setting('test.s1_012_target_id')::uuid,
+    'a prohibited operation changed Target A''s id';
+  assert target.owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'a prohibited operation changed Target A''s owner';
+  assert target.name = 'Target A', 'a prohibited operation changed Target A''s name';
+  assert target.platform = 'google_maps',
+    'a prohibited operation changed Target A''s platform';
+  assert target.source_url = 'https://maps.google.com/?cid=12345',
+    'a prohibited operation changed Target A''s source URL';
+  assert target.google_place_id is null,
+    'a prohibited operation changed Target A''s Google place ID';
+  assert target.created_at = current_setting('test.s1_012_target_created_at')::timestamptz,
+    'a prohibited operation changed Target A''s creation time';
 
   delete from public.analysis_targets
-  where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  where id = current_setting('test.s1_012_target_id')::uuid;
   get diagnostics affected = row_count;
   assert affected = 1, 'User A could not delete the owned target';
   assert not exists (
     select 1
     from public.analysis_targets
-    where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+    where id = current_setting('test.s1_012_target_id')::uuid
   ), 'User A''s delete was not persisted';
 end
 $$;
-\echo 'ok - User A can update and delete the owned target'
+\echo 'ok - User A can read and delete, but cannot directly update, the owned target'
 
 reset role;
 rollback;
