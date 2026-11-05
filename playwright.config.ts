@@ -2,6 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Auth tests use their own local provider; run with npm run test:e2e:auth.
+  testIgnore: "**/auth/**",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
@@ -9,6 +11,7 @@ export default defineConfig({
   reporter: [["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:3000",
+    channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
     trace: "on-first-retry",
   },
   projects: [
