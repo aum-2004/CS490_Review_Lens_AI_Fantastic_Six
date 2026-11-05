@@ -1,13 +1,16 @@
 # S1-010: Protected routes and backend operations
 
-S1-010 depends on the S1-009 authentication branch. The PM has created the shared Supabase project.
-The user reports successful live registration/confirmation, sign-in, navigation/reload persistence,
-session API identity, logout, incorrect-password rejection, and two distinct account identities.
-These hosted checks ran on the dependent S1-010 branch. The user subsequently reports successful
-hosted refresh using a temporary 300-second duration, restoration to 3600 seconds, and passing
-S1-009 PR CI. Dashboard restoration and CI were not independently inspected by the assistant.
-S1-009 remains unmerged and awaiting review. Its isolated automated checks passed; manual
-acceptance on that branch, human/security review, S1-010 CI, and target integration remain pending.
+S1-010 depends on S1-009. On 2026-11-05 this branch was updated with the published
+S1-009 implementation, live acceptance evidence and verified development-logging fix at e83041b.
+S1-009 remains unmerged in the fetched main snapshot (fd6cc38); main also includes S1-016.
+Keep the 010 PR stacked against feature/S1-009-managed-authentication until 009 merges.
+The 009 author's completed security review and its reviewer clarification apply to that story;
+010 still requires its own PR review and current CI before merge.
+
+The shared Supabase project exists. Hosted 009 acceptance, temporary personal SMTP and restored
+JWT/Email OTP settings are documented in the 009 guide. The implemented 010 guards are ready
+for review, while actual target-page/API adoption and live target-data tests remain the owning
+stories' integration work. Historical snapshots below retain their original dates.
 
 ## Boundaries implemented here
 
@@ -163,3 +166,70 @@ make this authentication PR appear complete.
 
 Latest fetched S1-012 snapshot includes target repository and database isolation tests but no
 target `route.ts` handler. No S1-012 code or migrations were merged during this handoff review.
+
+## Resumed integration review (2026-11-04)
+
+Resumed the existing S1-010 branch and merged S1-009's published documentation-only follow-up
+(commit 271a490). No 009/010 authentication implementation changed in that merge. S1-009
+remains unmerged at the fetched main snapshot (1d2be39). Its latest author-confirmed checks
+include fresh registration/confirmation, sign-in, refresh/navigation, verified session identity,
+logout, and re-login directly on 009. Hosted Site URL/template, genuine confirmation expiry,
+and final PM confirmation of JWT restoration remain pending; this supersedes the older opening
+status above. The 015 owner/reviewer agreed to reconcile shared UI in 015 after 009 merges.
+
+The newly fetched 011 branch at a0d8fd7 supplies POST /api/analysis-targets. Source inspection
+shows requireApiUser() runs before body validation/database work, and the handler passes
+verified auth.user.id with a session-scoped client into persistence. The shared access-control
+helper matches 010's implementation. Its direct handler tests assert successful creation,
+401 before persistence, 503 on failed identity verification, and ignored submitted owner IDs.
+Those 011 tests were inspected, not run or merged on this branch. This is a compatible handoff,
+not proof of live database/RLS behavior or deployed target protection.
+
+The fetched 015 page at 08087ed still lacks an independent page/data guard and imports the
+lowercase shared primitives. Its agreed integration step remains necessary. No 011 or 015 code
+was merged into 010; target routes/pages remain absent here. Continue the stacked 010 PR against
+009 while it is unmerged, then reconcile main and retarget after 009 merges.
+
+## Final implementation and integration assessment (2026-11-05)
+
+The 010 implementation was re-inspected against engineering standards and installed Next guides.
+It verifies identity again at backend/page boundaries, fails closed on missing identity/provider
+failure, preserves private responses and refreshed cookies, and restricts login destinations to
+the protected namespace. The verified 009 logging fix is inherited. No new guard defect was found
+and no additional application change was needed in this completion pass.
+
+Current fetched integration evidence:
+
+- 011 at a0d8fd7 calls the unchanged requireApiUser before JSON validation or database work,
+  supplies auth.user.id, and creates a session-scoped client. Its tests cover 201, unauthenticated
+  401, verification failure 503 and ignored owner fields. This is source inspection, not a claim
+  that those tests ran here or the migration is deployed.
+- 015 at 08087ed still needs requirePageUser before protected content/data and the agreed shared
+  UI reconciliation. Its page is not merged into this branch. Signed-in visits on this branch
+  therefore still return 404 after safe navigation; signed-out access redirects before rendering.
+- 017/018 pages and additional target/review/ingestion handlers must independently adopt guards;
+  resource ownership tests belong to 011-013 and the owning features. Proxy alone is insufficient.
+
+The shared guard implementation and its handoff are complete for review. Do not describe actual
+absent target features as integrated or mark the whole sprint's authorization complete from the
+session endpoint alone. After 009 merges, reconcile this branch with main and retarget the PR;
+handle squash-history duplication if applicable, inspect the diff, and rerun CI before merge.
+
+### Completion-pass validation (2026-11-05)
+
+On the updated 010 branch, all 113 unit tests in 14 suites, five isolated Edge auth/protection
+browser tests, lint, formatting, explicit typecheck and production build passed. The browser
+suite verified direct API rejection, forged owner input, login return flow, logout re-protection
+and rejection of an external return destination, in addition to session lifecycle checks.
+The guard/matcher/cookie/security inspection found no new defect in 010. This does not replace
+current GitHub CI, PR approval, or integration tests for absent target features.
+
+Original saved 010 dialogue was recovered in ai-transcripts/2026-11-05_shawn_S1-010_codex.md
+with declared selection, privacy redactions and attachment limits. Nov3/Nov4 records remain as
+action evidence with intentional overlap. No application behavior beyond the existing 010
+implementation and inherited 009 logging fix was added during this completion pass.
+
+Live signed-out checks against the restarted normal 010 app also passed: protected namespace
+root/new/detail URLs redirected 303 with private/no-store, the direct session API rejected forged
+owner input with 401 and no data/HTML redirect, and public health returned 200. No cookies or
+credentials supplied. The app remains running on 010 at localhost:3000.
