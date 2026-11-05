@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// S1-016 (#32) defines the same platform value in src/lib/validation/analysis-target.ts.
-// Import it from there once #32 is merged so there is a single definition.
-export type ReviewPlatform = "google_maps";
+import type { SupportedReviewPlatform } from "@/lib/validation/analysis-target";
+
+export type ReviewPlatform = SupportedReviewPlatform;
 
 export interface AnalysisTarget {
   id: string;
@@ -20,7 +20,6 @@ export interface NewAnalysisTarget {
   name: string;
   platform: ReviewPlatform;
   sourceUrl: string;
-  googlePlaceId?: string;
 }
 
 interface AnalysisTargetRow {
@@ -77,7 +76,6 @@ export async function createAnalysisTarget(
       name: input.name,
       platform: input.platform,
       source_url: input.sourceUrl,
-      google_place_id: input.googlePlaceId ?? null,
     })
     .select(COLUMNS)
     .single<AnalysisTargetRow>();

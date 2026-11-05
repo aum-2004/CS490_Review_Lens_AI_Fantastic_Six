@@ -1,9 +1,10 @@
 -- S1-014 database tests for public.analysis_targets: persistence, ownership, RLS isolation
--- between User A and User B, and field constraints. Run with `npm run test:db`.
+-- between User A and User B, field constraints, and the client write boundary. Run with
+-- `npm run test:db`.
 --
 -- User A: 11111111-1111-4111-8111-111111111111
 -- User B: 22222222-2222-4222-8222-222222222222
--- A's target: 33333333-3333-4333-8333-333333333333
+-- A's first target id is generated, then kept in the test.target_a setting.
 
 \set ON_ERROR_STOP on
 \set QUIET on
@@ -18,14 +19,21 @@ insert into auth.users (id) values
 set role authenticated;
 set request.jwt.claims to '{"sub":"11111111-1111-4111-8111-111111111111"}';
 
-insert into public.analysis_targets (id, owner_id, name, platform, source_url)
-values (
-  '33333333-3333-4333-8333-333333333333',
-  '11111111-1111-4111-8111-111111111111',
-  'Joe''s Pizza',
-  'google_maps',
-  'https://www.google.com/maps/place/Joe''s+Pizza'
-);
+do $$
+declare
+  new_id uuid;
+begin
+  insert into public.analysis_targets (owner_id, name, platform, source_url)
+  values (
+    '11111111-1111-4111-8111-111111111111',
+    'Joe''s Pizza',
+    'google_maps',
+    'https://www.google.com/maps/place/Joe''s+Pizza'
+  )
+  returning id into new_id;
+  perform set_config('test.target_a', new_id::text, false);
+end
+$$;
 
 do $$
 declare
@@ -33,7 +41,7 @@ declare
 begin
   select * into strict target
   from public.analysis_targets
-  where id = '33333333-3333-4333-8333-333333333333';
+  where id = current_setting('test.target_a')::uuid;
 
   assert target.owner_id = '11111111-1111-4111-8111-111111111111', 'owner_id was not persisted';
   assert target.name = 'Joe''s Pizza', 'name was not persisted';
@@ -61,7 +69,7 @@ begin
   returning id into new_id;
 
   assert new_id is not null, 'id was not generated';
-  assert new_id <> '33333333-3333-4333-8333-333333333333', 'generated id is not unique';
+  assert new_id <> current_setting('test.target_a')::uuid, 'generated id is not unique';
   assert (select count(*) from public.analysis_targets) = 2, 'User A should see both targets';
 end
 $$;
@@ -76,7 +84,7 @@ do $$
 begin
   assert (select count(*) from public.analysis_targets) = 0, 'User B can see User A''s targets';
   assert not exists (
-    select 1 from public.analysis_targets where id = '33333333-3333-4333-8333-333333333333'
+    select 1 from public.analysis_targets where id = current_setting('test.target_a')::uuid
   ), 'User B can read User A''s target by id';
 end
 $$;
@@ -102,13 +110,16 @@ do $$
 declare
   affected integer;
 begin
-  update public.analysis_targets
-  set name = 'Renamed by B'
-  where id = '33333333-3333-4333-8333-333333333333';
-  get diagnostics affected = row_count;
-  assert affected = 0, 'User B updated User A''s target';
+  begin
+    update public.analysis_targets
+    set name = 'Renamed by B'
+    where id = current_setting('test.target_a')::uuid;
+    raise exception 'User B updated User A''s target';
+  exception
+    when insufficient_privilege then null;
+  end;
 
-  delete from public.analysis_targets where id = '33333333-3333-4333-8333-333333333333';
+  delete from public.analysis_targets where id = current_setting('test.target_a')::uuid;
   get diagnostics affected = row_count;
   assert affected = 0, 'User B deleted User A''s target';
 end
@@ -124,7 +135,7 @@ do $$
 begin
   update public.analysis_targets
   set owner_id = '22222222-2222-4222-8222-222222222222'
-  where id = '33333333-3333-4333-8333-333333333333';
+  where id = current_setting('test.target_a')::uuid;
   raise exception 'User A reassigned a target to User B';
 exception
   when insufficient_privilege then null;
@@ -196,6 +207,14 @@ select pg_temp.expect_rejected('an unsupported platform', 'Cafe', 'yelp', 'https
 select pg_temp.expect_rejected('a missing platform', 'Cafe', null, 'https://maps.google.com/?cid=1', '23502');
 select pg_temp.expect_rejected('a non-http source URL', 'Cafe', 'google_maps', 'ftp://maps.google.com/x', '23514');
 select pg_temp.expect_rejected('a missing source URL', 'Cafe', 'google_maps', null, '23502');
+select pg_temp.expect_rejected('a non-Google source URL', 'Cafe', 'google_maps', 'https://example.com/maps/place/Cafe', '23514');
+select pg_temp.expect_rejected('a lookalike host', 'Cafe', 'google_maps', 'https://maps.google.com.evil.example/x', '23514');
+select pg_temp.expect_rejected('embedded credentials', 'Cafe', 'google_maps', 'https://www.google.com@evil.example/maps/place/Cafe', '23514');
+select pg_temp.expect_rejected('a non-default port', 'Cafe', 'google_maps', 'https://www.google.com:8443/maps/place/Cafe', '23514');
+select pg_temp.expect_rejected('a Google URL outside Maps', 'Cafe', 'google_maps', 'https://www.google.com/search?q=Cafe', '23514');
+select pg_temp.expect_rejected('a backslash', 'Cafe', 'google_maps', 'https://www.google.com/maps\place\Cafe', '23514');
+select pg_temp.expect_rejected('a newline', 'Cafe', 'google_maps', E'https://www.google.com/maps/place/Ca\nfe', '23514');
+select pg_temp.expect_rejected('a 2,049-character source URL', 'Cafe', 'google_maps', 'https://www.google.com/maps/place/' || repeat('x', 2015), '23514');
 \o
 
 insert into public.analysis_targets (owner_id, name, platform, source_url)
@@ -207,37 +226,100 @@ values (
 );
 \echo 'ok - name, platform, and source URL constraints are enforced (120-character name accepted)'
 
-do $$
-declare
-  stored text;
-begin
-  insert into public.analysis_targets (owner_id, name, platform, source_url, google_place_id)
-  values (
-    '11111111-1111-4111-8111-111111111111',
-    'Cortaditos',
-    'google_maps',
-    'https://maps.google.com/?cid=7',
-    'ChIJN1t_tDeuEmsRUsoyG83frY4'
-  )
-  returning google_place_id into stored;
-  assert stored = 'ChIJN1t_tDeuEmsRUsoyG83frY4', 'google_place_id was not persisted';
+-- Every URL shape S1-016 returns as valid must still be storable.
+insert into public.analysis_targets (owner_id, name, platform, source_url)
+select '11111111-1111-4111-8111-111111111111', 'S1-016 shape', 'google_maps', url
+from unnest(array[
+  'https://www.google.com/maps/place/NJIT/@40.742,-74.179,17z',
+  'http://google.com/maps/place/Example+Business',
+  'https://maps.google.com/maps?cid=123456789',
+  'https://www.google.com/maps?place_id=ChIJ123456789',
+  'https://www.google.com/maps/search/?api=1&query=NJIT&query_place_id=abc123',
+  'https://maps.google.com/?cid=123456789',
+  'https://www.google.com/maps/place/' || repeat('x', 2014)
+]) as url;
+\echo 'ok - canonical S1-016 source URLs are accepted (2,048-character URL accepted)'
 
-  begin
-    insert into public.analysis_targets (owner_id, name, platform, source_url, google_place_id)
-    values (
-      '11111111-1111-4111-8111-111111111111',
-      'Cortaditos',
-      'google_maps',
-      'https://maps.google.com/?cid=7',
-      '   '
-    );
-    raise exception 'a blank google_place_id was accepted';
-  exception
-    when check_violation then null;
-  end;
+-- ---------------------------------------------------------------------------------------------
+-- Client write boundary: an owner cannot replace their own target's source identity directly
+-- ---------------------------------------------------------------------------------------------
+create function pg_temp.expect_denied(label text, statement text) returns void
+language plpgsql
+as $$
+begin
+  execute statement;
+  raise exception 'expected % to be denied', label;
+exception
+  when insufficient_privilege then null;
 end
 $$;
-\echo 'ok - google_place_id is optional, persisted when given, and cannot be blank'
+
+\o /dev/null
+select pg_temp.expect_denied('changing source_url', format(
+  $sql$update public.analysis_targets set source_url = 'https://www.google.com/maps/place/Other' where id = %L$sql$,
+  current_setting('test.target_a')));
+select pg_temp.expect_denied('changing google_place_id', format(
+  $sql$update public.analysis_targets set google_place_id = 'chosen-by-client' where id = %L$sql$,
+  current_setting('test.target_a')));
+select pg_temp.expect_denied('changing name', format(
+  $sql$update public.analysis_targets set name = 'Renamed' where id = %L$sql$,
+  current_setting('test.target_a')));
+select pg_temp.expect_denied('changing platform', format(
+  $sql$update public.analysis_targets set platform = 'google_maps' where id = %L$sql$,
+  current_setting('test.target_a')));
+select pg_temp.expect_denied('inserting google_place_id', $sql$
+  insert into public.analysis_targets (owner_id, name, platform, source_url, google_place_id)
+  values ('11111111-1111-4111-8111-111111111111', 'Cafe', 'google_maps',
+          'https://maps.google.com/?cid=7', 'chosen-by-client')$sql$);
+select pg_temp.expect_denied('choosing an id', $sql$
+  insert into public.analysis_targets (id, owner_id, name, platform, source_url)
+  values ('44444444-4444-4444-8444-444444444444', '11111111-1111-4111-8111-111111111111', 'Cafe',
+          'google_maps', 'https://maps.google.com/?cid=7')$sql$);
+select pg_temp.expect_denied('choosing created_at', $sql$
+  insert into public.analysis_targets (owner_id, name, platform, source_url, created_at)
+  values ('11111111-1111-4111-8111-111111111111', 'Cafe', 'google_maps',
+          'https://maps.google.com/?cid=7', '2000-01-01')$sql$);
+\o
+
+do $$
+declare
+  target public.analysis_targets;
+begin
+  select * into strict target
+  from public.analysis_targets
+  where id = current_setting('test.target_a')::uuid;
+
+  assert target.name = 'Joe''s Pizza', 'a denied write changed name';
+  assert target.source_url = 'https://www.google.com/maps/place/Joe''s+Pizza',
+    'a denied write changed source_url';
+  assert target.google_place_id is null, 'a denied write changed google_place_id';
+end
+$$;
+\echo 'ok - an owner cannot update a target or choose its id, creation time, or place ID directly'
+
+-- ---------------------------------------------------------------------------------------------
+-- The write createAnalysisTarget sends (S1-011) still works under the restricted grants
+-- ---------------------------------------------------------------------------------------------
+do $$
+declare
+  created record;
+begin
+  insert into public.analysis_targets (owner_id, name, platform, source_url)
+  values (
+    '11111111-1111-4111-8111-111111111111',
+    'Created through the API',
+    'google_maps',
+    'https://www.google.com/maps/place/NJIT/@40.742,-74.179,17z'
+  )
+  returning id, owner_id, name, platform, source_url, google_place_id, created_at into created;
+
+  assert created.id is not null, 'id was not generated';
+  assert created.owner_id = '11111111-1111-4111-8111-111111111111', 'owner_id was not returned';
+  assert created.google_place_id is null, 'a new target should have no place ID';
+  assert created.created_at is not null, 'created_at was not generated';
+end
+$$;
+\echo 'ok - the repository insert and its returned columns work under the restricted grants'
 
 -- ---------------------------------------------------------------------------------------------
 -- Owner relationship to auth.users
