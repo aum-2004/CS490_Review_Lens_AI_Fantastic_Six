@@ -354,6 +354,32 @@ Route (app)
 
 The final transcript formatting check, `git diff --check`, branch/status audit, and changed-file review are recorded in Codex's final response because they occur after this file is written. No commit, push, PR update, approval, or merge was performed.
 
-## Human review note
+## Human review disposition
 
-This follow-up remains pending developer and teammate review. The developer should confirm that preserving ZWJ/ZWNJ while treating joiner-only names as blank matches product expectations, that the existing error codes are appropriate for ill-formed Unicode, and that the documented UI messages remain approved before committing.
+**Developer review:** Completed by `neel-0064`. This disposition records the developer's review of
+the implemented corrections; it does not represent teammate approval. **Teammate review and PR #32
+approval remain pending.**
+
+### Accepted
+
+- Implemented the reviewer findings for Unicode normalization, meaningful-name detection,
+  normalized control-character validation, approved UI error messages, and canonical URL length
+  validation.
+- Accepted the existing validation error codes for ill-formed Unicode after confirming that the
+  native `String.prototype.isWellFormed()` check handles lone surrogates without a dependency or
+  public-contract change.
+
+### Changed after evaluation
+
+- Refined the proposed Unicode normalization approach by preserving ZWNJ and ZWJ in otherwise
+  meaningful names while using a separate meaningful-content check to reject names made only of
+  whitespace or invisible format characters.
+- Applied unsafe-control validation after normalization and trimming so boundary whitespace is
+  accepted without allowing embedded control characters.
+
+### Rejected or deferred
+
+- No actionable reviewer correction was rejected.
+- Redirect resolution for shortened Google Maps links remains intentionally deferred to S1-020;
+  S1-016 continues to reject shortened links until the ingestion contract confirms they are safe to
+  use.
