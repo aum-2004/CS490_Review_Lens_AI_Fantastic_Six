@@ -4,6 +4,12 @@ Review date: 2026-11-04. Updated: 2026-11-05.
 Security reviewer: Shawn (author-performed review), with Codex assistance.
 Status: completed; the PR reviewer confirmed this author-performed review is sufficient for S1-009.
 
+Additional audit on 2026-11-05 identified development logging of passwords, email addresses
+and confirmation TokenHash values. The author-approved next.config.ts fix disables Server
+Function argument logging and suppresses confirmation request logs. Repeat isolated probes
+verified all three exposures are absent while safe failure and ordinary request logs remain.
+See the [additional audit](s1-009-security-audit-2026-11-05.md) for evidence and scope.
+
 The supporting Codex source review examined
 Reviewed implementation: `feature/S1-009-managed-authentication`, commit
 `a4bbd56e1ce9266b4b34886424a4991e0c360648`.
