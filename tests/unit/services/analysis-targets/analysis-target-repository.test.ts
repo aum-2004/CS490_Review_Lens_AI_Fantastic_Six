@@ -68,32 +68,11 @@ describe("createAnalysisTarget", () => {
           name: "Joe's Pizza",
           platform: "google_maps",
           source_url: "https://www.google.com/maps/place/Joe's+Pizza",
-          google_place_id: null,
         },
       ],
       ["select", "id, owner_id, name, platform, source_url, google_place_id, created_at"],
       ["single"],
     ]);
-  });
-
-  test("stores an optional Google place ID when provided", async () => {
-    const placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4";
-    const { client, calls } = createFakeClient({
-      data: { ...storedRow, google_place_id: placeId },
-      error: null,
-    });
-
-    const target = await createAnalysisTarget(client, USER_A, {
-      name: "Joe's Pizza",
-      platform: "google_maps",
-      sourceUrl: "https://www.google.com/maps/place/Joe's+Pizza",
-      googlePlaceId: placeId,
-    });
-
-    expect(target.googlePlaceId).toBe(placeId);
-    expect(calls.find(([method]) => method === "insert")?.[1]).toEqual(
-      expect.objectContaining({ google_place_id: placeId }),
-    );
   });
 
   test("ignores an owner field smuggled into the input", async () => {
@@ -111,6 +90,7 @@ describe("createAnalysisTarget", () => {
     const inserted = calls.find(([method]) => method === "insert")?.[1];
     expect(inserted).toEqual(expect.objectContaining({ owner_id: USER_A }));
     expect(inserted).not.toHaveProperty("ownerId");
+    expect(inserted).not.toHaveProperty("google_place_id");
   });
 
   test("throws a safe persistence error when the database rejects the insert", async () => {

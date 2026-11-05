@@ -161,7 +161,7 @@ browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they 
 `npm run test:db` checks the real schema and Row Level Security policies, not a mock. It creates a
 throwaway PostgreSQL database, applies a small test-only stand-in for Supabase Auth
 (`tests/db/supabase-auth-shim.sql`), applies every migration in `supabase/migrations/`, runs each
-`tests/db/*.test.sql` file and the Place ID race check, and drops the database. The tests use two
+`tests/db/*.test.sql` file, and drops the database. The tests use two
 users, A and B, to prove cross-user access and direct source changes are denied at the database.
 
 It needs PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
