@@ -125,7 +125,7 @@ describe("TargetForm", () => {
     [
       "unsupported",
       "https://example.com/maps/place/NJIT",
-      "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
+      "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
     ],
     [
       "missing a business identifier",
@@ -190,11 +190,11 @@ describe("TargetForm", () => {
     expect(createTarget).not.toHaveBeenCalled();
   });
 
-  it("treats a target name made only of invisible format characters as missing", () => {
+  it("treats a target name made only of invisible format characters and joiners as missing", () => {
     const createTarget = jest.fn();
     render(<TargetForm createTarget={createTarget} />);
     fireEvent.change(screen.getByLabelText(/target name/i), {
-      target: { value: "\u200b\u2060\ufeff" },
+      target: { value: "\u200b\u200c\u200d\u2060\ufeff" },
     });
     fireEvent.change(screen.getByLabelText(/google maps source url/i), {
       target: { value: validSourceUrl },
@@ -205,6 +205,33 @@ describe("TargetForm", () => {
     expect(screen.getByText("Enter a name for this target.")).toBeInTheDocument();
     expect(screen.getByLabelText(/target name/i)).toHaveFocus();
     expect(createTarget).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["family emoji with ZWJ", "Family 👨\u200d👩\u200d👧\u200d👦"],
+    ["Persian text with ZWNJ", "می\u200cروم"],
+  ])("preserves a meaningful target name containing %s", async (_case, name) => {
+    const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn().mockResolvedValue({
+      id: "target-1",
+      name,
+      sourceUrl: validSourceUrl,
+      platform: "google_maps",
+    });
+    render(<TargetForm createTarget={createTarget} />);
+    fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: name } });
+    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+      target: { value: validSourceUrl },
+    });
+
+    submitForm();
+
+    await waitFor(() =>
+      expect(createTarget).toHaveBeenCalledWith({
+        name,
+        sourceUrl: validSourceUrl,
+        platform: "google_maps",
+      }),
+    );
   });
 
   it("shows the source URL length limit without submitting", () => {
@@ -219,6 +246,27 @@ describe("TargetForm", () => {
 
     submitForm();
 
+    expect(
+      screen.getByText("Google Maps links can be up to 2,048 characters."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/google maps source url/i)).toHaveFocus();
+    expect(createTarget).not.toHaveBeenCalled();
+  });
+
+  it("rejects a source URL whose canonical encoding exceeds the length limit", () => {
+    const createTarget = jest.fn();
+    const prefix = "https://www.google.com/maps/place/";
+    const sourceUrl = `${prefix}${"é".repeat(2_048 - prefix.length)}`;
+    render(<TargetForm createTarget={createTarget} />);
+    fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
+    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+      target: { value: sourceUrl },
+    });
+
+    submitForm();
+
+    expect(sourceUrl).toHaveLength(2_048);
+    expect(new URL(sourceUrl).href.length).toBeGreaterThan(2_048);
     expect(
       screen.getByText("Google Maps links can be up to 2,048 characters."),
     ).toBeInTheDocument();

@@ -1658,3 +1658,554 @@ At this transcript boundary, the active branch is
 only the three files authorized by the user. The commit, push, remote-head verification, PR check,
 CI status, and final assistant report have not happened yet and are not invented here. They must be
 preserved in a later continuation if the project record requires those publication results.
+
+## Step 5 publication continuation
+
+The following final report was recovered from the same original local Codex session record after it
+was sent. It closes the preceding pre-commit boundary without reconstructing the message.
+
+### Assistant message 52 - verbatim
+
+> Commit and push completed successfully.
+>
+> - Commit: `08087edcdb185a00e393698b898107b241875cc4`
+> - Message: `fix(S1-015): align expired-session redirect with login flow`
+> - Push: succeeded normally to `origin/feature/S1-015-create-analysis-target`
+> - Working tree: clean
+> - Local and remote HEAD: identical
+>
+> Committed files:
+>
+> - [TargetForm.tsx](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/src/components/analysis-targets/TargetForm.tsx:145)
+> - [TargetForm.test.tsx](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/tests/unit/components/analysis-targets/TargetForm.test.tsx:379)
+> - [Integration transcript](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md)
+>
+> Verification:
+>
+> - TargetForm: 20/20 passed
+> - Full Jest suite: 125/125 across 7 suites
+> - Formatting, lint, typecheck, build, and `git diff --check`: passed
+> - Redaction scan: passed
+> - No tests were disabled or weakened
+>
+> [PR #36](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/36) now points to the new commit and remains open, Draft, and based on `feature/S1-016-target-input-validation`.
+>
+> GitHub Actions CI run #38 is currently **in progress**; no conclusion or failure is reported yet.
+>
+> The committed transcript intentionally ends at the pre-commit boundary. This commit, push, CI outcome, and final report should be preserved in a subsequent transcript continuation. No additional integration work or unrelated branch changes were performed.
+
+## Latest S1-016 correction sync session
+
+### User message 53 - verbatim
+
+> # Context from my IDE setup:
+>
+> ## Active file: jest.config.ts
+>
+> ## Open tabs:
+> - jest.config.ts: jest.config.ts
+> - jest.setup.ts: jest.setup.ts
+> - next-env.d.ts: next-env.d.ts
+> - next.config.ts: next.config.ts
+> - eslint.config.mjs: eslint.config.mjs
+>
+> ## My request:
+> # ReviewLens AI — S1-015: Sync Latest S1-016 Corrections
+>
+> Developer: neel-0064\
+> Working branch: `feature/S1-015-create-analysis-target`\
+> PR: #36
+>
+> The latest S1-016 reviewer corrections are committed as `e128b27`, and CI #44 passed.
+>
+> ## Task
+>
+> 1. Check the current branch and working-tree status. Stop if uncommitted changes exist.
+> 2. Fetch the latest remote references.
+> 3. Safely switch to `feature/S1-015-create-analysis-target`.
+> 4. Merge `origin/feature/S1-016-target-input-validation` using a normal merge commit. No rebase or force operations.
+> 5. Update S1-015 form tests to reflect the latest S1-016 validation messages and Unicode/URL normalization.
+> 6. Preserve the existing form behavior and accessibility.
+> 7. Run focused tests, format, lint, typecheck, full Jest suite, build, and `git diff --check`.
+> 8. Preserve this follow-up Codex session in the existing S1-015 integration transcript without fabricating missing exchanges.
+>
+> ## Important
+>
+> Aryan has now implemented `POST /api/analysis-targets` in Draft PR #40 (S1-011).
+>
+> Do NOT create another POST handler under S1-015.
+>
+> Do NOT merge S1-009, S1-010, S1-011, or S1-014 yet.
+>
+> Do NOT reconcile shared UI components until the agreed authentication-first merge sequence is ready.
+>
+> Do NOT modify main, teammate branches, or PR settings.
+>
+> Do not commit additional compatibility edits or push anything yet.
+>
+> Report the merge result, exact changed files, test results, and any problems for review.
+
+### Assistant message 54 - verbatim
+
+> I’ll first confirm the S1-015 branch is clean and that no post-Step-5 work is pending. If clean, I’ll fetch, verify `e128b27` is the updated S1-016 tip, merge it normally, then adapt only the S1-015 tests required by the new validator contract.
+
+### Assistant message 55 - verbatim
+
+> The tree is clean, but the IDE is currently on `feature/S1-016-target-input-validation` at `e128b27`, not S1-015. That is safe: there are no local changes to preserve. I’m fetching/pruning remote references next, then I’ll switch only to the authorized S1-015 branch and verify both tips before merging.
+
+### Assistant message 56 - verbatim
+
+> The switch succeeded despite the wrapper returning no display output; a direct check confirms S1-015 is clean at `08087ed`, matching its remote. The updated S1-016 remote tip is exactly `e128b27`; the histories have diverged by six S1-015 commits versus one new S1-016 correction. I’m inspecting that one commit and the prospective merge before creating the required merge commit.
+
+### Assistant message 57 - verbatim
+
+> The prospective merge is conflict-free. Upstream changes exactly four S1-016-owned files: validator, validator tests, UI/UX standards, and its new review transcript. No dependencies, authentication, API, or shared UI files are involved. I’m creating the requested normal merge commit now.
+
+### Assistant message 58 - verbatim
+
+> The merge succeeded cleanly with a normal merge commit and no manual conflict resolution. I’m now running the S1-015 TargetForm suite against the new validator to identify exact compatibility failures, then I’ll add focused UI coverage for the new Unicode and canonical-URL behavior without changing form production behavior.
+
+### Assistant message 59 - verbatim
+
+> The focused run found the expected single compatibility failure: the form correctly renders S1-016’s restored approved non-Google-Maps message, while one S1-015 assertion still expects the superseded wording. The other 19 tests passed. I’m reviewing the current form-test helpers and submission assertions now so the update covers the new Unicode preservation and post-canonicalization URL limit meaningfully, not just the message string.
+
+### Assistant message 60 - verbatim
+
+> The S1-015 test update will be limited to four compatibility points: the approved message, joiner-only names remaining required-field failures, meaningful ZWJ/ZWNJ names reaching creation unchanged, and a raw-legal URL being rejected when canonical percent-encoding exceeds 2,048 characters. No form component change is needed.
+
+### Assistant message 61 - verbatim
+
+> Both focused suites now pass: 100 validator tests plus 23 TargetForm tests, 123 total. The new cases confirm meaningful joiners are preserved, joiner-only names remain invalid, canonical URL expansion is blocked, and the revised message remains accessible. I’m running the complete project verification matrix next.
+
+### Assistant message 62 - verbatim
+
+> Formatting, lint, typecheck, and all 140 tests pass. The first production build reached compilation but failed solely because the restricted sandbox could not fetch the existing Geist fonts; I’ve rerun the unchanged build with approved network access and am waiting for that result.
+
+### Assistant message 63 - verbatim
+
+> The elevated build completed successfully after the wrapper was polled to its final exit code: compile, TypeScript, and all six generated pages passed. I’m now appending the actual Step 5 final report and this sync session from the local JSONL record, including the initial focused-test failure, font-network failure, rerun correction, and real test/build counts.
+
+## Sync implementation evidence
+
+### Git state and merge
+
+- Initial branch: `feature/S1-016-target-input-validation`
+- Initial working tree: clean
+- Initial HEAD and S1-016 tip: `e128b27d041c95c4e635ec2fcfa5b2f5a10124e6`
+- S1-015 before merge: `08087edcdb185a00e393698b898107b241875cc4`
+- Remote references were fetched with pruning before the branch switch.
+- The clean checkout was switched to `feature/S1-015-create-analysis-target`.
+- The prospective merge was inspected and contained no conflicts.
+- Normal merge commit: `cb07d63148470fa217951bc13d514ec95e44a34d`
+- Merge parents:
+  - `08087edcdb185a00e393698b898107b241875cc4`
+  - `e128b27d041c95c4e635ec2fcfa5b2f5a10124e6`
+- No rebase, force operation, or manual conflict resolution occurred.
+
+The merge commit contains the four upstream S1-016 files:
+
+- `ai-transcripts/2026-11-04_neel-0064_S1-016_codex-review-follow-up.md`
+- `docs/UI_UX_Standards.md`
+- `src/lib/validation/analysis-target.ts`
+- `tests/unit/lib/validation/analysis-target.test.ts`
+
+### S1-015 compatibility test changes
+
+Only `tests/unit/components/analysis-targets/TargetForm.test.tsx` was changed for form compatibility:
+
+- Updated the exact non-Google-Maps message to the approved S1-016 wording.
+- Expanded the invisible-only name case to include ZWNJ and ZWJ.
+- Added submission coverage proving a family-emoji ZWJ sequence is preserved.
+- Added submission coverage proving Persian text containing ZWNJ is preserved.
+- Added UI coverage for a raw 2,048-character Google Maps URL whose canonical percent-encoded URL
+  exceeds the storage limit.
+
+No S1-015 production form code changed. Its authentication error handling, focus behavior,
+accessible inline alerts, validation timing, duplicate-submit protection, and navigation behavior
+remain unchanged.
+
+## Sync errors and corrections
+
+The first focused TargetForm run after the merge failed one exact-message assertion:
+
+```text
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 19 passed, 20 total
+Snapshots:   0 total
+Time:        11.706 s
+```
+
+The rendered accessible error already contained the new approved message. The S1-015 test was
+updated rather than changing production behavior.
+
+The first sandboxed production build failed only while fetching the existing Geist and Geist Mono
+font stylesheets from Google Fonts:
+
+```text
+Error: next/font: error:
+Failed to fetch Geist from Google Fonts.
+
+Error: next/font: error:
+Failed to fetch Geist Mono from Google Fonts.
+```
+
+No source workaround was introduced. The unchanged build was rerun with approved network access.
+The first elevated wrapper returned before providing a final exit code, so the command was rerun and
+its execution session was polled through completion. The final build exited successfully.
+
+## Sync verification results
+
+### Focused validator and form suites
+
+```text
+Test Suites: 2 passed, 2 total
+Tests:       123 passed, 123 total
+Snapshots:   0 total
+Time:        11.858 s
+```
+
+This consists of 100 validator tests and 23 TargetForm tests.
+
+### Formatting
+
+```text
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+### Lint
+
+```text
+> eslint .
+```
+
+The command exited successfully with no diagnostics.
+
+### Typecheck
+
+```text
+Generating route types...
+✓ Types generated successfully
+```
+
+### Complete Jest suite
+
+```text
+Test Suites: 7 passed, 7 total
+Tests:       140 passed, 140 total
+Snapshots:   0 total
+Time:        6.525 s, estimated 12 s
+```
+
+### Production build
+
+```text
+Next.js 16.4.3 (Turbopack)
+✓ Compiled successfully in 2.4s
+Finished TypeScript in 10.6s
+✓ Generating static pages using 7 workers (6/6) in 2.8s
+
+/                         Static
+/_not-found               Static
+/analysis-targets/new     Static
+/api/health               Dynamic
+```
+
+At this transcript boundary, the merge commit exists locally, the S1-015 compatibility test and
+this transcript are uncommitted, and nothing has been pushed. The final diff/status audit and final
+assistant report do not yet exist and are not invented here.
+
+## S1-016 sync final report continuation
+
+The following final report was recovered from the same original local Codex session record after it
+was sent. It closes the preceding boundary without reconstructing the message.
+
+### Assistant message 64 - verbatim
+
+> Latest S1-016 corrections were merged successfully into S1-015.
+>
+> - Branch: `feature/S1-015-create-analysis-target`
+> - Merge commit: `cb07d63148470fa217951bc13d514ec95e44a34d`
+> - Parents: `08087ed` and `e128b27`
+> - Conflicts: none
+> - Remote S1-015 remains at `08087ed`; nothing was pushed
+> - Local branch is ahead by two commits
+> - No compatibility edits are committed or staged
+>
+> Files contained in the merge commit:
+>
+> - `ai-transcripts/2026-11-04_neel-0064_S1-016_codex-review-follow-up.md`
+> - `docs/UI_UX_Standards.md`
+> - `src/lib/validation/analysis-target.ts`
+> - `tests/unit/lib/validation/analysis-target.test.ts`
+>
+> Uncommitted follow-up files:
+>
+> - [TargetForm.test.tsx](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/tests/unit/components/analysis-targets/TargetForm.test.tsx:125)
+> - [S1-015 integration transcript](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md)
+>
+> The form tests now cover:
+>
+> - The approved non-Google-Maps message.
+> - ZWJ/ZWNJ-only names remaining invalid.
+> - Family-emoji ZWJ sequences being preserved.
+> - Persian text containing ZWNJ being preserved.
+> - Canonical URL percent-encoding exceeding the 2,048-character limit.
+>
+> Verification:
+>
+> - Focused validator and form suites: 123/123 passed
+>   - Validator: 100
+>   - TargetForm: 23
+> - Full Jest suite: 140/140 across 7 suites
+> - Formatting: passed
+> - Lint: passed
+> - Typecheck: passed
+> - Build: passed
+> - `git diff --check`: passed
+> - Transcript redaction scan: passed
+>
+> The initial focused form run had one expected stale-message failure; production behavior was already correct, so only the assertion was updated. The first sandboxed build could not download the existing Geist fonts. The unchanged build passed with approved network access.
+>
+> No form production code, API handlers, authentication code, dependencies, shared UI components, teammate branches, or PR settings were changed. No S1-009, S1-010, S1-011, or S1-014 branch was merged.
+
+## Read-only pre-commit review session
+
+### User message 65 - verbatim
+
+> # Context from my IDE setup:
+>
+> ## Active file: jest.config.ts
+>
+> ## Open tabs:
+> - jest.config.ts: jest.config.ts
+> - jest.setup.ts: jest.setup.ts
+> - next-env.d.ts: next-env.d.ts
+> - next.config.ts: next.config.ts
+> - eslint.config.mjs: eslint.config.mjs
+>
+> ## My request:
+> Review my current local branch `feature/S1-015-create-analysis-target` before committing or pushing.
+> Check the two local commits, the uncommitted form tests and transcript, the five validation test cases, and any unrelated changes. Confirm PR #36 is correctly stacked on S1-016.
+> Do not edit, stage, commit, push, merge, rebase, or change GitHub settings. Report findings and whether the branch is ready to commit.
+
+### Assistant message 66 - verbatim
+
+> I’ll perform a strictly read-only audit: branch/remote topology, both local commits and their parents, staged/unstaged scope, the five form-validation cases, transcript redaction/completeness, and PR #36’s live base/head/Draft state. I won’t run any mutating Git or GitHub operation.
+
+### Assistant message 67 - verbatim
+
+> The branch topology is as expected locally: upstream correction `e128b27` plus merge commit `cb07d63`, with only the form test and S1-015 transcript unstaged. PR #36 is still open/Draft and targets the correct S1-016 branch, but its remote head is still `08087ed` because nothing local has been pushed. I’m now validating the two commits’ exact file scopes, rerunning the focused 123 cases, and checking whether the transcript contains every now-available prior response.
+
+### Assistant message 68 - verbatim
+
+> The focused review run passes all 123 cases. The commit scopes are clean and expected, and no dependency, API, shared-UI, or production-form path appears in the uncommitted diff. One read-only PowerShell inspection command had a quoting error while searching an apostrophe-containing message; it changed nothing, and I’m rerunning the tail/test-name inspection with simpler patterns.
+
+### Assistant message 69 - verbatim
+
+> The five intended form cases are all substantive and currently green; none weakens or skips coverage. I found one readiness issue in the transcript: it still ends at the pre-final-report boundary even though that prior final report now exists in the session record. I’m making one last read-only GitHub branch check because PR metadata shows the correct S1-016 base name but reports an older base SHA; I want to distinguish a connector snapshot detail from an actual stacking problem.
+
+### Assistant message 70 - verbatim
+
+> ## Findings
+>
+> The branch is **not quite ready to commit** because the integration transcript is incomplete.
+>
+> - [S1-015 integration transcript](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md:1914) still ends by saying the prior sync final report does not yet exist.
+> - That final report now exists and should be appended from the original session record before committing, along with this review session if required by S1-004.
+> - No secrets, credentials, tokens, or personal user-home paths were detected.
+>
+> The code and tests themselves are ready.
+>
+> ## Git state
+>
+> - Branch: `feature/S1-015-create-analysis-target`
+> - Local HEAD: `cb07d63148470fa217951bc13d514ec95e44a34d`
+> - Remote S1-015 HEAD: `08087edcdb185a00e393698b898107b241875cc4`
+> - Status: ahead by two commits
+> - Staged files: none
+> - Uncommitted files: exactly two
+>
+> The two commits ahead of remote are:
+>
+> 1. `e128b27` — latest S1-016 Unicode and validation corrections.
+>    - Adds the S1-016 follow-up transcript.
+>    - Updates UI/UX standards.
+>    - Updates the shared validator.
+>    - Updates validator tests.
+>
+> 2. `cb07d63` — normal merge commit.
+>    - Parents are `08087ed` and `e128b27`.
+>    - No rebase, squash, or manual conflict resolution.
+>    - Contains only the four expected upstream S1-016 files.
+>
+> ## Uncommitted changes
+>
+> Only these files differ:
+>
+> - [TargetForm.test.tsx](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/tests/unit/components/analysis-targets/TargetForm.test.tsx:125)
+> - [S1-015 integration transcript](/D:/CS490/CS490_Review_Lens_AI_Fantastic_Six/ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md)
+>
+> The five form-validation cases are meaningful:
+>
+> 1. Uses the approved non-Google-Maps message.
+> 2. Rejects an invisible-only name containing ZWJ/ZWNJ.
+> 3. Preserves a family-emoji ZWJ sequence during submission.
+> 4. Preserves Persian text containing ZWNJ.
+> 5. Rejects a raw 2,048-character URL when canonical encoding exceeds the limit.
+>
+> They retain assertions for accessible errors, focus behavior, blocked invalid submissions, and exact normalized creation input. No test was skipped, disabled, or weakened.
+>
+> Focused verification was rerun:
+>
+> - Validator: 100 passed
+> - TargetForm: 23 passed
+> - Combined: 123/123 passed
+> - `git diff --check`: passed
+>
+> The previously recorded full verification remains 140/140 tests with formatting, lint, typecheck, and build passing.
+>
+> ## Unrelated changes
+>
+> No new changes were found in:
+>
+> - Production TargetForm code
+> - API routes or `POST /api/analysis-targets`
+> - Authentication or ownership code
+> - Shared UI primitives
+> - Dependencies or lockfile
+> - PR settings
+> - Other branches
+>
+> ## PR #36
+>
+> PR #36 is correctly stacked:
+>
+> - State: open
+> - Draft: yes
+> - Base: `feature/S1-016-target-input-validation`
+> - Current base tip: `e128b27`
+> - Remote PR head: `08087ed`
+>
+> The remote branches currently diverge because PR #36 has not received the local merge: its head is six commits ahead of the shared merge base and one commit behind the updated S1-016 base. Pushing the reviewed merge and follow-up commit later would resolve that expected state.
+>
+> The PR description is stale: it still mentions 125 tests and CI #38 pending. That does not affect commit readiness, but should be updated in a separately authorized GitHub step.
+>
+> No files, commits, branches, or GitHub settings were changed during this review.
+
+## Transcript finalization and commit authorization
+
+The following prompt is preserved exactly as it was available in the local session record. Its final
+restriction is visibly truncated. No missing text is inferred or supplied.
+
+### User message 71 - verbatim
+
+> # Context from my IDE setup:
+>
+> ## Active file: jest.config.ts
+>
+> ## Open tabs:
+> - jest.config.ts: jest.config.ts
+> - jest.setup.ts: jest.setup.ts
+> - next-env.d.ts: next-env.d.ts
+> - next.config.ts: next.config.ts
+> - eslint.config.mjs: eslint.config.mjs
+>
+> ## My request:
+> # ReviewLens AI — S1-015: Finalize Transcript and Commit
+>
+> Developer: `neel-0064`\
+> Working branch: `feature/S1-015-create-analysis-target`\
+> PR: #36
+>
+> ## Task
+>
+> The latest S1-016 corrections have been successfully integrated into S1-015 through merge commit `cb07d631`.
+>
+> All production code and tests have been reviewed. The only outstanding issue is that the S1-015 integration transcript is incomplete.
+>
+> Please:
+>
+> 1. Verify that the current branch is `feature/S1-015-create-analysis-target` and inspect `git status`.
+> 2. Open `ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md`.
+> 3. Locate the incomplete ending that says the prior synchronization report does not yet exist.
+> 4. Append the actual final report from the original Codex synchronization session, preserving the original wording and sequence where available.
+> 5. Include the subsequent read-only review session in the transcript if required by S1-004.
+> 6. Do not invent, summarize as verbatim, or reconstruct missing conversation exchanges. If the original session cannot be accessed, stop and report what is missing.
+> 7. Check the transcript for secrets, credentials, tokens, and unnecessary personal paths.
+> 8. Verify the intended changes are limited to:
+>    - `tests/unit/components/analysis-targets/TargetForm.test.tsx`
+>    - `ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md`
+> 9. Rerun the focused tests and `git diff --check`.
+> 10. If all verification passes and the transcript is complete, stage and create one commit containing only those two files.
+>
+> Suggested commit message:
+>
+> `test(S1-015): align form tests with updated validation`
+>
+> ## Restrictions
+>
+> - Do not modify production code.
+> - Do not
+
+### Assistant message 72 - verbatim
+
+> I’ll verify the branch and two-file scope first, then recover the missing synchronization final report and the complete subsequent review exchange directly from the original local JSONL session. I’ll preserve the current prompt only as received—including its truncated final restriction—and will not infer missing text. If the record is accessible and verification passes, I’ll commit only the test and transcript; I will not push.
+
+### Assistant message 73 - verbatim
+
+> The branch and scope are exactly as expected: merge HEAD `cb07d631`, two unstaged files, nothing staged. The transcript ends at the documented pre-final-report boundary. I’m now extracting the missing final report, the later read-only review, and this current authorization from the original session record without reconstructing any content.
+
+## Transcript finalization pre-commit boundary
+
+At this boundary, the missing synchronization final report and subsequent read-only review have been
+recovered from the original session record and appended. The branch remains
+`feature/S1-015-create-analysis-target` at merge commit
+`cb07d63148470fa217951bc13d514ec95e44a34d`; only the S1-015 form test and this
+transcript are modified, and nothing is staged. Focused verification, final redaction and diff
+checks, staging, and the requested commit have not yet occurred and are not invented here. No push
+is authorized or planned in this step.
+
+### Assistant message 74 - verbatim
+
+> The missing report and read-only review are now appended from the original record, and the truncated authorization is explicitly marked rather than completed. I’m running the focused 123 tests, transcript formatting/redaction checks, and final two-file diff audit now.
+
+### Assistant message 75 - verbatim
+
+> All gates pass and the diff remains exactly the two authorized files. Before staging, I’m adding the final available pre-commit update and actual verification output to the transcript so this code-producing session is complete through its commit boundary; the commit result itself will necessarily remain for a later continuation.
+
+## Transcript finalization verification
+
+### Focused validator and form suites
+
+```text
+Test Suites: 2 passed, 2 total
+Tests:       123 passed, 123 total
+Snapshots:   0 total
+Time:        16.216 s
+```
+
+The focused total consists of 100 validator tests and 23 TargetForm tests.
+
+### Formatting
+
+```text
+Checking formatting...
+All matched files use Prettier code style!
+```
+
+### Whitespace and scope checks
+
+`git diff --check` exited successfully with no diagnostics. The only modified files were:
+
+```text
+M ai-transcripts/2026-11-04_neel-0064_S1-015-integration_codex.md
+M tests/unit/components/analysis-targets/TargetForm.test.tsx
+```
+
+No production form, API route, package manifest, lockfile, or shared UI path appeared in the diff.
+The credential and personal user-home-path scan returned no matches. Nothing was staged at that
+verification boundary.
+
+The requested commit and its result occur after this transcript boundary and are not invented. No
+push is authorized or performed in this step.
