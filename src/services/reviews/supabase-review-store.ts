@@ -1,68 +1,74 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { NormalizedReview, Review } from "@/types/review";
-import type { ReviewStore } from "./review-service";
+
+import { getAnalysisTargetById } from "@/services/analysis-targets/analysis-target-repository";
+
+import { ReviewPersistenceError } from "./errors";
+import type { Review, ReviewStore } from "./review-service";
+import type { NormalizedReview } from "./types";
 
 interface ReviewRow {
   id: string;
   analysis_target_id: string;
   review_text: string;
-  rating: number;
+  rating: number | string;
   source_review_id: string | null;
   reviewer_name: string | null;
-  reviewed_at: string | null;
+  review_date: string | null;
   review_url: string | null;
+  source_metadata: Record<string, unknown> | null;
   created_at: string;
 }
+
+const TABLE = "reviews";
+// One string literal so supabase-js can parse the selected columns into a row type.
+const COLUMNS =
+  "id, analysis_target_id, review_text, rating, source_review_id, reviewer_name, review_date, review_url, source_metadata, created_at";
 
 function toReview(row: ReviewRow): Review {
   return {
     id: row.id,
     analysisTargetId: row.analysis_target_id,
-    reviewText: row.review_text,
+    text: row.review_text,
     rating: Number(row.rating),
     sourceReviewId: row.source_review_id,
     reviewerName: row.reviewer_name,
-    reviewedAt: row.reviewed_at,
+    reviewDate: row.review_date,
     reviewUrl: row.review_url,
+    sourceMetadata: row.source_metadata,
     createdAt: row.created_at,
+  };
+}
+
+function toInsertRow(targetId: string, review: NormalizedReview) {
+  return {
+    analysis_target_id: targetId,
+    review_text: review.text,
+    rating: review.rating,
+    source_review_id: review.sourceReviewId ?? null,
+    reviewer_name: review.reviewerName ?? null,
+    review_date: review.reviewDate?.toISOString() ?? null,
+    review_url: review.reviewUrl ?? null,
+    source_metadata: review.sourceMetadata ?? null,
   };
 }
 
 /** Pass the user-scoped server client (cookie session). Never the service-role client. */
 export function createSupabaseReviewStore(client: SupabaseClient): ReviewStore {
   return {
-    async getTargetOwnerId(targetId) {
-      const { data, error } = await client
-        .from("analysis_targets")
-        .select("owner_id")
-        .eq("id", targetId)
-        .maybeSingle();
-
-      if (error) {
-        throw new Error("Failed to load analysis target.");
-      }
-
-      return data?.owner_id ?? null;
+    async isTargetOwnedBy(targetId, userId) {
+      // S1-014 returns null for missing, foreign, and non-UUID ids alike.
+      return (await getAnalysisTargetById(client, userId, targetId)) !== null;
     },
 
-    async insertReviews(targetId, reviews: NormalizedReview[]) {
+    async insertReviews(targetId, reviews) {
+      // One statement, so the batch is saved entirely or not at all.
       const { data, error } = await client
-        .from("reviews")
-        .insert(
-          reviews.map((review) => ({
-            analysis_target_id: targetId,
-            review_text: review.reviewText,
-            rating: review.rating,
-            source_review_id: review.sourceReviewId ?? null,
-            reviewer_name: review.reviewerName ?? null,
-            reviewed_at: review.reviewedAt ?? null,
-            review_url: review.reviewUrl ?? null,
-          })),
-        )
-        .select();
+        .from(TABLE)
+        .insert(reviews.map((review) => toInsertRow(targetId, review)))
+        .select(COLUMNS);
 
-      if (error) {
-        throw new Error("Failed to save reviews.");
+      if (error || !data) {
+        throw new ReviewPersistenceError("save", { cause: error });
       }
 
       return (data as ReviewRow[]).map(toReview);
@@ -70,13 +76,14 @@ export function createSupabaseReviewStore(client: SupabaseClient): ReviewStore {
 
     async listReviews(targetId) {
       const { data, error } = await client
-        .from("reviews")
-        .select()
+        .from(TABLE)
+        .select(COLUMNS)
         .eq("analysis_target_id", targetId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true });
 
-      if (error) {
-        throw new Error("Failed to load reviews.");
+      if (error || !data) {
+        throw new ReviewPersistenceError("load", { cause: error });
       }
 
       return (data as ReviewRow[]).map(toReview);
