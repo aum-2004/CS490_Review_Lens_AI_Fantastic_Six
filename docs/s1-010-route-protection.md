@@ -1,10 +1,11 @@
 # S1-010: Protected routes and backend operations
 
-S1-010 depends on S1-009. On 2026-11-05 this branch was updated with the published
-S1-009 implementation, live acceptance evidence and verified development-logging fix at e83041b.
-S1-009 remains unmerged in the fetched main snapshot (fd6cc38); main also includes S1-016.
-Keep the 010 PR stacked against feature/S1-009-managed-authentication until 009 merges.
-The 009 author's completed security review and its reviewer clarification apply to that story;
+S1-009 was squash-merged into main on 2026-11-05 as 5c200a9 (PR #37), including the
+implementation and verified development-logging fix reviewed at e83041b. S1-010 has now
+incorporated origin/main through that commit, including S1-016's validation work.
+PR #39 should target main. The published branch history is preserved without a force-push;
+the merge resolves duplicate-history conflicts while retaining the S1-010 guard extensions.
+The S1-009 branch remains intact. Its completed reviews apply to that story;
 010 still requires its own PR review and current CI before merge.
 
 The shared Supabase project exists. Hosted 009 acceptance, temporary personal SMTP and restored
@@ -233,3 +234,25 @@ Live signed-out checks against the restarted normal 010 app also passed: protect
 root/new/detail URLs redirected 303 with private/no-store, the direct session API rejected forged
 owner input with 401 and no data/HTML redirect, and public health returned 200. No cookies or
 credentials supplied. The app remains running on 010 at localhost:3000.
+
+## Post-S1-009 squash-merge reconciliation (2026-11-05)
+
+S1-009 PR #37 is merged as 5c200a9. Merged origin/main into the existing published
+S1-010 branch, retaining the S1-010 guard changes and longer original transcript where
+Git reported duplicate additions from the squash history. Main's S1-016 validation,
+tests, transcripts and UI standards are retained unchanged. The S1-009 branch was not
+deleted or modified. No history rewrite or force-push was used.
+
+The diff against main contains S1-010 implementation, tests and evidence only. In
+particular, shared UI primitives, dependency files and the S1-009 logging configuration
+match main. The commit list retains earlier ancestry; those commits do not represent
+duplicate file changes in the resulting main-based PR diff.
+
+After reconciliation, all 213 unit tests in 15 suites, all five isolated Edge auth/
+route-protection browser tests, lint, explicit typecheck and production build passed. The increase from
+113 unit tests includes S1-016 coverage inherited from main. Browser tests use only the
+local dummy provider. Actual target integration, independent review of S1-010 and CI
+on its new head remain required; S1-009's approvals do not approve S1-010.
+
+Earlier dated statements about S1-009 being unmerged are historical snapshots, superseded
+by this section and the current opening status.
