@@ -367,3 +367,12 @@ the AI report alone was not accepted. Shawn later reported being told to self-re
 completed author review or accepted waiver is claimed. Resolve this directly with the reviewer
 and retain the resulting human review evidence. Keep Refs #9 and Draft until outstanding review
 and acceptance decisions are resolved. A new documentation push requires a new passing CI run.
+
+### Security-review responsibility clarified
+
+Shawn reports that the reviewer assigned the whole security check to him and confirmed no other
+person is needed for 009. The guided author review is recorded in s1-009-security-review.md,
+with 67 unit tests passing afterward. The request for an additional person is therefore resolved
+according to this latest user-reported reviewer direction. This is author review, not independent
+review, and does not itself establish final PR approval. Earlier pending-review statements above
+are historical; this clarification supersedes them for this PR only.

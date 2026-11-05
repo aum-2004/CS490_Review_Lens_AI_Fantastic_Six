@@ -81,3 +81,40 @@ one test reached Spam and a later test reached the inbox.
 Reviewed files include `src/services/auth/auth-service.ts`, `src/lib/supabase/server.ts`,
 `src/lib/supabase/proxy.ts`, `src/lib/validation/auth.ts`, `src/app/login/actions.ts`,
 `src/app/api/auth/session/route.ts`, `src/app/auth/confirm/route.ts`, and the auth UI.
+
+## Guided author review (2026-11-04)
+
+Author: Shawn. Reviewed branch/commit: feature/S1-009-managed-authentication at 0ad1fe8.
+Codex explained each inspection step; Shawn reported the code/tests looked correct for each.
+This records author confirmations, not an independent observation of reading or a separate
+reviewer's approval. It does not establish that the requested independent review was waived.
+
+| Inspected area         | Author confirmation and scope                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity verification  | Confirmed auth service getUser verification, null/401 rejection, safe 503 failures, minimal identity response, request separation, and related test assertions.           |
+| Credentials/errors     | Confirmed server-side schema validation, provider-managed passwords, preserved password input, ignored extra ownership fields, safe responses/logging, and related tests. |
+| Cookies/refresh        | Confirmed per-request client, explicit writable mode, request/response cookie propagation, retained writes, private cache headers, and related tests.                     |
+| Confirmation/redirects | Confirmed verifyOtp verification, email-only type, rejection on errors/missing session, fixed local destination, no token forwarding, privacy headers, and related tests. |
+| Logout                 | Confirmed SDK local scope, failure reporting, cache invalidation, SessionPanel navigation/retry behavior, and related service/UI tests.                                   |
+
+The earlier user-confirmed live tests support this inspection: session identity/persistence,
+logout with no user data returned, valid TokenHash confirmation establishing a session, and
+rejected callback showing safe feedback with AUTH_REQUIRED. Timing conditions remain as
+qualified in the authentication guide. Local logout does not promise immediate invalidation
+of every previously issued access JWT or logout on other devices.
+
+Following these confirmations, Codex reran the existing isolated-009 Jest suite: 67 tests passed
+in 11 suites. This is automated supporting evidence, not a substitute for independent review.
+No application change was required by this guided inspection. The temporary personal SMTP
+sender, variable inbox placement, sender/credential replacement, and transcript-export gaps
+remain documented handoff/evidence items. Final security-review acceptance belongs to the
+PR reviewer under the team's process; no approval or policy exception is invented here.
+
+### Reviewer clarification of review responsibility
+
+Shawn reports that the 009 reviewer clarified he is responsible for the whole security check
+and no additional person is needed. For this PR, that reported clarification supersedes the
+earlier unresolved request for another security reviewer. The guided author review above is
+completed and recorded with its scope and passing tests. It remains an author-performed review,
+not an independent review. The assistant has not directly inspected a GitHub review/comment
+confirming this decision and does not claim final PR approval or a repository-wide policy change.
