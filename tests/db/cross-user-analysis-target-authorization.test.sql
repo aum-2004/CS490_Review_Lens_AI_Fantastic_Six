@@ -124,9 +124,9 @@ end
 $$;
 \echo 'ok - User A retrieves Target A unchanged after User B modification attempts'
 
--- An authenticated database role without a verified user identity cannot access or modify Target
--- A. UPDATE must be rejected by the immutable-source privilege boundary, and DELETE remains
--- ownership-filtered by RLS.
+-- An authenticated database role without a verified user identity cannot create, access, or
+-- modify a target. INSERT is rejected by RLS with insufficient_privilege, UPDATE is rejected by
+-- the immutable-source privilege boundary, and DELETE remains ownership-filtered by RLS.
 set request.jwt.claims to '';
 
 do $$
@@ -138,6 +138,19 @@ begin
     from public.analysis_targets
     where id = current_setting('test.s1_012_target_id')::uuid
   ), 'a request without a user identity retrieved Target A';
+
+  begin
+    insert into public.analysis_targets (owner_id, name, platform, source_url)
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'Created without an identity',
+      'google_maps',
+      'https://maps.google.com/?cid=missing-identity'
+    );
+    raise exception 'a request without a user identity unexpectedly inserted a target';
+  exception
+    when insufficient_privilege then null;
+  end;
 
   begin
     update public.analysis_targets
@@ -154,27 +167,61 @@ begin
   assert affected = 0, 'a request without a user identity deleted Target A';
 end
 $$;
-\echo 'ok - requests without a verified user identity cannot access or modify Target A'
+\echo 'ok - requests without a verified user identity cannot create, access, or modify targets'
 
--- The anon role has no table privileges, so PostgreSQL rejects even a direct-ID query. Only the
--- expected privilege error is accepted; a successful query reaches the explicit failure.
+-- The anon role has no table privileges, so PostgreSQL rejects direct SELECT, INSERT, UPDATE, and
+-- DELETE operations. Each operation is attempted independently. Only the expected privilege error
+-- is accepted; any successful statement reaches an explicit failure.
 reset role;
 set role anon;
 
 do $$
 begin
-  perform 1
-  from public.analysis_targets
-  where id = current_setting('test.s1_012_target_id')::uuid;
-  raise exception 'an anonymous request unexpectedly queried Target A';
-exception
-  when insufficient_privilege then null;
+  begin
+    perform 1
+    from public.analysis_targets
+    where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'an anonymous request unexpectedly queried Target A';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    insert into public.analysis_targets (owner_id, name, platform, source_url)
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'Created anonymously',
+      'google_maps',
+      'https://maps.google.com/?cid=anonymous'
+    );
+    raise exception 'an anonymous request unexpectedly inserted a target';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    update public.analysis_targets
+    set name = 'Changed anonymously'
+    where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'an anonymous request unexpectedly updated Target A';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    delete from public.analysis_targets
+    where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'an anonymous request unexpectedly deleted Target A';
+  exception
+    when insufficient_privilege then null;
+  end;
 end
 $$;
-\echo 'ok - anonymous direct-ID requests are rejected'
+\echo 'ok - anonymous select, insert, update, and delete operations are rejected'
 
--- Under the immutable-source model, even the owner cannot directly UPDATE the target. The owner
--- retains legitimate read and DELETE access.
+-- After every foreign, missing-identity, and anonymous attempt, the owner retrieves the complete
+-- unchanged row. Under the immutable-source model, even the owner cannot directly UPDATE the
+-- target, while retaining legitimate read and DELETE access.
 reset role;
 set role authenticated;
 set request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}';
