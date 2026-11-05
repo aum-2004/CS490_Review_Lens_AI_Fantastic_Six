@@ -17,6 +17,21 @@ export class OutscraperError extends Error {
   }
 }
 
+function isTimeoutError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (("name" in error && error.name === "TimeoutError") ||
+      ("code" in error && error.code === "ETIMEDOUT"))
+  );
+}
+
+function providerFetchError(error: unknown): OutscraperError {
+  return isTimeoutError(error)
+    ? new OutscraperError("PROVIDER_TIMEOUT", "The review service request timed out.")
+    : new OutscraperError("PROVIDER_UNAVAILABLE", "The review service could not be reached.");
+}
+
 export async function startOutscraperExtraction(
   placeId: string,
   fetcher?: typeof fetch,
@@ -54,8 +69,8 @@ export async function startOutscraperExtraction(
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
-  } catch {
-    throw new OutscraperError("PROVIDER_UNAVAILABLE", "The review service could not be reached.");
+  } catch (error) {
+    throw providerFetchError(error);
   }
 
   if (response.status === 429) {
@@ -148,8 +163,8 @@ export async function getOutscraperResult(
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
-  } catch {
-    throw new OutscraperError("PROVIDER_UNAVAILABLE", "The review service could not be reached.");
+  } catch (error) {
+    throw providerFetchError(error);
   }
 
   if (response.status === 429) {

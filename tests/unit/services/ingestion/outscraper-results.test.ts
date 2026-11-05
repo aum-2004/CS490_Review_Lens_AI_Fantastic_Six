@@ -144,6 +144,14 @@ describe("Outscraper result retrieval", () => {
     });
   });
 
+  it("classifies result retrieval timeouts separately", async () => {
+    const fetcher = jest.fn().mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+
+    await expect(
+      getOutscraperResult("test-request-1", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
+  });
+
   it("rejects an invalid request ID", async () => {
     await expect(getOutscraperResult("../invalid", placeId)).rejects.toMatchObject({
       code: "INVALID_REQUEST_ID",

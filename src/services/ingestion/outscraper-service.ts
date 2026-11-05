@@ -22,18 +22,28 @@ export async function getExtractedReviews(
   }
 
   const reviews = mapOutscraperReviews(
-    result.reviews.map((review) => ({
-      ...review,
-      place_id: result.placeId,
-    })),
+    result.reviews.map((review) => {
+      if (review.place_id !== undefined && review.place_id !== expectedPlaceId) {
+        throw new OutscraperError(
+          "BUSINESS_MISMATCH",
+          "The provider returned a review for a different business.",
+        );
+      }
+
+      return {
+        ...review,
+        place_id: review.place_id ?? expectedPlaceId,
+      };
+    }),
   );
 
   const usableReviews = reviews.filter((review) => {
     const hasText = typeof review.text === "string" && review.text.trim().length > 0;
 
     const rating =
-      typeof review.rating === "string" && review.rating.trim() !== ""
-        ? Number(review.rating)
+      typeof review.rating === "string" &&
+      /^(?:[1-5](?:\.\d+)?|0?\.\d+)$/.test(review.rating.trim())
+        ? Number.parseFloat(review.rating.trim())
         : review.rating;
 
     const hasValidRating =

@@ -6,7 +6,7 @@
 **Assistant:** OpenAI ChatGPT  
 **Developer:** Bansi  
 **Work period covered:** November 3–4, 2026 (local dates in available conversation)  
-**Record type:** Available verbatim excerpts plus explicitly labeled human-review notes. **This is not a full unabridged export of the conversation.** The original conversation should be preserved/exported separately if the team requires every prompt and response.
+**Record type:** Available, redacted excerpts from the original ChatGPT conversation, plus explicitly labeled human-review notes. The complete original conversation could not be recovered. Missing prompts and responses have not been invented or reconstructed. The retained excerpts document the available AI-assisted development work. This file is not a complete transcript and is not represented as fully compliant with S1-004 §6.
 
 ## Scope and privacy
 
@@ -340,5 +340,5 @@ git diff --cached --stat
 - **Mocked tests:** provider submission/status/retrieval logic, validation, and error branches are tested with Jest fixtures. Full production job-submission-to-persistence integration has **not** been demonstrated.
 - **Known incomplete work:** authenticated AnalysisTarget ownership checks, ingestion run schema/state persistence, Deep's S1-021 normalization integration, S1-022 deduplication/persistence, and provider review-content licensing/storage permission confirmation. These are integration dependencies or outstanding review items; do not claim they are finished by S1-020 alone.
 - **AI corrections:** Jest `Response`/`fetch` environment, complete-module mock overriding `OutscraperError`, initial incorrect assumption about nested API `reviews_data`, standalone `tsx` with `server-only`, temporary route segment setting, and Next.js stale generated types were all observed and corrected during the session.
-- **Privacy:** no API key or review text from the live dataset included; identifying personal data was omitted. Test fixture review text is synthetic.
-- **Transcript completeness:** this document preserves selected messages and exact short excerpts from the available chat; it should be supplemented by the original unabridged conversation export if course policy requires *all* raw AI prompts and outputs.
+- **Privacy:** no API keys, credentials, or secrets are included. Identifying personal data and review text from the live dataset were omitted. Test fixture review text is synthetic.
+- **Transcript limitation:** the complete original ChatGPT conversation could not be recovered. This file contains the available, redacted excerpts; missing prompts and responses have not been invented or reconstructed. The retained excerpts document the available AI-assisted development work, but this file is not claimed to be complete or fully compliant with S1-004 §6.

@@ -88,6 +88,14 @@ describe("Outscraper API client", () => {
     });
   });
 
+  it("classifies extraction submission timeouts separately", async () => {
+    const mockFetch = jest.fn().mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+
+    await expect(
+      startOutscraperExtraction(placeId, mockFetch as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
+  });
+
   it("rejects an invalid provider response", async () => {
     const mockFetch = jest.fn().mockResolvedValue(
       mockResponse(200, {
