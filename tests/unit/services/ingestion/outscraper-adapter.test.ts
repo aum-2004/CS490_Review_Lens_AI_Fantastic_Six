@@ -1,4 +1,5 @@
 import { mapOutscraperReview, mapOutscraperReviews } from "@/services/ingestion/outscraper-adapter";
+import { outscraperFlatReviewResponseSynthetic } from "../../../fixtures/outscraper-flat-review-response.synthetic";
 
 describe("Outscraper review adapter", () => {
   it("maps a review into Deep's RawReview format", () => {
@@ -30,6 +31,18 @@ describe("Outscraper review adapter", () => {
     });
 
     expect(result.reviewDate).toBe(new Date(1793481600 * 1000).toISOString());
+  });
+
+  it("maps review_id to sourceReviewId for the synthetic flat-response schema fixture", () => {
+    // The available historical live inspection retained field names and shape, but not the original
+    // request ID or review ID values. This synthetic fixture tests mapping only, not live ID presence
+    // or uniqueness.
+    const results = mapOutscraperReviews(outscraperFlatReviewResponseSynthetic.data);
+
+    expect(results.map((review) => review.sourceReviewId)).toEqual([
+      "synthetic-review-id-001",
+      "synthetic-review-id-002",
+    ]);
   });
 
   it("does not fabricate missing review text or rating", () => {
