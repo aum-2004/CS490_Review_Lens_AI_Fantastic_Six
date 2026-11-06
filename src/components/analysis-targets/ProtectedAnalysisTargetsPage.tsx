@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/shared/AppShell";
-import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { TargetList } from "@/components/analysis-targets/TargetList";
 import { RetryTargetsButton } from "@/components/analysis-targets/RetryTargetsButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -25,17 +26,15 @@ export async function ProtectedAnalysisTargetsPage() {
 
   return (
     <AppShell email={user.email}>
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold">My Targets</h1>
-        <p className="mt-2 text-muted-foreground">
-          Your saved businesses and products, ready to explore.
-        </p>
-      </div>
+      <PageHeader
+        title="My Targets"
+        description="Your saved businesses and products, ready to explore."
+      />
       {targets === null ? (
-        <Card className="space-y-4">
-          <p role="alert">We couldn&apos;t load your targets. Please try again.</p>
-          <RetryTargetsButton />
-        </Card>
+        <ErrorState
+          message="We couldn't load your targets. Please try again."
+          actions={<RetryTargetsButton />}
+        />
       ) : (
         <TargetList targets={targets} />
       )}

@@ -6,6 +6,7 @@ import { DropdownMenu } from "radix-ui";
 import { signOut } from "@/app/login/actions";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "./Spinner";
+import { ErrorAlert } from "./ErrorAlert";
 
 export function AccountMenu({ email }: { email: string | null }) {
   const router = useRouter();
@@ -57,9 +58,9 @@ export function AccountMenu({ email }: { email: string | null }) {
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
       {error && (
-        <p role="alert" className="mt-2 text-sm text-destructive">
-          {error}
-        </p>
+        <div className="mt-2">
+          <ErrorAlert message={error} />
+        </div>
       )}
     </div>
   );

@@ -71,3 +71,9 @@ Validation after the development fix: 347 unit tests, all 13 isolated auth/targe
 ## Author manual verification
 
 Shawn subsequently confirmed User A's list and refresh, User B's isolated list, the unavailable-account error/retry path, and signed-out API rejection without target data. The author's local happy/failure verification is complete; see the [dated acceptance report](acceptance/s1-017-2026-11-06.md#author-confirmed-manual-acceptance--november-6-2026). Normal and independent security reviews remain pending. These confirmations used the local fixture, not hosted Supabase.
+
+## UI/UX shared-component follow-up
+
+The reviewer identified that required §8.1 components were implemented inline. `Navigation`, `PageHeader`, `EmptyState`, `ErrorState` and `ErrorAlert` are now shared PascalCase components reused by 017's shell, page, empty state, load-error panel, route error boundary and account-menu feedback. No database/query/authentication contract changed. Existing S1-015 primitives were inspected to avoid importing or copying an unmerged implementation.
+
+The status-badge requirement remains open. [The UI compliance follow-up](s1-017-ui-compliance.md) contains a concrete **proposed, unapproved** temporary deferral until an owner-scoped S1-023 ingestion-state contract exists. The earlier omission must not be interpreted as compliance or as an approved exception. The normative UI/UX standards are unchanged, and no target is labeled “Not ingested” without server evidence.
