@@ -28,6 +28,13 @@ interface FieldErrorProps {
   message: string;
 }
 
+function targetNameCharacterCount(value: string): number {
+  // Presentation-only mirror of the shared validator's private name normalization. Keep ZWJ/ZWNJ
+  // because they can be meaningful within otherwise visible names.
+  const normalizedName = value.replace(/(?![\u200C\u200D])\p{Cf}/gu, "").trim();
+  return Array.from(normalizedName).length;
+}
+
 function fieldErrorsFromIssues(issues: readonly AnalysisTargetValidationIssue[]): FieldErrors {
   const errors: FieldErrors = {};
 
@@ -102,7 +109,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
   const [hasValidationAttempted, setHasValidationAttempted] = useState(false);
 
   const fieldErrorCount = Object.values(fieldErrors).filter(Boolean).length;
-  const targetNameLength = Array.from(name.trim()).length;
+  const targetNameLength = targetNameCharacterCount(name);
   const targetNameCountAnnouncement =
     targetNameLength > 120
       ? "Target name exceeds the 120-character limit."

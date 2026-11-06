@@ -198,6 +198,38 @@ describe("TargetForm", () => {
     expect(counterStatus).toHaveTextContent("Target name exceeds the 120-character limit.");
   });
 
+  it.each([
+    ["supplementary emoji", "😀", "😀", "1/120"],
+    ["invisible format characters", "  \u200bNJ\u2060IT\ufeff  ", "NJIT", "4/120"],
+  ])(
+    "counts %s consistently with the shared validator",
+    async (_case, name, normalizedName, expectedCount) => {
+      const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn().mockResolvedValue({
+        id: "target-1",
+        name: normalizedName,
+        sourceUrl: validSourceUrl,
+        platform: "google_maps",
+      });
+      render(<TargetForm createTarget={createTarget} />);
+      fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: name } });
+      fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
+        target: { value: validSourceUrl },
+      });
+
+      expect(screen.getByText(expectedCount)).toHaveAttribute("aria-hidden", "true");
+
+      submitForm();
+
+      await waitFor(() =>
+        expect(createTarget).toHaveBeenCalledWith({
+          name: normalizedName,
+          sourceUrl: validSourceUrl,
+          platform: "google_maps",
+        }),
+      );
+    },
+  );
+
   it("rejects target names containing unsafe control characters", () => {
     const createTarget = jest.fn();
     render(<TargetForm createTarget={createTarget} />);
