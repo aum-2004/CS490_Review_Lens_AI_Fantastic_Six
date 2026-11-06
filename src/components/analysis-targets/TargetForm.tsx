@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Spinner } from "@/components/shared/Spinner";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
@@ -289,7 +290,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? (
             <>
-              <LoaderCircle aria-hidden="true" className="animate-spin" />
+              <Spinner />
               Creating target...
             </>
           ) : (

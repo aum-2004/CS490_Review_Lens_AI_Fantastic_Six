@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { Button } from "@/components/ui/Button";
+
 const foundationAreas = [
   {
     name: "Frontend",
@@ -50,12 +52,19 @@ export default function Home() {
           ))}
         </ul>
 
-        <p className="mt-10 text-sm text-zinc-500 dark:text-zinc-400">
-          <Link href="/login" className="underline underline-offset-4">
+        <div className="mt-10 flex flex-wrap items-center gap-4">
+          <Button asChild>
+            <Link href="/analysis-targets/new">Create analysis target</Link>
+          </Button>
+          <Link
+            href="/login"
+            className="text-sm text-zinc-500 underline underline-offset-4 dark:text-zinc-400"
+          >
             Sign in or register
-          </Link>{" "}
-          to establish your ReviewLens session. Analysis targets and review ingestion arrive in
-          later stories.
+          </Link>
+        </div>
+        <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+          Create a private analysis target from a Google Maps business listing.
         </p>
       </div>
     </main>

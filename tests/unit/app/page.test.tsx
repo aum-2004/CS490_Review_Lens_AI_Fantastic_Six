@@ -20,5 +20,17 @@ describe("Home", () => {
         ),
       ).toBe(true);
     }
+
+    expect(screen.getByRole("link", { name: "Create analysis target" })).toHaveAttribute(
+      "href",
+      "/analysis-targets/new",
+    );
+    expect(screen.getByRole("link", { name: "Sign in or register" })).toHaveAttribute(
+      "href",
+      "/login",
+    );
+    expect(
+      screen.queryByText(/analysis targets and review ingestion arrive/i),
+    ).not.toBeInTheDocument();
   });
 });

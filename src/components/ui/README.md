@@ -28,15 +28,26 @@ Use these exact imports and extend the existing shared files when a later story 
 | `@/components/ui/Button`      | `Button`; native button props, `asChild`, and `variant` values `default`, `outline`, `ghost`, `destructive`; default height 40px |
 | `@/components/ui/Input`       | `Input`; native input props and React 19 ref forwarding through props                                                            |
 | `@/components/ui/Label`       | `Label`; Radix Label props including `htmlFor`                                                                                   |
-| `@/components/ui/Card`        | `Card`; a padded section accepting native section props                                                                          |
+| `@/components/ui/Card`        | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`; composable card sections                                    |
+| `@/components/ui/Alert`       | `Alert`, `AlertTitle`, `AlertDescription`; default and destructive status messaging                                              |
 | `@/components/ui/Form`        | `Form` (React Hook Form provider), `FormField`, `FormItem`, `FormLabel`, `FormControl`, `FormMessage`                            |
-| `@/components/shared/Spinner` | `Spinner`; shared action indicator respecting reduced motion                                                                     |
+| `@/components/shared/Spinner` | `Spinner`; shared action indicator using `motion-safe:animate-spin` to respect reduced motion                                    |
 | `@/lib/utils/cn`              | `cn`; merges conditional Tailwind class names                                                                                    |
 
-`CardHeader`, `CardContent`, `CardFooter`, `FormDescription`, and the full shadcn variant/size
-APIs are not currently exported. Do not assume they exist or create a second Card/Form file;
-add needed parts to the shared primitive through the story that uses them. Field controls must
-be nested inside `Form`, `FormField`, and `FormItem` so IDs, labels, and errors stay linked.
+`CardFooter`, `FormDescription`, and the full shadcn variant/size APIs are not currently exported.
+Do not assume they exist or create a second Card/Form file; add needed parts to the shared
+primitive through the story that uses them. Field controls must be nested inside `Form`,
+`FormField`, and `FormItem` so IDs, labels, and errors stay linked.
+
+## S1-015 icon dependency
+
+S1-015 uses `lucide-react` 1.67.0 for the `CircleAlert` field-error icon. Loading actions use the
+shared `Spinner`, so S1-015 does not use Lucide for animation. The existing Radix primitives,
+Tailwind CSS, and CSS utilities do not provide an equivalent semantic SVG icon set.
+
+The installed Lucide package declares React 19 compatibility, is tree-shakeable, and uses the ISC
+license; its Feather-derived icons retain the MIT license. `npm audit --omit=dev` reported zero
+production vulnerabilities during the 2026-11-06 review.
 
 The current authentication UI uses `AuthForm` and `SessionPanel` under `src/components/auth/`.
 S1-010 or the owning layout story can reuse the existing sign-out Server Action in its account

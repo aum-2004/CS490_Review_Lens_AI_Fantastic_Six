@@ -346,7 +346,11 @@ describe("TargetForm", () => {
     fireEvent.submit(form!);
 
     expect(createTarget).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: /creating target/i })).toBeDisabled();
+    const loadingButton = screen.getByRole("button", { name: /creating target/i });
+    expect(loadingButton).toBeDisabled();
+    const spinner = loadingButton.querySelector('span[aria-hidden="true"]');
+    expect(spinner).toHaveClass("motion-safe:animate-spin");
+    expect(spinner).not.toHaveClass("animate-spin");
     expect(form).toHaveAttribute("aria-busy", "true");
 
     resolveCreation?.({
