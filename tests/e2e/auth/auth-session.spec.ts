@@ -41,7 +41,8 @@ test("establishes, refreshes, preserves, and clears SDK cookie sessions", async 
   await page.reload();
   await expect(page.getByRole("status")).toContainText("fixture@example.com");
   await page.getByRole("link", { name: "Back to home" }).click();
-  await page.getByRole("link", { name: "Sign in or register" }).click();
+  await expect(page).toHaveURL("/analysis-targets");
+  await page.goto("/login");
   await expect(page.getByRole("status")).toContainText("fixture@example.com");
   const identity = await context.request.get("/api/auth/session");
   expect(identity.status()).toBe(200);
