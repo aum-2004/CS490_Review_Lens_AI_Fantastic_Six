@@ -11,7 +11,7 @@ Date: November 3–5, 2026
 >
 > **Moved:** the independent security review of PR #37 (S1-009) and the follow-up message for its author took place in the same session but are not S1-022 work. They are preserved unchanged in `ai-transcripts/2026-11-05_deep_S1-009_claude-code.md`.
 >
-> **Not in this export:** the session continued after this export was taken (opening PR #42, a pre-review, and the fix for the PR #42 review). Those turns are not included here.
+> **Not in this export:** the session continued after this export was taken (opening PR #42, a pre-review, and the fix for the PR #42 review). Those turns are not included here; they are in `ai-transcripts/2026-11-06_deep_S1-022_claude-code-part2.md`.
 
 ---
 
@@ -1526,3 +1526,5 @@ Added after Shawn's review of PR #42 at `3a6198c`. The results recorded earlier 
 - GitHub CI on `3a6198c`: "Lint, typecheck, test, build" passed, and "Database tests" passed. The CI log shows both migrations applied and `tests/db/reviews.test.sql` ran with all 11 checks `ok`.
 - The database tests have still not been run locally (no Docker or PostgreSQL on the author's machine).
 - Review fix (paginate `listReviews` so targets with more than 1,000 reviews are not truncated, plus regression tests): locally, format, lint, typecheck, 252 unit tests and build passed. The fix is in the commit after `3a6198c`.
+
+**Update (2026-11-06):** the review fix is commit `79eeec6`. GitHub CI on `79eeec6` passed, including "Lint, typecheck, test, build" and "Database tests": https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/actions/runs/42157375746. The later turns of this session (PR preparation and the pagination fix) are in `ai-transcripts/2026-11-06_deep_S1-022_claude-code-part2.md`.
