@@ -3,7 +3,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ReviewPersistenceError } from "@/services/reviews/errors";
-import { createSupabaseReviewStore } from "@/services/reviews/supabase-review-store";
+import {
+  createSupabaseReviewStore,
+  REVIEW_PAGE_SIZE,
+} from "@/services/reviews/supabase-review-store";
 
 const USER_A = "11111111-1111-4111-8111-111111111111";
 const TARGET_ID = "33333333-3333-4333-8333-333333333333";
@@ -26,6 +29,29 @@ const storedRow = {
 
 type QueryResult = { data: unknown; error: unknown };
 
+// Deterministic stored rows in (created_at, id) order, starting at `start`.
+function rowsFrom(start: number, count: number) {
+  return Array.from({ length: count }, (_, offset) => {
+    const n = start + offset;
+    return {
+      ...storedRow,
+      id: `review-${String(n).padStart(5, "0")}`,
+      review_text: `Review ${n}`,
+      created_at: new Date(Date.UTC(2026, 10, 4) + n * 1000).toISOString(),
+    };
+  });
+}
+
+const page = (rows: unknown[]): QueryResult => ({ data: rows, error: null });
+const listQuery = (from: number, to: number) => [
+  ["from", "reviews"],
+  ["select", COLUMNS],
+  ["eq", "analysis_target_id", TARGET_ID],
+  ["order", "created_at", { ascending: true }],
+  ["order", "id", { ascending: true }],
+  ["range", from, to],
+];
+
 // Records each builder call; awaiting the builder (or maybeSingle) returns the next result.
 function createFakeClient(...results: QueryResult[]) {
   const calls: Array<[string, ...unknown[]]> = [];
@@ -35,7 +61,7 @@ function createFakeClient(...results: QueryResult[]) {
       next().then(resolve, reject),
     maybeSingle: async () => (calls.push(["maybeSingle"]), next()),
   };
-  for (const method of ["insert", "select", "eq", "order"]) {
+  for (const method of ["insert", "select", "eq", "order", "range"]) {
     builder[method] = (...args: unknown[]) => (calls.push([method, ...args]), builder);
   }
   const client = { from: (table: string) => (calls.push(["from", table]), builder) };
@@ -134,19 +160,81 @@ describe("createSupabaseReviewStore", () => {
     ]);
   });
 
-  test("lists one target's reviews in a stable order", async () => {
-    const { client, calls } = createFakeClient({ data: [storedRow], error: null });
+  test("lists one target's reviews in a stable order, stopping at an empty page", async () => {
+    const { client, calls } = createFakeClient(page([storedRow]), page([]));
 
     const reviews = await createSupabaseReviewStore(client).listReviews(TARGET_ID);
 
     expect(reviews.map((review) => review.text)).toEqual(["Great food"]);
     expect(calls).toEqual([
-      ["from", "reviews"],
-      ["select", COLUMNS],
-      ["eq", "analysis_target_id", TARGET_ID],
-      ["order", "created_at", { ascending: true }],
-      ["order", "id", { ascending: true }],
+      ...listQuery(0, REVIEW_PAGE_SIZE - 1),
+      ...listQuery(1, REVIEW_PAGE_SIZE),
     ]);
+  });
+
+  test("returns an empty list for a target with no reviews", async () => {
+    const { client, calls } = createFakeClient(page([]));
+
+    await expect(createSupabaseReviewStore(client).listReviews(TARGET_ID)).resolves.toEqual([]);
+    expect(calls).toEqual(listQuery(0, REVIEW_PAGE_SIZE - 1));
+  });
+
+  test("retrieves every review across pages instead of truncating at the API row limit", async () => {
+    const { client, calls } = createFakeClient(
+      page(rowsFrom(0, REVIEW_PAGE_SIZE)),
+      page(rowsFrom(REVIEW_PAGE_SIZE, 1)),
+      page([]),
+    );
+
+    const reviews = await createSupabaseReviewStore(client).listReviews(TARGET_ID);
+
+    expect(reviews).toHaveLength(REVIEW_PAGE_SIZE + 1);
+    expect(reviews.map((review) => review.id)).toEqual(
+      rowsFrom(0, REVIEW_PAGE_SIZE + 1).map((row) => row.id),
+    );
+    // Every page keeps the target filter and the stable (created_at, id) order.
+    expect(calls).toEqual([
+      ...listQuery(0, REVIEW_PAGE_SIZE - 1),
+      ...listQuery(REVIEW_PAGE_SIZE, 2 * REVIEW_PAGE_SIZE - 1),
+      ...listQuery(REVIEW_PAGE_SIZE + 1, 2 * REVIEW_PAGE_SIZE),
+    ]);
+  });
+
+  test("still retrieves every review when the server caps pages below the page size", async () => {
+    const serverCap = 400;
+    const { client, calls } = createFakeClient(
+      page(rowsFrom(0, serverCap)),
+      page(rowsFrom(serverCap, serverCap)),
+      page(rowsFrom(2 * serverCap, 201)),
+      page([]),
+    );
+
+    const reviews = await createSupabaseReviewStore(client).listReviews(TARGET_ID);
+
+    expect(reviews.map((review) => review.id)).toEqual(
+      rowsFrom(0, 2 * serverCap + 201).map((row) => row.id),
+    );
+    expect(calls.filter(([method]) => method === "range")).toEqual([
+      ["range", 0, REVIEW_PAGE_SIZE - 1],
+      ["range", serverCap, serverCap + REVIEW_PAGE_SIZE - 1],
+      ["range", 2 * serverCap, 2 * serverCap + REVIEW_PAGE_SIZE - 1],
+      ["range", 2 * serverCap + 201, 2 * serverCap + 201 + REVIEW_PAGE_SIZE - 1],
+    ]);
+  });
+
+  test("fails the whole read when a later page fails, never returning a partial result", async () => {
+    const dbError = { message: "canceling statement due to statement timeout" };
+    const { client, calls } = createFakeClient(page(rowsFrom(0, REVIEW_PAGE_SIZE)), {
+      data: null,
+      error: dbError,
+    });
+
+    await expect(createSupabaseReviewStore(client).listReviews(TARGET_ID)).rejects.toMatchObject({
+      name: "ReviewPersistenceError",
+      message: expect.not.stringContaining("timeout"),
+      cause: dbError,
+    });
+    expect(calls.filter(([method]) => method === "range")).toHaveLength(2);
   });
 
   test.each(["insertReviews", "listReviews"] as const)(

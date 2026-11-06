@@ -20,6 +20,13 @@ interface ReviewRow {
 }
 
 const TABLE = "reviews";
+/**
+ * Rows requested per page when reading reviews. Supabase's Data API returns at most the
+ * project's "Max rows" (1,000 by default) per request, so one unpaginated query would silently
+ * truncate large targets. Paging stops only on an empty page, so a server limit lower than this
+ * value still returns every review.
+ */
+export const REVIEW_PAGE_SIZE = 1000;
 // One string literal so supabase-js can parse the selected columns into a row type.
 const COLUMNS =
   "id, analysis_target_id, review_text, rating, source_review_id, reviewer_name, review_date, review_url, source_metadata, created_at";
@@ -75,18 +82,30 @@ export function createSupabaseReviewStore(client: SupabaseClient): ReviewStore {
     },
 
     async listReviews(targetId) {
-      const { data, error } = await client
-        .from(TABLE)
-        .select(COLUMNS)
-        .eq("analysis_target_id", targetId)
-        .order("created_at", { ascending: true })
-        .order("id", { ascending: true });
+      // S1-022 requires every review of the target. Each page keeps the target filter and the
+      // stable (created_at, id) order. Any failed page fails the whole read: a partial result
+      // is never returned as if it were complete.
+      const rows: ReviewRow[] = [];
 
-      if (error || !data) {
-        throw new ReviewPersistenceError("load", { cause: error });
+      while (true) {
+        const from = rows.length;
+        const { data, error } = await client
+          .from(TABLE)
+          .select(COLUMNS)
+          .eq("analysis_target_id", targetId)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, from + REVIEW_PAGE_SIZE - 1);
+
+        if (error || !data) {
+          throw new ReviewPersistenceError("load", { cause: error });
+        }
+        if (data.length === 0) {
+          return rows.map(toReview);
+        }
+
+        rows.push(...(data as ReviewRow[]));
       }
-
-      return (data as ReviewRow[]).map(toReview);
     },
   };
 }
