@@ -43,15 +43,22 @@ create index reviews_target_source_review_idx
   on public.reviews (analysis_target_id, source_review_id)
   where source_review_id is not null;
 
--- Row Level Security: a signed-in user can only see and change Reviews of their own targets
+-- Row Level Security: a signed-in user can only see and add Reviews of their own targets
 -- (S1-BR-008, S1-BR-009). Server code must still check target ownership; RLS is defense in depth.
 alter table public.reviews enable row level security;
 
 -- Supabase grants new tables ALL to anon and authenticated by default. Revoke from both first so
 -- authenticated does not keep TRUNCATE (not subject to RLS), REFERENCES, or TRIGGER.
+--
+-- The app only reads and inserts Reviews, so these grants are the write boundary: no UPDATE or
+-- DELETE, and INSERT only on the columns the app writes, so clients cannot choose id or
+-- created_at. Reviews are still removed when their target is deleted (on delete cascade).
 revoke all on table public.reviews from anon, authenticated;
-grant select, insert, update, delete
-  on table public.reviews to authenticated;
+grant select on table public.reviews to authenticated;
+grant insert (
+  analysis_target_id, review_text, rating, source_review_id, reviewer_name, review_date,
+  review_url, source_metadata
+) on table public.reviews to authenticated;
 
 create policy reviews_select_own
   on public.reviews
@@ -67,29 +74,6 @@ create policy reviews_insert_own
   for insert
   to authenticated
   with check (exists (
-    select 1 from public.analysis_targets t
-    where t.id = reviews.analysis_target_id and t.owner_id = (select auth.uid())
-  ));
-
--- `with check` also stops a Review from being moved onto another user's target.
-create policy reviews_update_own
-  on public.reviews
-  for update
-  to authenticated
-  using (exists (
-    select 1 from public.analysis_targets t
-    where t.id = reviews.analysis_target_id and t.owner_id = (select auth.uid())
-  ))
-  with check (exists (
-    select 1 from public.analysis_targets t
-    where t.id = reviews.analysis_target_id and t.owner_id = (select auth.uid())
-  ));
-
-create policy reviews_delete_own
-  on public.reviews
-  for delete
-  to authenticated
-  using (exists (
     select 1 from public.analysis_targets t
     where t.id = reviews.analysis_target_id and t.owner_id = (select auth.uid())
   ));

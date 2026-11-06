@@ -107,22 +107,41 @@ end
 $$;
 \echo 'ok - User B cannot add reviews to User A''s target'
 
+-- authenticated has no UPDATE or DELETE privilege on reviews, so both are denied outright.
 do $$
-declare
-  affected integer;
 begin
   update public.reviews
   set review_text = 'Edited by B'
   where analysis_target_id = '77777777-7777-4777-8777-777777777771';
-  get diagnostics affected = row_count;
-  assert affected = 0, 'User B updated User A''s reviews';
-
-  delete from public.reviews where analysis_target_id = '77777777-7777-4777-8777-777777777771';
-  get diagnostics affected = row_count;
-  assert affected = 0, 'User B deleted User A''s reviews';
+  raise exception 'User B updated User A''s reviews';
+exception
+  when insufficient_privilege then null;
 end
 $$;
-\echo 'ok - User B cannot update or delete User A''s reviews'
+
+do $$
+begin
+  delete from public.reviews where analysis_target_id = '77777777-7777-4777-8777-777777777771';
+  raise exception 'User B deleted User A''s reviews';
+exception
+  when insufficient_privilege then null;
+end
+$$;
+
+set request.jwt.claims to '{"sub":"55555555-5555-4555-8555-555555555555"}';
+
+do $$
+begin
+  assert (
+    select count(*) from public.reviews
+    where analysis_target_id = '77777777-7777-4777-8777-777777777771'
+  ) = 3, 'User A''s reviews changed after User B''s update and delete attempts';
+  assert not exists (
+    select 1 from public.reviews where review_text = 'Edited by B'
+  ), 'User B''s update changed a review';
+end
+$$;
+\echo 'ok - User B cannot update or delete User A''s reviews, and they are unchanged'
 
 -- ---------------------------------------------------------------------------------------------
 -- Reviews cannot be moved to another user's target; no session sees nothing

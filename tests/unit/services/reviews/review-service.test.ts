@@ -190,11 +190,58 @@ describe("review persistence (S1-022)", () => {
 
     expect(inserted[0][0].sourceMetadata).toEqual({ note: "ab" });
   });
+
+  test("saves a whole batch in full when one review has malformed characters", async () => {
+    const { reviews, rejected } = normalizeBatch([
+      { text: "Fine", rating: 3 },
+      {
+        text: "Cut off \ud83d",
+        rating: 4,
+        reviewerName: "Sam\u0000",
+        metadata: { "ke\ud83dy": ["ok", { deep: "bad\ude00\u0000" }] },
+      },
+      { text: "Emoji 😀", rating: 5 },
+    ]);
+
+    const saved = await saveReviews(store, userA, "target-a", reviews);
+
+    expect(rejected).toEqual([]);
+    expect(saved).toHaveLength(3);
+    // Postgres rejects NUL and lone surrogates, so nothing like that may reach the store.
+    expect(unstorableStrings(inserted[0])).toEqual([]);
+    expect(saved.map((review) => review.text)).toEqual(["Fine", "Cut off �", "Emoji 😀"]);
+    expect(inserted[0][1].sourceMetadata).toEqual({ "ke�y": ["ok", { deep: "bad�" }] });
+  });
 });
+
+// Every string (and object key) anywhere in `value` that Postgres would reject.
+function unstorableStrings(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.isWellFormed() && !value.includes("\u0000") ? [] : [value];
+  }
+  if (Array.isArray(value)) return value.flatMap(unstorableStrings);
+  if (value instanceof Date || value === null || typeof value !== "object") return [];
+  return Object.entries(value).flatMap(([key, item]) => [
+    ...unstorableStrings(key),
+    ...unstorableStrings(item),
+  ]);
+}
 
 describe("sanitizeMetadata", () => {
   test("removes NUL characters from nested keys and strings", () => {
     expect(sanitizeMetadata({ a: { "b\u0000": ["x\u0000", 1] } })).toEqual({ a: { b: ["x", 1] } });
+  });
+
+  test("replaces lone surrogates in nested keys and strings and keeps valid emoji", () => {
+    expect(
+      sanitizeMetadata({
+        "ti\ud83dtle": "ok 😀",
+        nested: { list: ["cut \ud83d", { "\ude00": "x" }] },
+      }),
+    ).toEqual({
+      "ti�tle": "ok 😀",
+      nested: { list: ["cut �", { "�": "x" }] },
+    });
   });
 
   test("drops values JSON cannot represent and keeps the rest", () => {

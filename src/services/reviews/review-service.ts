@@ -1,4 +1,5 @@
 import { InvalidReviewError, TargetNotFoundError } from "./errors";
+import { toStorableText } from "./storable-text";
 import { MAX_RATING, MIN_RATING, type NormalizedReview } from "./types";
 
 /** A persisted Review. Ownership is inherited through its AnalysisTarget (S1-BR-022). */
@@ -28,8 +29,6 @@ export interface ReviewStore {
 export const MAX_METADATA_BYTES = 16_384;
 const MAX_METADATA_DEPTH = 10;
 
-const stripNul = (value: string): string => value.split("\u0000").join("");
-
 const isPlainObject = (value: object): boolean => {
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
@@ -37,12 +36,13 @@ const isPlainObject = (value: object): boolean => {
 
 /**
  * Returns a JSON-safe copy of `value`, or undefined if it cannot be stored. Postgres rejects
- * \u0000 in jsonb, so it is removed from keys and strings. Values JSON cannot represent
- * (functions, bigint, NaN, class instances, cycles past the depth limit) are dropped.
+ * \u0000 and lone UTF-16 surrogates in jsonb, so keys and strings are cleaned with
+ * `toStorableText`. Values JSON cannot represent (functions, bigint, NaN, class instances,
+ * cycles past the depth limit) are dropped.
  */
 function toJsonValue(value: unknown, depth: number): unknown {
   if (value === null || typeof value === "boolean") return value;
-  if (typeof value === "string") return stripNul(value);
+  if (typeof value === "string") return toStorableText(value);
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
@@ -57,7 +57,7 @@ function toJsonValue(value: unknown, depth: number): unknown {
   const result: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
     const clean = toJsonValue(item, depth + 1);
-    if (clean !== undefined) result[stripNul(key)] = clean;
+    if (clean !== undefined) result[toStorableText(key)] = clean;
   }
   return result;
 }

@@ -9,7 +9,7 @@ Date: November 5–6, 2026
 >
 > **Source:** exported from Claude Code with `/export`. Only the turns after part 2's last turn are kept, so nothing is duplicated. The dialogue is as exported; tool calls and their output appear collapsed ("ctrl+o to expand"). Local file-system paths and the local username were redacted as `<local path>` and `<user>`.
 >
-> **Not in this file:** the turns after this export was taken (preparing this file) are not included.
+> **Not in this file:** the turns after this export was taken (preparing this file) are not included here; they are in `ai-transcripts/2026-11-06_deep_S1-022_claude-code-part4.md`.
 
 ---
 

@@ -1,3 +1,4 @@
+import { toStorableText } from "./storable-text";
 import {
   MAX_RATING,
   MIN_RATING,
@@ -6,12 +7,13 @@ import {
   type RawReview,
 } from "./types";
 
-/** Postgres rejects \u0000 in text and jsonb, so it is removed before any other check. */
-const stripNul = (value: string): string => value.split("\u0000").join("");
-
+/**
+ * Postgres rejects \u0000 and lone UTF-16 surrogates in text and jsonb, so they are cleaned
+ * before any other check.
+ */
 const cleanString = (value: unknown): string | undefined => {
   if (typeof value !== "string") return undefined;
-  const cleaned = stripNul(value).trim();
+  const cleaned = toStorableText(value).trim();
   return cleaned === "" ? undefined : cleaned;
 };
 
