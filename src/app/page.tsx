@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const foundationAreas = [
   {
     name: "Frontend",
@@ -12,7 +14,7 @@ const foundationAreas = [
   {
     name: "Data",
     path: "src/lib/supabase",
-    description: "Reserved boundary for Supabase Auth and PostgreSQL configuration.",
+    description: "Supabase Auth session integration and the PostgreSQL configuration boundary.",
   },
 ];
 
@@ -49,8 +51,11 @@ export default function Home() {
         </ul>
 
         <p className="mt-10 text-sm text-zinc-500 dark:text-zinc-400">
-          Development starter page for Sprint 1. Sign-in, analysis targets, and review ingestion
-          arrive in later stories.
+          <Link href="/login" className="underline underline-offset-4">
+            Sign in or register
+          </Link>{" "}
+          to establish your ReviewLens session. Analysis targets and review ingestion arrive in
+          later stories.
         </p>
       </div>
     </main>

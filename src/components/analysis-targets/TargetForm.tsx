@@ -5,9 +5,9 @@ import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
 import { AnalysisTargetCreationError, createAnalysisTarget } from "@/lib/api/analysis-targets";
 import {
   validateAnalysisTargetInput,

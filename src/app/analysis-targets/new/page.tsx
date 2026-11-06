@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { TargetForm } from "@/components/analysis-targets/TargetForm";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { requirePageUser } from "@/services/auth/access-control";
 
 export const metadata: Metadata = {
   title: "Create target | ReviewLens AI",
@@ -10,6 +12,16 @@ export const metadata: Metadata = {
 };
 
 export default function NewAnalysisTargetPage() {
+  return (
+    <Suspense fallback={<NewAnalysisTargetLoading />}>
+      <ProtectedNewAnalysisTargetPage />
+    </Suspense>
+  );
+}
+
+export async function ProtectedNewAnalysisTargetPage() {
+  await requirePageUser("/analysis-targets/new");
+
   return (
     <main className="flex-1 bg-muted/30 px-4 py-10 sm:px-6 sm:py-14">
       <div className="mx-auto w-full max-w-xl">
@@ -49,6 +61,16 @@ export default function NewAnalysisTargetPage() {
           </CardContent>
         </Card>
       </div>
+    </main>
+  );
+}
+
+function NewAnalysisTargetLoading() {
+  return (
+    <main className="flex flex-1 items-center justify-center px-4 py-16">
+      <p className="text-sm text-muted-foreground" role="status">
+        Loading target form…
+      </p>
     </main>
   );
 }

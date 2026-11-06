@@ -298,7 +298,7 @@ describe("TargetForm", () => {
     );
   });
 
-  it("submits normalized valid data, confirms creation, and navigates to the workspace", async () => {
+  it("submits normalized data and requests the agreed future workspace destination", async () => {
     const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn().mockResolvedValue({
       id: "target/with spaces",
       name: "NJIT, Newark",
@@ -428,7 +428,7 @@ describe("TargetForm", () => {
     );
   });
 
-  it("navigates back to My Targets when cancelled", () => {
+  it("requests the agreed future target-list destination when cancelled", () => {
     render(<TargetForm createTarget={jest.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

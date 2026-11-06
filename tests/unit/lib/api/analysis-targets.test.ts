@@ -40,7 +40,7 @@ describe("createAnalysisTarget browser client", () => {
   it("translates a 401 response into an authentication error", async () => {
     fetchMock.mockResolvedValue(
       Response.json(
-        { success: false, error: { code: "AUTHENTICATION_REQUIRED", message: "Sign in." } },
+        { success: false, error: { code: "AUTH_REQUIRED", message: "Sign in." } },
         { status: 401 },
       ),
     );
@@ -86,6 +86,28 @@ describe("createAnalysisTarget browser client", () => {
       new AnalysisTargetCreationError(
         "CREATION_UNAVAILABLE",
         "Target creation is temporarily unavailable. Please try again later.",
+      ),
+    );
+  });
+
+  it("maps a persistence failure to a safe creation error", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json(
+        {
+          success: false,
+          error: {
+            code: "ANALYSIS_TARGET_CREATION_FAILED",
+            message: "We couldn't create this target. Please try again.",
+          },
+        },
+        { status: 500 },
+      ),
+    );
+
+    await expect(createAnalysisTarget(input)).rejects.toEqual(
+      new AnalysisTargetCreationError(
+        "CREATION_FAILED",
+        "We couldn't create this target. Please try again.",
       ),
     );
   });
