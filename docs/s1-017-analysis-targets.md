@@ -67,3 +67,7 @@ After the change and a server restart, the HMR reload messages stopped. Two stan
 The previously recorded unsuccessful development acceptance attempts remain historical evidence. The production acceptance results remain valid; this follow-up fixes the development experience needed for the author's own manual check.
 
 Validation after the development fix: 347 unit tests, all 13 isolated auth/target browser tests, both foundation smoke tests, formatting, lint, explicit typecheck and production build passed. The local dummy-provider app was restarted for the author's manual verification; those automated checks do not complete the human sign-off.
+
+## Author manual verification
+
+Shawn subsequently confirmed User A's list and refresh, User B's isolated list, the unavailable-account error/retry path, and signed-out API rejection without target data. The author's local happy/failure verification is complete; see the [dated acceptance report](acceptance/s1-017-2026-11-06.md#author-confirmed-manual-acceptance--november-6-2026). Normal and independent security reviews remain pending. These confirmations used the local fixture, not hosted Supabase.
