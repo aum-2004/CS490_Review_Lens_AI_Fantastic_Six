@@ -1,12 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("application foundation", () => {
-  test("serves the ReviewLens starter page", async ({ page }) => {
+  test("routes home to authentication or the protected target list", async ({ page }) => {
     await page.goto("/");
 
-    await expect(page).toHaveTitle("ReviewLens AI");
-    await expect(page.getByRole("heading", { level: 1, name: "ReviewLens AI" })).toBeVisible();
-    await expect(page.getByText("Application foundation operational")).toBeVisible();
+    await expect(page).toHaveURL(/\/(?:login|analysis-targets)(?:\?|$)/);
   });
 
   test("serves a healthy API response", async ({ request }) => {

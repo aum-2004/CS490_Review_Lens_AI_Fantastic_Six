@@ -7,12 +7,10 @@ persisted review evidence. Each user's targets and reviews are private to that u
 
 NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 
-> **Status:** Sprint 1 foundation. The application starts and serves a starter page and a health
-> endpoint, with automated formatting, static analysis, unit tests, and headless end-to-end tests.
-> Supabase authentication is implemented in S1-009; live project verification is still required.
-> The AnalysisTarget database schema exists; the target screens and review ingestion are not built
-> yet — see
-> [Implemented vs. planned](#implemented-vs-planned).
+> **Status:** Sprint 1 authentication and target foundations. The home route redirects to login or
+> the protected My Targets list. S1-017 supplies owner-scoped listing; creation and workspace
+> screens remain with S1-015/018. Hosted deployment verification is separate from local tests.
+> See [Implemented vs. planned](#implemented-vs-planned).
 
 ---
 
@@ -74,9 +72,9 @@ npm ci
 `npm ci` installs the exact versions recorded in `package-lock.json`. Use `npm install <package>`
 only when you are intentionally adding a dependency (and commit the updated lockfile).
 
-### 3. (Optional for now) Create your local environment file
+### 3. Create your local environment file
 
-The starter app needs **no** environment variables. When later stories require Supabase settings:
+Authentication and target listing require Supabase public configuration. Create your local file:
 
 ```bash
 # macOS / Linux
@@ -96,8 +94,8 @@ Then fill in the values in `.env.local`. See [Environment variables and secrets]
 npm run dev
 ```
 
-Open <http://localhost:3000>. You should see the ReviewLens AI starter page with the status
-**"Application foundation operational."** The page reloads automatically when you edit files.
+Open <http://localhost:3000>. The home route redirects to login or your protected target list.
+The page reloads automatically when you edit files.
 
 You can also confirm the backend is running at <http://localhost:3000/api/health>, which returns:
 
@@ -357,10 +355,10 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005 through S1-009, S1-011, S1-014, plus S1-010 foundation)**
+**Implemented (including the S1-017 target list)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
-- Responsive starter page.
+- Protected, responsive My Targets list and shared navigation (S1-017). See [listing and integration guidance](docs/s1-017-analysis-targets.md).
 - `GET /api/health` Route Handler.
 - Frontend, backend, and data directory boundaries with documentation.
 - ESLint via `npm run lint` (scaffold default; S1-006 may extend it).
@@ -388,7 +386,7 @@ require a live Supabase connection.
 | --------------------------------------------------------------- | ------------------ |
 | Integrate guards with target pages/APIs as their stories arrive | S1-010 integration |
 | Cross-user authorization                                        | S1-012, S1-013     |
-| Analysis targets (create, validate, list, workspace)            | S1-015 – S1-018    |
+| Target creation and workspace screens                           | S1-015, S1-018     |
 | Review ingestion, normalization, persistence, result state      | S1-019 – S1-023    |
 | AI question answering, ingestion summaries                      | Sprint 2           |
 | Production deployment                                           | Sprint 3           |

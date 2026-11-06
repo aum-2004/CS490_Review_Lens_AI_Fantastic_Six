@@ -19,6 +19,7 @@ Current endpoints:
 | GET    | `/api/health`                                | Confirms the server is running. No auth, no database.                             | S1-005     |
 | GET    | `/api/auth/session`                          | Returns verified identity; rejects missing/invalid sessions.                      | S1-009/010 |
 | POST   | `/api/analysis-targets`                      | Creates a target owned by the verified session user.                              | S1-011     |
+| GET    | `/api/analysis-targets`                      | Lists only the verified session user's targets, across pages.                     | S1-017     |
 | GET    | `/api/analysis-targets/[targetId]/reviews`   | Lists the reviews of a target the user owns.                                      | S1-013     |
 | POST   | `/api/analysis-targets/[targetId]/reviews`   | Saves 1–100 reviews under a target the user owns.                                 | S1-013     |
 | POST   | `/api/analysis-targets/[targetId]/ingestion` | Starts ingestion for a target the user owns (minimal; S1-019 owns the full flow). | S1-013     |
