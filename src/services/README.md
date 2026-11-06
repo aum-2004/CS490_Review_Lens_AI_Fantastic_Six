@@ -26,8 +26,17 @@ and enforce ownership itself (S1-BR-007 through S1-BR-010).
 - **Review-ID evidence and uniqueness:** S1-020 maps a provider `review_id` when one is present, but
   real-world review-ID presence and uniqueness remain unverified. The checked-in flat-response
   example is explicitly synthetic and demonstrates adapter mapping only; it is not evidence about
-  live provider payloads. S1-022 must define and implement the deduplication/persistence behavior,
-  including the safe handling of missing or non-unique provider IDs, before real reviews are stored.
+  live provider payloads.
+
+- **S1-022 duplicate handling (Sprint 1 decision):** S1-022 persists reviews as-is, with no
+  deduplication, as allowed by [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22)
+  for Sprint 1:
+  - A missing provider ID is stored as `source_review_id = null`; the review is still saved.
+  - Repeated or non-unique provider IDs, within one batch or across batches, are stored as separate
+    rows.
+  - Ingesting the same target again stores its reviews again, creating duplicate rows.
+  - A non-unique `(analysis_target_id, source_review_id)` index lets a later sprint find and resolve
+    duplicates. Deduplication and re-ingestion handling are deferred beyond Sprint 1.
 
 - **Integration gate before persistence:** Provider review-storage permissions must be confirmed and
   recorded before persisting real reviews. The dedicated S1-022 issue is [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22),
