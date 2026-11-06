@@ -16,7 +16,7 @@ function fillValidForm() {
   fireEvent.change(screen.getByLabelText(/target name/i), {
     target: { value: "  NJIT, Newark  " },
   });
-  fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+  fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
     target: { value: `  ${validSourceUrl}  ` },
   });
 }
@@ -36,10 +36,12 @@ describe("TargetForm", () => {
     expect(screen.getByLabelText(/target name/i)).toHaveAttribute("aria-required", "true");
     expect(screen.getByLabelText("Review platform")).toHaveValue("Google Maps");
     expect(screen.getByLabelText("Review platform")).toHaveAttribute("readonly");
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveAttribute(
-      "aria-required",
-      "true",
-    );
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveAttribute("aria-required", "true");
+    expect(
+      screen.getByText(
+        "Use a name you will recognize. Leading and trailing whitespace is removed before validation. Maximum 120 characters.",
+      ),
+    ).toHaveAttribute("id", "target-name-help");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -67,7 +69,7 @@ describe("TargetForm", () => {
 
   it("does not validate untouched fields before the first failed submission", () => {
     render(<TargetForm createTarget={jest.fn()} />);
-    const sourceUrlInput = screen.getByLabelText(/google maps source url/i);
+    const sourceUrlInput = screen.getByLabelText("Google Maps URL *");
 
     fireEvent.change(sourceUrlInput, { target: { value: "not a URL" } });
     fireEvent.blur(sourceUrlInput);
@@ -81,7 +83,7 @@ describe("TargetForm", () => {
     submitForm();
 
     const nameInput = screen.getByLabelText(/target name/i);
-    const sourceUrlInput = screen.getByLabelText(/google maps source url/i);
+    const sourceUrlInput = screen.getByLabelText("Google Maps URL *");
 
     fireEvent.change(sourceUrlInput, { target: { value: "not a URL" } });
 
@@ -113,7 +115,7 @@ describe("TargetForm", () => {
     submitForm();
 
     expect(screen.getByText("Enter the Google Maps link for this target.")).toBeInTheDocument();
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveFocus();
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveFocus();
   });
 
   it.each([
@@ -140,7 +142,7 @@ describe("TargetForm", () => {
   ])("shows a field-level error for a %s source URL", (_case, sourceUrl, message) => {
     render(<TargetForm createTarget={jest.fn()} />);
     fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: sourceUrl },
     });
 
@@ -152,10 +154,7 @@ describe("TargetForm", () => {
     expect(
       within(inlineError as HTMLElement).getByRole("img", { name: "Error" }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveAttribute(
-      "aria-invalid",
-      "true",
-    );
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveAttribute("aria-invalid", "true");
   });
 
   it("enforces the 120-character target-name boundary", () => {
@@ -163,7 +162,7 @@ describe("TargetForm", () => {
     fireEvent.change(screen.getByLabelText(/target name/i), {
       target: { value: "a".repeat(121) },
     });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: validSourceUrl },
     });
 
@@ -173,13 +172,39 @@ describe("TargetForm", () => {
     expect(screen.getByText("121/120")).toBeInTheDocument();
   });
 
+  it("counts trimmed name characters without announcing every keystroke", () => {
+    render(<TargetForm createTarget={jest.fn()} />);
+    const nameInput = screen.getByLabelText(/target name/i);
+    const counterStatus = document.querySelector("#target-name-count-status");
+
+    expect(counterStatus).not.toBeNull();
+    expect(screen.getByText("0/120")).toHaveAttribute("aria-hidden", "true");
+    expect(counterStatus).toBeEmptyDOMElement();
+
+    fireEvent.change(nameInput, { target: { value: `  ${"a".repeat(109)}  ` } });
+    expect(screen.getByText("109/120")).toHaveAttribute("aria-hidden", "true");
+    expect(counterStatus).toBeEmptyDOMElement();
+
+    fireEvent.change(nameInput, { target: { value: `  ${"a".repeat(110)}  ` } });
+    expect(counterStatus).toHaveTextContent("10 or fewer characters remaining.");
+
+    fireEvent.change(nameInput, { target: { value: `  ${"a".repeat(111)}  ` } });
+    expect(counterStatus).toHaveTextContent("10 or fewer characters remaining.");
+
+    fireEvent.change(nameInput, { target: { value: "a".repeat(120) } });
+    expect(counterStatus).toHaveTextContent("Target name character limit reached.");
+
+    fireEvent.change(nameInput, { target: { value: "a".repeat(121) } });
+    expect(counterStatus).toHaveTextContent("Target name exceeds the 120-character limit.");
+  });
+
   it("rejects target names containing unsafe control characters", () => {
     const createTarget = jest.fn();
     render(<TargetForm createTarget={createTarget} />);
     fireEvent.change(screen.getByLabelText(/target name/i), {
       target: { value: "NJ\u0007IT" },
     });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: validSourceUrl },
     });
 
@@ -196,7 +221,7 @@ describe("TargetForm", () => {
     fireEvent.change(screen.getByLabelText(/target name/i), {
       target: { value: "\u200b\u200c\u200d\u2060\ufeff" },
     });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: validSourceUrl },
     });
 
@@ -219,7 +244,7 @@ describe("TargetForm", () => {
     });
     render(<TargetForm createTarget={createTarget} />);
     fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: name } });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: validSourceUrl },
     });
 
@@ -240,7 +265,7 @@ describe("TargetForm", () => {
     const overlongSourceUrl = `${prefix}${"a".repeat(2_049 - prefix.length)}`;
     render(<TargetForm createTarget={createTarget} />);
     fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: overlongSourceUrl },
     });
 
@@ -249,7 +274,7 @@ describe("TargetForm", () => {
     expect(
       screen.getByText("Google Maps links can be up to 2,048 characters."),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveFocus();
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveFocus();
     expect(createTarget).not.toHaveBeenCalled();
   });
 
@@ -259,7 +284,7 @@ describe("TargetForm", () => {
     const sourceUrl = `${prefix}${"é".repeat(2_048 - prefix.length)}`;
     render(<TargetForm createTarget={createTarget} />);
     fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: sourceUrl },
     });
 
@@ -270,7 +295,7 @@ describe("TargetForm", () => {
     expect(
       screen.getByText("Google Maps links can be up to 2,048 characters."),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveFocus();
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveFocus();
     expect(createTarget).not.toHaveBeenCalled();
   });
 
@@ -283,7 +308,7 @@ describe("TargetForm", () => {
     });
     render(<TargetForm createTarget={createTarget} />);
     fireEvent.change(screen.getByLabelText(/target name/i), { target: { value: "NJIT" } });
-    fireEvent.change(screen.getByLabelText(/google maps source url/i), {
+    fireEvent.change(screen.getByLabelText("Google Maps URL *"), {
       target: { value: "https:www.google.com/maps/place/NJIT/@40.742,-74.179,17z" },
     });
 
@@ -348,6 +373,10 @@ describe("TargetForm", () => {
     expect(createTarget).toHaveBeenCalledTimes(1);
     const loadingButton = screen.getByRole("button", { name: /creating target/i });
     expect(loadingButton).toBeDisabled();
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    expect(cancelButton).toBeDisabled();
+    fireEvent.click(cancelButton);
+    expect(mockPush).not.toHaveBeenCalled();
     const spinner = loadingButton.querySelector('span[aria-hidden="true"]');
     expect(spinner).toHaveClass("motion-safe:animate-spin");
     expect(spinner).not.toHaveClass("animate-spin");
@@ -384,8 +413,14 @@ describe("TargetForm", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/target name/i)).toHaveValue("  NJIT, Newark  ");
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveValue(validSourceUrl);
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveValue(validSourceUrl);
     expect(screen.getByRole("button", { name: "Create target" })).toBeEnabled();
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    expect(cancelButton).toBeEnabled();
+
+    fireEvent.click(cancelButton);
+
+    expect(mockPush).toHaveBeenCalledWith("/");
   });
 
   it("preserves input when authentication is temporarily unavailable", async () => {
@@ -406,7 +441,7 @@ describe("TargetForm", () => {
       await screen.findByText("Authentication is temporarily unavailable. Please try again later."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/target name/i)).toHaveValue("  NJIT, Newark  ");
-    expect(screen.getByLabelText(/google maps source url/i)).toHaveValue(validSourceUrl);
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveValue(validSourceUrl);
     expect(mockPush).not.toHaveBeenCalled();
   });
 
@@ -432,7 +467,7 @@ describe("TargetForm", () => {
     expect(
       await screen.findByText("The server no longer supports this source URL."),
     ).toBeInTheDocument();
-    const sourceUrlInput = screen.getByLabelText(/google maps source url/i);
+    const sourceUrlInput = screen.getByLabelText("Google Maps URL *");
     expect(sourceUrlInput).toHaveFocus();
 
     fireEvent.blur(sourceUrlInput);

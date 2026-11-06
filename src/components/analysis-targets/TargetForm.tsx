@@ -102,6 +102,15 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
   const [hasValidationAttempted, setHasValidationAttempted] = useState(false);
 
   const fieldErrorCount = Object.values(fieldErrors).filter(Boolean).length;
+  const targetNameLength = Array.from(name.trim()).length;
+  const targetNameCountAnnouncement =
+    targetNameLength > 120
+      ? "Target name exceeds the 120-character limit."
+      : targetNameLength === 120
+        ? "Target name character limit reached."
+        : targetNameLength >= 110
+          ? "10 or fewer characters remaining."
+          : "";
 
   const focusFirstInvalidField = (errors: FieldErrors) => {
     if (errors.name) {
@@ -232,10 +241,19 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         />
         <div className="flex items-start justify-between gap-4 text-sm">
           <p id="target-name-help" className="text-muted-foreground">
-            Use a name you will recognize. Maximum 120 characters.
+            Use a name you will recognize. Leading and trailing whitespace is removed before
+            validation. Maximum 120 characters.
           </p>
-          <span className="shrink-0 text-muted-foreground" aria-live="polite">
-            {Array.from(name).length}/120
+          <span className="shrink-0 text-muted-foreground" aria-hidden="true">
+            {targetNameLength}/120
+          </span>
+          <span
+            id="target-name-count-status"
+            className="sr-only"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {targetNameCountAnnouncement}
           </span>
         </div>
         {fieldErrors.name ? <FieldError id="target-name-error" message={fieldErrors.name} /> : null}
@@ -258,7 +276,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
 
       <div className="space-y-2">
         <Label htmlFor="source-url">
-          Google Maps source URL <span aria-hidden="true">*</span>
+          Google Maps URL <span aria-hidden="true">*</span>
         </Label>
         <Input
           ref={sourceUrlRef}
@@ -284,7 +302,12 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
       </div>
 
       <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
-        <Button type="button" variant="outline" onClick={() => router.push("/")}>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isSubmitting}
+          onClick={() => router.push("/")}
+        >
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>
