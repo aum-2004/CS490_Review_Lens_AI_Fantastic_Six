@@ -201,8 +201,9 @@ describe("Outscraper ingestion service", () => {
 
     expect(result.status).toBe("completed");
     if (result.status === "completed") {
-      expect(result.reviews[0].rating).toBe("4.5");
-      expect(result.reviews).toHaveLength(3);
+      expect(result.reviews).toEqual([
+        expect.objectContaining({ text: "Valid rating", rating: "4.5" }),
+      ]);
     }
   });
 });

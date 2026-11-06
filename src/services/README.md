@@ -14,3 +14,11 @@ Planned folders (created by the stories that need them):
 
 Every service that touches user-owned data must take the authenticated user's identity as input
 and enforce ownership itself (S1-BR-007 through S1-BR-010).
+
+## Outstanding ingestion integration requirement
+
+- **Provider review-storage permission:** Before persisting Outscraper review content, the team must
+  verify that the provider's terms and applicable source terms permit storing and using the returned
+  review text. This permission has not been confirmed by evidence in this repository. Track the
+  verification and team acceptance as an integration requirement; do not treat S1-020 retrieval as
+  approval to persist provider content.

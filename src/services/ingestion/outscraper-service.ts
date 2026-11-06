@@ -21,7 +21,7 @@ export async function getExtractedReviews(
     };
   }
 
-  const reviews = mapOutscraperReviews(
+  const mappedReviews = mapOutscraperReviews(
     result.reviews.map((review) => {
       if (review.place_id !== undefined && review.place_id !== expectedPlaceId) {
         throw new OutscraperError(
@@ -37,7 +37,7 @@ export async function getExtractedReviews(
     }),
   );
 
-  const usableReviews = reviews.filter((review) => {
+  const usableReviews = mappedReviews.filter((review) => {
     const hasText = typeof review.text === "string" && review.text.trim().length > 0;
 
     const rating =
@@ -63,6 +63,6 @@ export async function getExtractedReviews(
     status: "completed" as const,
     businessName: result.businessName,
     placeId: result.placeId,
-    reviews,
+    reviews: usableReviews,
   };
 }
