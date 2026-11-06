@@ -3,7 +3,7 @@
 This folder is the single place where the application connects to Supabase (PostgreSQL and Auth).
 No other code should construct a Supabase client directly.
 
-Status: **Auth implemented in S1-009; application database schema remains planned.**
+Status: **Auth implemented in S1-009; the AnalysisTarget schema was added in S1-014.**
 The public starter page and health endpoint need no credentials. Authentication requires the
 public URL and publishable key documented in `.env.example`.
 
@@ -57,7 +57,7 @@ Related boundaries:
 
 - Connection settings: `.env.example` lists the variable names; real values go in `.env.local`,
   which Git ignores. S1-008 owns the final variable list and startup validation.
-- Schema and migrations: added by S1-014 under `supabase/migrations/` at the repository root
-  (the Supabase CLI default).
+- Schema and migrations: `supabase/migrations/` at the repository root (the Supabase CLI
+  default). S1-014 added `analysis_targets`; `npm run test:db` checks migrations and RLS.
 - The Supabase service-role key bypasses Row Level Security. It is server-only and must not be
   used for normal user requests (see the S1-003 data and security guardrails).

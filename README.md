@@ -10,7 +10,8 @@ NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 > **Status:** Sprint 1 foundation. The application starts and serves a starter page and a health
 > endpoint, with automated formatting, static analysis, unit tests, and headless end-to-end tests.
 > Supabase authentication is implemented in S1-009; live project verification is still required.
-> Analysis targets and review ingestion are not built yet — see
+> The AnalysisTarget database schema exists; the target screens and review ingestion are not built
+> yet — see
 > [Implemented vs. planned](#implemented-vs-planned).
 
 ---
@@ -22,7 +23,7 @@ NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 | Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                                  |
 | Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                                  |
 | Backend         | Next.js Route Handlers + server-side TypeScript services | In place                                  |
-| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Auth implemented; schema planned (S1-014) |
+| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Auth implemented; schema started (S1-014) |
 | Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                                  |
 | Tests           | Jest, React Testing Library, Playwright                  | In place                                  |
 | CI              | GitHub Actions                                           | In place (S1-007)                         |
@@ -110,20 +111,21 @@ Stop the server with `Ctrl+C`.
 
 ## Available scripts
 
-| Command                 | What it does                                                              |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `npm run dev`           | Starts the development server at <http://localhost:3000>                  |
-| `npm run build`         | Creates an optimized production build in `.next/`                         |
-| `npm run start`         | Serves the production build (run `npm run build` first)                   |
-| `npm run lint`          | Runs ESLint across the project                                            |
-| `npm run format`        | Formats supported project files with Prettier                             |
-| `npm run format:check`  | Verifies formatting without changing files                                |
-| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting      |
-| `npm run test`          | Runs Jest unit and component tests; no browser is required                |
-| `npm run test:watch`    | Re-runs relevant Jest tests while files change                            |
-| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`          |
-| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium             |
-| `npm run test:e2e:auth` | Runs authentication browser tests against an isolated local test provider |
+| Command                 | What it does                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `npm run dev`           | Starts the development server at <http://localhost:3000>                                     |
+| `npm run build`         | Creates an optimized production build in `.next/`                                            |
+| `npm run start`         | Serves the production build (run `npm run build` first)                                      |
+| `npm run lint`          | Runs ESLint across the project                                                               |
+| `npm run format`        | Formats supported project files with Prettier                                                |
+| `npm run format:check`  | Verifies formatting without changing files                                                   |
+| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting                         |
+| `npm run test`          | Runs Jest unit and component tests; no browser is required                                   |
+| `npm run test:watch`    | Re-runs relevant Jest tests while files change                                               |
+| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
+| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium                                |
+| `npm run test:e2e:auth` | Runs authentication browser tests against an isolated local test provider                    |
+| `npm run test:db`       | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
 
 ### Run automated tests
 
@@ -154,6 +156,18 @@ The smoke command excludes those tests so it does not require the provider. Neit
 accounts nor live Supabase credentials are needed. Both suites can use an existing supported
 browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they use bundled Chromium.
 
+### Run database tests
+
+`npm run test:db` checks the real schema and Row Level Security policies, not a mock. It creates a
+throwaway PostgreSQL database, applies a small test-only stand-in for Supabase Auth
+(`tests/db/supabase-auth-shim.sql`), applies every migration in `supabase/migrations/`, runs each
+`tests/db/*.test.sql` file, and drops the database. The tests use two
+users, A and B, to prove cross-user access and direct source changes are denied at the database.
+
+It needs PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
+`brew services start postgresql@16`). Connection settings come from the standard `PG*` variables.
+CI runs them in the "Database tests" job against a PostgreSQL 16 container.
+
 ### Run a production build locally
 
 ```bash
@@ -181,8 +195,11 @@ Then open <http://localhost:3000>.
 │   ├── services/             # BACKEND server-side business logic and data access
 │   └── lib/
 │       └── supabase/         # DATA boundary: the only place Supabase clients are created
+├── supabase/
+│   └── migrations/           # DATA schema and Row Level Security policies (SQL)
 ├── tests/
 │   ├── unit/                 # Jest and React Testing Library tests
+│   ├── db/                   # SQL tests for migrations and RLS (`npm run test:db`)
 │   └── e2e/                  # Playwright browser tests
 ├── docs/                     # Team engineering, UX, security, and AI-development documents
 ├── .github/workflows/        # Pull-request CI and the sprint-issue importer
@@ -215,9 +232,9 @@ Then open <http://localhost:3000>.
 **Data / persistent storage**
 
 - `src/lib/supabase/` — Supabase client configuration and Auth cookie/session integration.
-  Application database schema remains planned.
 - `.env.example` / `.env.local` — Connection settings. Values are never hard-coded in source.
-- `supabase/migrations/` — Database schema (to be added by S1-014).
+- `supabase/migrations/` — Database schema and RLS policies, applied in filename order. S1-014
+  added `analysis_targets`.
 
 **Shared code**
 
@@ -340,7 +357,7 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005 through S1-009, plus S1-010 foundation)**
+**Implemented (S1-005 through S1-009, S1-014, plus S1-010 foundation)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
 - Responsive starter page.
@@ -359,6 +376,8 @@ require a live Supabase connection.
 - Protected target-page navigation, safe post-login return, and independent backend guard helpers.
   See [S1-010 integration guidance](docs/s1-010-route-protection.md); target-route adoption and live
   verification remain pending. No target feature or database ownership is supplied by these guards.
+- `analysis_targets` table with owner-only Row Level Security, restricted client writes, a
+  server-side repository, and database tests in CI (S1-014).
 
 **Planned (not implemented)**
 
@@ -366,7 +385,7 @@ require a live Supabase connection.
 | --------------------------------------------------------------- | ------------------ |
 | Integrate guards with target pages/APIs as their stories arrive | S1-010 integration |
 | Ownership and cross-user authorization                          | S1-011 – S1-013    |
-| Analysis targets (model, create, validate, list, workspace)     | S1-014 – S1-018    |
+| Analysis targets (create, validate, list, workspace)            | S1-015 – S1-018    |
 | Review ingestion, normalization, persistence, result state      | S1-019 – S1-023    |
 | AI question answering, ingestion summaries                      | Sprint 2           |
 | Production deployment                                           | Sprint 3           |
@@ -378,6 +397,7 @@ require a live Supabase connection.
 - Pull-request CI now runs the S1-006 commands. Confirm the required-check and branch-protection
   settings in GitHub; workflow configuration alone does not establish those settings.
 - Browser CI may additionally install Chromium and run `npm run test:e2e`.
+- Apply new files in `supabase/migrations/` to the team Supabase project after their PR merges.
 
 Work branches off `main` using `feature/<story-id>-<short-name>` and merges through a reviewed pull
 request.

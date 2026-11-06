@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --runInBand",
     "test:e2e": "playwright test",
-    "test:e2e:auth": "playwright test --config=playwright.auth.config.ts"
+    "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
+    "test:db": "bash tests/db/run.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "7.0.2",
