@@ -42,6 +42,19 @@ Ownership is enforced at two independent layers:
   with a fake database client and asserts the exact row sent to Supabase.
 - `npm run test:db` proves at PostgreSQL that RLS rejects a row whose owner isn't the current user.
 
-These don't exercise the handler against a live Supabase project. That check needs the
-`analysis_targets` migration applied to the team project and two signed-in test accounts: create a
-target as each user with a spoofed `ownerId`, then confirm each row's `owner_id` is the signed-in user.
+### Hosted verification
+
+The endpoint was verified against the shared Supabase project at commit `76fccb2`. The sanitized
+results and the scripts are in the comments on pull request #40.
+
+- The final S1-014 migration from `main` was applied through the SQL editor, because the table did
+  not exist yet. All 17 read-only schema checks passed, covering columns, column permissions, RLS
+  policies, and constraints.
+- All 24 live checks passed using two test accounts: spoofed owner IDs, unauthenticated requests,
+  invalid input, cross-user read, update, delete, and insert, and direct column writes.
+
+A database failure was not forced on the shared project. The generic 500 for that case is covered by
+the route tests and a local run against PostgreSQL. The S1-015 form was not part of this verification.
+
+If a session expires between `requireApiUser()` and the insert, RLS rejects the write and the user
+gets a 500 rather than a 401.
