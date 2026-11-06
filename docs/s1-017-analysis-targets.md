@@ -51,3 +51,7 @@ Formatting, lint, explicit typecheck, production build, all **347 unit tests in 
 The browser logout-failure scenario waits for the asynchronous action to finish. The Supabase SDK clears local cookies on the tested remote 500; Next can immediately redirect the guarded page, so the menu's error UI may unmount. The test verifies subsequent API/page denial and successful reauthentication. Component tests separately verify generic error/retry feedback when the menu remains mounted.
 
 Review checklist: inspect `list-analysis-targets.ts`, GET and the page's guard order; verify owner filtering on every page, DTO minimization, failure/caching behavior and the two-user negative assertions. Normal and independent security reviews must be recorded separately. Hosted two-user acceptance remains a deployment/validation step; do not interpret fixture tests as hosted database execution.
+
+## Agent-run acceptance walkthrough
+
+The [November 6 acceptance report](acceptance/s1-017-2026-11-06.md) records a production-mode local walkthrough, screenshots inspected by Codex, and all ten passing observations. It covers the issue's fields and User A/User B isolation, safe failure states, responsive navigation and signed-out Back behavior. It does not replace the author's human verification or the separate normal/security reviews; it does not claim hosted Supabase verification.
