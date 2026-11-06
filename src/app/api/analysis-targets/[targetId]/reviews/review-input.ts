@@ -7,8 +7,10 @@ import { MAX_METADATA_BYTES } from "@/services/reviews/review-service";
 export const MAX_REVIEWS_PER_REQUEST = 100;
 
 /**
- * Upper bound on the request body, read as a stream and enforced before JSON parsing. Fits 100
- * reviews at the per-field limits below in ordinary text; larger batches must be split.
+ * Upper bound on the request body, read as a stream and enforced before JSON parsing. 2 MiB
+ * comfortably covers typical batches. Worst-case field sizes (for example 100 reviews with full
+ * metadata, or emoji-heavy text) can exceed it, in which case the request is rejected with
+ * 400 INVALID_REVIEW_INPUT and the client must send a smaller batch.
  */
 export const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
 

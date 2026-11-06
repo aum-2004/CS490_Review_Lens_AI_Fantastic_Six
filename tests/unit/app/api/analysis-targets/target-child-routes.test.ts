@@ -415,9 +415,11 @@ describe("POST /api/analysis-targets/[targetId]/reviews input size limits", () =
     signInAs(USER_A);
     const db = useDatabase();
     const before = structuredClone(db.tables.reviews);
-    // A single review far larger than the body limit, like the 25 MB review from PR review.
+    // Every review is valid and within the field limits; only the ignored `junk` field makes the
+    // body too large. So the stream limit is the only check that can reject this request.
     const body = JSON.stringify({
-      reviews: [{ text: "a".repeat(MAX_REQUEST_BODY_BYTES + 1), rating: 5 }],
+      reviews: [validReview],
+      junk: "x".repeat(MAX_REQUEST_BODY_BYTES + 1),
     });
 
     const response = await postReviewsRaw(TARGET_A, body);
