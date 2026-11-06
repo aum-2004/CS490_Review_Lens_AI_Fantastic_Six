@@ -53,6 +53,12 @@ results and the scripts are in the comments on pull request #40.
 - All 24 live checks passed using two test accounts: spoofed owner IDs, unauthenticated requests,
   invalid input, cross-user read, update, delete, and insert, and direct column writes.
 
+Because the SQL editor doesn't record migrations, the history was then reconciled with
+`supabase migration repair 20261103120000 --status applied`, which changes only the history table.
+`supabase migration list` now shows the version as both local and remote, and
+`supabase db push --dry-run` reports that the remote database is up to date, so a future push won't
+reapply it. Use `db push` for later migrations so the history stays accurate.
+
 A database failure was not forced on the shared project. The generic 500 for that case is covered by
 the route tests and a local run against PostgreSQL. The S1-015 form was not part of this verification.
 
