@@ -1,4 +1,4 @@
-﻿import { Suspense } from "react";
+import { Suspense } from "react";
 import { HomeDestination } from "@/components/shared/HomeDestination";
 
 export default function Home() {

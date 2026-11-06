@@ -12,13 +12,13 @@ async function login(page: Page, email: string) {
   await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
 }
 
-test("lists every owned target through the real SDK and preserves the list after navigation and refresh", async ({
+test("lists owned targets through the bounded real SDK query and preserves the list after navigation and refresh", async ({
   page,
   context,
 }) => {
   await login(page, "fixture@example.com");
   const targets = page.getByRole("list", { name: "Your analysis targets" });
-  // The fixture caps database responses at TWO rows, below this user's three targets.
+  // The fixture requires one owner-filtered query with limit=200.
   await expect(targets.getByRole("heading", { level: 2 })).toHaveText([
     "A bakery",
     "A bookstore",
@@ -69,9 +69,9 @@ test("isolates User B from User A even with forged owner arguments", async ({ pa
     { headers: { "x-user-id": "00000000-0000-4000-8000-000000000009" } },
   );
   expect(response.status()).toBe(200);
-  expect((await response.json()).data.map((target: { name: string }) => target.name)).toEqual([
-    "B restaurant",
-  ]);
+  const body = await response.json();
+  expect(JSON.stringify(body)).not.toContain("aaaaaaaa-");
+  expect(body.data.map((target: { name: string }) => target.name)).toEqual(["B restaurant"]);
 });
 
 test("shows a real empty state with the creation handoff link", async ({ page, context }) => {

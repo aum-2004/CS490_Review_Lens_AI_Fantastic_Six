@@ -132,8 +132,11 @@ createServer(async (request, response) => {
       .filter((row) => row.owner_id === identity.user.id)
       .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
     const offset = Number(url.searchParams.get("offset") ?? 0);
-    // Deliberately below the app page size to verify it does not stop too early.
-    const limit = Math.min(Number(url.searchParams.get("limit") ?? 2), 2);
+    // Model the bounded single-query list contract through the real SDK.
+    if (url.searchParams.get("limit") !== "200" || offset !== 0) {
+      return send(400, { message: "Fixture requires bounded list query" });
+    }
+    const limit = 200;
     return send(200, rows.slice(offset, offset + limit));
   }
   if (url.pathname === "/auth/v1/token") {

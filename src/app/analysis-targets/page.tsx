@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ProtectedAnalysisTargetsPage } from "@/components/analysis-targets/ProtectedAnalysisTargetsPage";
 import TargetsLoading from "./loading";

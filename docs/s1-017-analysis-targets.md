@@ -4,7 +4,7 @@ An authenticated user opens `/analysis-targets` to see their persisted AnalysisT
 
 ## Ownership and response contract
 
-Both the page and `GET /api/analysis-targets` independently verify identity with the S1-010 guards before database work. They pass the verified session user's ID and a session-scoped Supabase client to `listAnalysisTargets`. The query includes `owner_id = verifiedUser.id` on every page. No client-side ownership filtering or service-role client is used. Existing S1-014 RLS remains the database boundary; no migration or grant changes are introduced.
+Both the page and `GET /api/analysis-targets` independently verify identity with the S1-010 guards before database work. They pass the verified session user's ID and a session-scoped Supabase client to `listAnalysisTargets`. The query includes `owner_id = verifiedUser.id` on the single bounded query. No client-side ownership filtering or service-role client is used. Existing S1-014 RLS remains the database boundary; no migration or grant changes are introduced.
 
 `GET /api/analysis-targets` ignores client-supplied owner/user query parameters and headers. Its successful response is:
 
@@ -25,7 +25,7 @@ Both the page and `GET /api/analysis-targets` independently verify identity with
 
 An empty result returns `data: []`. Missing identity returns 401 `AUTH_REQUIRED`; verification outages return the shared guard's 503. Database failures return 500 `ANALYSIS_TARGET_LIST_FAILED` with generic feedback and no target data. Responses are private/no-store. Logs contain only an operation/category, never database errors, target input, identity or credentials. The existing S1-011 POST contract is unchanged.
 
-The service retrieves pages until an empty page, rather than stopping at a short page: a Supabase project can cap results below the requested 1,000 rows. A failed page rejects the entire read. Stable offset pagination does not promise a transactional snapshot during concurrent inserts/deletes; refreshing reloads current persisted data.
+The service makes one owner-filtered query with `.limit(200)`, ordered newest first with ID as the tie-breaker. It returns at most 200 targets and never loops to fill a short response. A lower Supabase project Max rows setting can return fewer; configure that setting to at least 200 to expose the full application limit. The UI shows ?Showing your first 200 targets, newest first.? when 200 are returned. Older targets beyond this display bound are not reachable in this version; cursor navigation is a future improvement. Query failures return no target data.
 
 ## UI and integration handoff
 
@@ -37,7 +37,7 @@ The service retrieves pages until an empty page, rather than stopping at a short
 
 ## Validation and limits
 
-- Unit tests cover per-user queries and API results, minimal DTOs, deterministic ordering, 1,001 targets, a lower project cap, later-page failure, missing identity, provider outages, escaped target labels, page guarding and safe error rendering.
+- Unit tests cover per-user queries and API results, minimal DTOs, deterministic ordering, a single-query 200-target bound, a lower project cap without follow-up reads, query failure, missing identity, provider outages, escaped target labels, page guarding and safe error rendering.
 - Isolated Playwright tests run the real Next app and Supabase SDK against a local dummy auth/database provider. They cover User A/User B isolation, forged owner arguments, refresh/home navigation, empty/error states, logout failure/retry, keyboard menu behavior, mobile overflow and signed-out denial. Existing authentication/protection browser checks run alongside them.
 - The fixture asserts owner-scoped database queries and simulates ownership filtering. It is not evidence that the shared hosted project's migrations or RLS configuration have been applied. No shared Supabase settings, data or credentials were inspected or modified.
 - Before merge: author/human validation, normal review, the additional independent security-focused review required by S1-004 §7, and latest-head GitHub CI must be complete. Hosted acceptance should verify two real users' persisted targets against the team's project; creation and workspace behavior belong to S1-015/018.
@@ -50,7 +50,7 @@ Formatting, lint, explicit typecheck, production build, all **347 unit tests in 
 
 The browser logout-failure scenario waits for the asynchronous action to finish. The Supabase SDK clears local cookies on the tested remote 500; Next can immediately redirect the guarded page, so the menu's error UI may unmount. The test verifies subsequent API/page denial and successful reauthentication. Component tests separately verify generic error/retry feedback when the menu remains mounted.
 
-Review checklist: inspect `list-analysis-targets.ts`, GET and the page's guard order; verify owner filtering on every page, DTO minimization, failure/caching behavior and the two-user negative assertions. Normal and independent security reviews must be recorded separately. Hosted two-user acceptance remains a deployment/validation step; do not interpret fixture tests as hosted database execution.
+Review checklist: inspect `list-analysis-targets.ts`, GET and the page's guard order; verify owner filtering and the single-query limit, DTO minimization, failure/caching behavior and the two-user negative assertions. Normal and independent security reviews must be recorded separately. Hosted two-user acceptance remains a deployment/validation step; do not interpret fixture tests as hosted database execution.
 
 ## Agent-run acceptance walkthrough
 
@@ -77,3 +77,11 @@ Shawn subsequently confirmed User A's list and refresh, User B's isolated list, 
 The reviewer identified that required §8.1 components were implemented inline. `Navigation`, `PageHeader`, `EmptyState`, `ErrorState` and `ErrorAlert` are now shared PascalCase components reused by 017's shell, page, empty state, load-error panel, route error boundary and account-menu feedback. No database/query/authentication contract changed. Existing S1-015 primitives were inspected to avoid importing or copying an unmerged implementation.
 
 The status-badge requirement remains open. [The UI compliance follow-up](s1-017-ui-compliance.md) contains a concrete **proposed, unapproved** temporary deferral until an owner-scoped S1-023 ingestion-state contract exists. The earlier omission must not be interpreted as compliance or as an approved exception. The normative UI/UX standards are unchanged, and no target is labeled “Not ingested” without server evidence.
+
+## Security-review remediation ? bounded list
+
+The independent review at `b377267` requested bounding list work. The former offset loop has been replaced by one query with a shared 200-row maximum. Both page and API use this service. Regression checks require the limit and one query, preserve owner filtering and ordering, reject database failures, and check the limit notice. The local SDK fixture now requires `limit=200` and no offset. Its old two-row cap was removed because retrieving every row across arbitrary project caps is no longer this API?s contract. Cross-user checks now also reject the other user?s target IDs. The platform badge reads the target platform through a shared label mapping; UTF-8 BOMs identified in this follow-up were removed. `createdAt` is retained to avoid an unrelated response-contract change.
+
+Validation after this remediation: 351 unit tests in 28 suites, all 13 isolated Edge auth/target browser tests, lint, explicit typecheck, production build, formatting and diff checks passed. No database tests were run locally; CI is checked after publication. Foundation smoke tests were not repeated for this update.
+
+This fixes the requested implementation issue; independent security re-review on the new commit remains required. The separate ingestion-status badge/deferral decision is still unresolved. Earlier acceptance/test counts above are historical checkpoints, not claims that this update was manually reverified by the author.

@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AccountMenu } from "@/components/shared/AccountMenu";
 import { signOut } from "@/app/login/actions";

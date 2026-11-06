@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AnalysisTargetPersistenceError, type AnalysisTarget } from "./analysis-target-repository";
+import { MAX_TARGETS } from "./list-limits";
 
 export type AnalysisTargetListItem = Pick<
   AnalysisTarget,
@@ -16,8 +17,6 @@ type TargetListRow = {
   created_at: string;
 };
 
-const PAGE_SIZE = 1000;
-
 /**
  * ownerId must be the server-verified session user. Pass a session-scoped client,
  * never a service-role client. Ownership is constrained in EVERY database query.
@@ -27,25 +26,19 @@ export async function listAnalysisTargets(
   ownerId: string,
 ): Promise<AnalysisTargetListItem[]> {
   if (!ownerId) throw new AnalysisTargetPersistenceError("list");
-  const rows: TargetListRow[] = [];
+  const { data, error } = await client
+    .from("analysis_targets")
+    .select("id, name, platform, source_url, created_at")
+    .eq("owner_id", ownerId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(MAX_TARGETS);
 
-  while (true) {
-    const { data, error } = await client
-      .from("analysis_targets")
-      .select("id, name, platform, source_url, created_at")
-      .eq("owner_id", ownerId)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(rows.length, rows.length + PAGE_SIZE - 1);
-
-    if (error || !data) {
-      throw new AnalysisTargetPersistenceError("list", { cause: error });
-    }
-    if (data.length === 0) break;
-    rows.push(...(data as TargetListRow[]));
+  if (error || !data) {
+    throw new AnalysisTargetPersistenceError("list", { cause: error });
   }
 
-  return rows.map((row) => ({
+  return (data as TargetListRow[]).map((row) => ({
     id: row.id,
     name: row.name,
     platform: row.platform,

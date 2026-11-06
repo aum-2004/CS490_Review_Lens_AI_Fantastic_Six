@@ -24,22 +24,19 @@ function database(fail = false) {
         return builder;
       },
       order: () => builder,
-      range: async (start: number) =>
+      limit: async () =>
         fail
           ? { data: null, error: { message: "private SQL and credentials" } }
           : {
-              data:
-                start === 0
-                  ? [
-                      {
-                        id: owner === A.id ? "a" : "b",
-                        name: owner === A.id ? "A target" : "B target",
-                        platform: "google_maps",
-                        source_url: "https://www.google.com/maps/place/Fixture",
-                        created_at: "2026-11-01",
-                      },
-                    ]
-                  : [],
+              data: [
+                {
+                  id: owner === A.id ? "a" : "b",
+                  name: owner === A.id ? "A target" : "B target",
+                  platform: "google_maps",
+                  source_url: "https://www.google.com/maps/place/Fixture",
+                  created_at: "2026-11-01",
+                },
+              ],
               error: null,
             },
     };
@@ -66,8 +63,11 @@ it("uses each call's server-verified identity and never returns the other owner'
       user === A ? "A target" : "B target",
     ]);
     expect(body.data[0]).not.toHaveProperty("ownerId");
+    expect(body.data.map((target: { id: string }) => target.id)).not.toContain(
+      user === A ? "b" : "a",
+    );
   }
-  expect(db.owners).toEqual([A.id, A.id, B.id, B.id]);
+  expect(db.owners).toEqual([A.id, B.id]);
   expect(createSupabaseServerClient).toHaveBeenCalledWith(true);
 });
 

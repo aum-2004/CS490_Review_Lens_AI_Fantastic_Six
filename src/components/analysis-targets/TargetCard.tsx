@@ -3,13 +3,17 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import type { AnalysisTargetListItem } from "@/services/analysis-targets/list-analysis-targets";
 
+const PLATFORM_LABELS: Record<AnalysisTargetListItem["platform"], string> = {
+  google_maps: "Google Maps",
+};
+
 export function TargetCard({ target }: { target: AnalysisTargetListItem }) {
   return (
     <Card className="flex min-w-0 flex-col gap-4">
       <div>
         <h2 className="break-words text-xl font-semibold">{target.name}</h2>
         <span className="mt-2 inline-flex rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-          Google Maps
+          {PLATFORM_LABELS[target.platform]}
         </span>
       </div>
       <div className="min-w-0">

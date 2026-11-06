@@ -24,7 +24,7 @@ const rows = [
   },
 ];
 
-function database(source = rows, cap = 1000, failAt?: number) {
+function database(source = rows, cap = 1000, fail = false) {
   const calls: unknown[][] = [];
   const client = {
     from(table: string) {
@@ -43,14 +43,14 @@ function database(source = rows, cap = 1000, failAt?: number) {
           calls.push(["order", column, options]);
           return builder;
         },
-        async range(from: number, to: number) {
-          calls.push(["range", from, to]);
-          return failAt !== undefined && from >= failAt
+        async limit(maximum: number) {
+          calls.push(["limit", maximum]);
+          return fail
             ? { data: null, error: { message: "private database error" } }
             : {
                 data: source
                   .filter((row) => row.owner_id === owner)
-                  .slice(from, Math.min(to + 1, from + cap)),
+                  .slice(0, Math.min(maximum, cap)),
                 error: null,
               };
         },
@@ -69,33 +69,40 @@ it.each([
   const db = database();
   const result = await listAnalysisTargets(db.client, owner);
   expect(result.map((target) => target.name)).toEqual([name]);
-  expect(db.calls.filter(([method]) => method === "eq")).toEqual([
-    ["eq", "owner_id", owner],
-    ["eq", "owner_id", owner],
-  ]);
+  expect(db.calls.filter(([method]) => method === "eq")).toEqual([["eq", "owner_id", owner]]);
   expect(result[0]).not.toHaveProperty("ownerId");
   expect(result[0]).not.toHaveProperty("googlePlaceId");
   expect(result[0].sourceUrl).toContain("/maps/place/");
 });
 
-it("retains owner filtering and deterministic newest-first order on every page", async () => {
+it("uses one owner-filtered query with deterministic newest-first order", async () => {
   const db = database(rows, 1);
   await listAnalysisTargets(db.client, A);
   expect(db.calls.filter(([method]) => method === "order")).toEqual([
     ["order", "created_at", { ascending: false }],
     ["order", "id", { ascending: false }],
-    ["order", "created_at", { ascending: false }],
-    ["order", "id", { ascending: false }],
   ]);
+  expect(db.calls.filter(([method]) => method === "from")).toHaveLength(1);
+  expect(db.calls.filter(([method]) => method === "limit")).toEqual([["limit", 200]]);
 });
 
-it("retrieves all targets beyond both the default cap and a lower project cap", async () => {
-  const many = Array.from({ length: 1001 }, (_, i) => ({ ...rows[0], id: String(i) }));
-  for (const cap of [1000, 400]) {
+it("bounds the read to 200 owned targets even when more exist", async () => {
+  const many = Array.from({ length: 500 }, (_, i) => ({ ...rows[0], id: String(i) }));
+  const db = database([...many, rows[1]]);
+  const result = await listAnalysisTargets(db.client, A);
+  expect(result).toHaveLength(200);
+  expect(result.map((target) => target.id)).toEqual(many.slice(0, 200).map((row) => row.id));
+  expect(db.calls.filter(([method]) => method === "limit")).toEqual([["limit", 200]]);
+  expect(db.calls.filter(([method]) => method === "from")).toHaveLength(1);
+});
+
+it("does not start more queries when the project returns fewer rows than requested", async () => {
+  const many = Array.from({ length: 500 }, (_, i) => ({ ...rows[0], id: String(i) }));
+  for (const cap of [0, 1, 100]) {
     const db = database(many, cap);
     const result = await listAnalysisTargets(db.client, A);
-    expect(result).toHaveLength(1001);
-    expect(new Set(result.map((row) => row.id)).size).toBe(1001);
+    expect(result).toHaveLength(cap);
+    expect(db.calls.filter(([method]) => method === "from")).toHaveLength(1);
     expect(
       db.calls
         .filter(([method]) => method === "eq")
@@ -108,8 +115,8 @@ it("returns an empty list without substituting sample targets", async () => {
   expect(await listAnalysisTargets(database([]).client, A)).toEqual([]);
 });
 
-it("rejects a later-page error without returning earlier targets or exposing SQL", async () => {
-  const db = database([rows[0], { ...rows[0], id: "a2" }], 1, 1);
+it("rejects a query error without returning targets or exposing SQL", async () => {
+  const db = database(rows, 1000, true);
   await expect(listAnalysisTargets(db.client, A)).rejects.toBeInstanceOf(
     AnalysisTargetPersistenceError,
   );
