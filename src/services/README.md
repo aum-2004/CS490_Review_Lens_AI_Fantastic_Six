@@ -24,10 +24,12 @@ ordering without network access or paid extraction requests.
 The Route Handler must use the shared `requireApiUser()` guard and return its failure response
 before doing target or provider work. It must pass `auth.user.id` to the submission service; an
 owner/user ID from request data is never authoritative. The target lookup should use the shared
-`getAnalysisTargetById(client, auth.user.id, targetId)` repository function with the
-session-scoped Supabase client. That repository filters by both target ID and owner ID and
-intentionally returns `null` for both nonexistent and foreign-owned targets. Do not reimplement
-authentication or target persistence in the Route Handler.
+`getOwnedTargetOrThrow(client, targetId, auth.user.id)` ownership helper with the session-scoped
+Supabase client. It delegates to the repository, filters by both target ID and owner ID, and maps
+nonexistent and foreign-owned targets to the same not-found error. Do not reimplement
+authentication or target persistence in the Route Handler. S1-019 keeps `submitReviewSource` as
+the ingestion service; the short-lived `startTargetIngestion` duplicate from S1-013 was removed
+after the merged route was switched to this service.
 
 These interfaces are currently in open teammate PRs: [S1-009 #37](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/37)
 and [S1-010 #39](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/39) provide
@@ -37,11 +39,36 @@ provides the AnalysisTarget repository. Integrate these shared modules when avai
 copying them into S1-019.
 
 The S1-014 `AnalysisTarget` type makes `googlePlaceId` nullable and documents that it is resolved
-during ingestion. Therefore, an AnalysisTarget containing a validated Google Maps `sourceUrl` but
-no Place ID is intended to be ingestible; requiring a Place ID before submission would conflict
-with that contract. The current S1-020 Outscraper client and results lookup are Place-ID-based,
-however, and S1-014 does not yet expose a repository operation to persist a resolved Place ID.
-The current submission service consequently fails closed with `SOURCE_NOT_CONFIGURED` for such a
-target and does not call Outscraper. This is an interim safety behavior, not end-to-end URL support.
-Before the Route Handler is considered integrated, the team must agree on a safe URL-to-Place-ID
-resolution and persistence boundary and connect it to the provider/results workflow.
+during ingestion. The submission service therefore sends the stored validated `sourceUrl` to
+Outscraper when no Place ID is available, while preferring the stored Place ID when one exists.
+
+Outscraper result retrieval is the identity-verification boundary. A completed result must contain
+one unambiguous provider Place ID, a non-empty business name, and internally consistent review
+identity fields. When a verified Place ID already exists, it must match every returned record. When
+the job was submitted with a URL, the provider-resolved Place ID becomes the verified identity;
+URL parameters are never treated as verified IDs. Missing, ambiguous, or mismatched identity fails
+before reviews are handed to persistence.
+
+S1-022/S1-023 may persist only the completed `VerifiedExtractedReviews` result from
+`getExtractedReviews`. They must not persist raw Outscraper payloads or call the adapter directly.
+Pending results contain no reviews, provider failures remain failures, and completed results must
+retain the verified identity alongside normalized reviews.
+
+## Outstanding ingestion integration requirement
+
+- **Provider review-storage permission:** Before persisting Outscraper review content, the team must
+  verify that the provider's terms and applicable source terms permit storing and using the returned
+  review text. This permission has not been confirmed by evidence in this repository. Track the
+  verification and team acceptance as an integration requirement; do not treat S1-020 retrieval as
+  approval to persist provider content.
+
+- **Review-ID evidence and uniqueness:** S1-020 maps a provider `review_id` when one is present, but
+  real-world review-ID presence and uniqueness remain unverified. The checked-in flat-response
+  example is explicitly synthetic and demonstrates adapter mapping only; it is not evidence about
+  live provider payloads. S1-022 must define and implement the deduplication/persistence behavior,
+  including the safe handling of missing or non-unique provider IDs, before real reviews are stored.
+
+- **Integration gate before persistence:** Provider review-storage permissions must be confirmed and
+  recorded before persisting real reviews. The dedicated S1-022 issue is [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22),
+  “Persist Ingested Reviews with Target Ownership”; its guidance calls out future duplicate-source
+  review handling, while the S1-020 evidence does not establish live ID uniqueness.

@@ -144,6 +144,14 @@ describe("Outscraper result retrieval", () => {
     });
   });
 
+  it("classifies result retrieval timeouts separately", async () => {
+    const fetcher = jest.fn().mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+
+    await expect(
+      getOutscraperResult("test-request-1", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
+  });
+
   it("rejects an invalid request ID", async () => {
     await expect(getOutscraperResult("../invalid", placeId)).rejects.toMatchObject({
       code: "INVALID_REQUEST_ID",
@@ -189,6 +197,80 @@ describe("Outscraper result retrieval", () => {
       expect(result.reviews[0].review_text).toBe("Test coffee review");
       expect(result.reviews[0].review_rating).toBe(5);
     }
+  });
+
+  it("resolves a URL query into one verified provider Place ID", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        {
+          name: "Cortaditos",
+          place_id: placeId,
+          google_id: "0x89c259190e44dc8b:0x4c6e949e71e57565",
+          location_link: "https://www.google.com/maps/place/Cortaditos",
+          review_id: "test-001",
+          review_text: "Great coffee!",
+          review_rating: 5,
+        },
+      ],
+    });
+
+    const result = await getOutscraperResult(
+      "test-url-request",
+      {
+        sourceUrl: "https://www.google.com/maps/place/Cortaditos",
+        googlePlaceId: null,
+      },
+      fetcher as unknown as typeof fetch,
+    );
+
+    expect(result).toMatchObject({
+      status: "completed",
+      placeId,
+      identity: {
+        placeId,
+        googleId: "0x89c259190e44dc8b:0x4c6e949e71e57565",
+      },
+    });
+  });
+
+  it("rejects a URL result with no provider identity", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [{ name: "Cortaditos", review_text: "Great coffee!", review_rating: 5 }],
+    });
+
+    await expect(
+      getOutscraperResult(
+        "test-url-request",
+        {
+          sourceUrl: "https://www.google.com/maps/place/Cortaditos",
+          googlePlaceId: null,
+        },
+        fetcher as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({ code: "IDENTITY_MISSING" });
+  });
+
+  it("rejects ambiguous URL results containing multiple Place IDs", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        { name: "Cortaditos", place_id: placeId, review_text: "A", review_rating: 5 },
+        { name: "Cortaditos", place_id: "ChIJDifferentPlace", review_text: "B", review_rating: 4 },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult(
+        "test-url-request",
+        {
+          sourceUrl: "https://www.google.com/maps/place/Cortaditos",
+          googlePlaceId: null,
+        },
+        fetcher as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
   });
 
   it("handles the real flat Outscraper review response", async () => {

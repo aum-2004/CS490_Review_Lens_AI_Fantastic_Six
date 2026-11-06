@@ -24,14 +24,8 @@ describe("submitReviewSource", () => {
     const startExtraction = jest.fn();
 
     await expect(
-      submitReviewSource("  ", TARGET_ID, {
-        getTargetById,
-        startExtraction,
-      }),
-    ).rejects.toMatchObject({
-      code: "AUTH_REQUIRED",
-    });
-
+      submitReviewSource("  ", TARGET_ID, { getTargetById, startExtraction }),
+    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
     expect(getTargetById).not.toHaveBeenCalled();
     expect(startExtraction).not.toHaveBeenCalled();
   });
@@ -41,92 +35,69 @@ describe("submitReviewSource", () => {
     const startExtraction = jest.fn();
 
     await expect(
-      submitReviewSource(USER_ID, TARGET_ID, {
-        getTargetById,
-        startExtraction,
-      }),
-    ).rejects.toMatchObject({
-      code: "TARGET_NOT_FOUND",
-    });
-
+      submitReviewSource(USER_ID, TARGET_ID, { getTargetById, startExtraction }),
+    ).rejects.toMatchObject({ code: "TARGET_NOT_FOUND" });
     expect(getTargetById).toHaveBeenCalledWith(USER_ID, TARGET_ID);
     expect(startExtraction).not.toHaveBeenCalled();
   });
 
-  it("rejects a target returned for another user before provider access", async () => {
-    const getTargetById = jest.fn().mockResolvedValue(
-      makeTarget({
-        ownerId: "user-b",
-      }),
-    );
+  it("rejects another user's target before provider access", async () => {
+    const getTargetById = jest.fn().mockResolvedValue(makeTarget({ ownerId: "user-b" }));
     const startExtraction = jest.fn();
 
     await expect(
-      submitReviewSource(USER_ID, TARGET_ID, {
-        getTargetById,
-        startExtraction,
-      }),
-    ).rejects.toMatchObject({
-      code: "TARGET_NOT_FOUND",
-    });
-
+      submitReviewSource(USER_ID, TARGET_ID, { getTargetById, startExtraction }),
+    ).rejects.toMatchObject({ code: "TARGET_NOT_FOUND" });
     expect(startExtraction).not.toHaveBeenCalled();
   });
 
-  it("rejects a source URL without a resolved Place ID before provider access", async () => {
-    const getTargetById = jest.fn().mockResolvedValue(
-      makeTarget({
-        sourceUrl: "https://www.google.com/maps/place/Cortaditos",
-        googlePlaceId: null,
-      }),
-    );
+  it("rejects invalid or unresolved source information", async () => {
+    const getTargetById = jest
+      .fn()
+      .mockResolvedValue(makeTarget({ sourceUrl: "not-a-google-maps-url" }));
     const startExtraction = jest.fn();
 
     await expect(
-      submitReviewSource(USER_ID, TARGET_ID, {
-        getTargetById,
-        startExtraction,
-      }),
-    ).rejects.toMatchObject({
-      code: "SOURCE_NOT_CONFIGURED",
-    });
-
-    expect(getTargetById).toHaveBeenCalledWith(USER_ID, TARGET_ID);
+      submitReviewSource(USER_ID, TARGET_ID, { getTargetById, startExtraction }),
+    ).rejects.toMatchObject({ code: "SOURCE_NOT_CONFIGURED" });
     expect(startExtraction).not.toHaveBeenCalled();
   });
 
   it("starts extraction for an owned, configured target", async () => {
     const getTargetById = jest.fn().mockResolvedValue(makeTarget());
-    const startExtraction = jest.fn().mockResolvedValue({
-      id: "request-123",
-      status: "Pending",
-    });
+    const startExtraction = jest.fn().mockResolvedValue({ id: "request-123", status: "Pending" });
 
     await expect(
-      submitReviewSource(USER_ID, TARGET_ID, {
-        getTargetById,
-        startExtraction,
-      }),
+      submitReviewSource(USER_ID, TARGET_ID, { getTargetById, startExtraction }),
     ).resolves.toEqual({
       status: "accepted",
       targetId: TARGET_ID,
       requestId: "request-123",
       providerStatus: "Pending",
     });
-
-    expect(startExtraction).toHaveBeenCalledWith(PLACE_ID);
+    expect(startExtraction).toHaveBeenCalledWith({ kind: "place_id", value: PLACE_ID });
   });
 
-  it("propagates provider failures without hiding them as success", async () => {
+  it("uses the stored validated URL when no Place ID is available", async () => {
+    const getTargetById = jest.fn().mockResolvedValue(makeTarget({ googlePlaceId: null }));
+    const startExtraction = jest.fn().mockResolvedValue({ id: "request-url", status: "Pending" });
+
+    await expect(
+      submitReviewSource(USER_ID, TARGET_ID, { getTargetById, startExtraction }),
+    ).resolves.toMatchObject({ status: "accepted", requestId: "request-url" });
+    expect(startExtraction).toHaveBeenCalledWith({
+      kind: "source_url",
+      value: "https://www.google.com/maps/place/Cortaditos",
+    });
+  });
+
+  it("propagates provider failures without returning success", async () => {
     const providerError = new Error("provider unavailable");
     const getTargetById = jest.fn().mockResolvedValue(makeTarget());
     const startExtraction = jest.fn().mockRejectedValue(providerError);
 
     await expect(
-      submitReviewSource(USER_ID, TARGET_ID, {
-        getTargetById,
-        startExtraction,
-      }),
+      submitReviewSource(USER_ID, TARGET_ID, { getTargetById, startExtraction }),
     ).rejects.toBe(providerError);
   });
 });

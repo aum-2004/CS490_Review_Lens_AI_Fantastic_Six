@@ -34,6 +34,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_text: "Great coffee!",
@@ -52,6 +53,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           text: "Great coffee!",
@@ -73,11 +75,49 @@ describe("Outscraper ingestion service", () => {
     }
   });
 
+  it("inherits the verified Place ID when a review omits it", async () => {
+    mockGetResult.mockResolvedValue({
+      status: "completed",
+      businessName: "Cortaditos",
+      placeId,
+      identity: { placeId, businessName: "Cortaditos" },
+      reviews: [{ review_text: "Great coffee!", review_rating: 5 }],
+    });
+
+    const result = await getExtractedReviews("test-request-1", placeId);
+
+    expect(result).toMatchObject({
+      status: "completed",
+      reviews: [{ metadata: { placeId } }],
+    });
+  });
+
+  it("rejects a review with an explicit conflicting Place ID", async () => {
+    mockGetResult.mockResolvedValue({
+      status: "completed",
+      businessName: "Cortaditos",
+      placeId,
+      identity: { placeId, businessName: "Cortaditos" },
+      reviews: [
+        {
+          place_id: "ChIJDifferentPlace",
+          review_text: "Great coffee!",
+          review_rating: 5,
+        },
+      ],
+    });
+
+    await expect(getExtractedReviews("test-request-1", placeId)).rejects.toMatchObject({
+      code: "BUSINESS_MISMATCH",
+    });
+  });
+
   it("rejects reviews with missing required fields", async () => {
     mockGetResult.mockResolvedValue({
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_id: "test-002",
@@ -103,6 +143,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_text: "   ",
@@ -121,6 +162,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_text: "Great coffee!",
@@ -132,5 +174,45 @@ describe("Outscraper ingestion service", () => {
     await expect(getExtractedReviews("test-request-1", placeId)).rejects.toMatchObject({
       code: "INSUFFICIENT_REVIEWS",
     });
+  });
+
+  it("rejects reviews when every rating uses invalid numeric syntax", async () => {
+    mockGetResult.mockResolvedValue({
+      status: "completed",
+      businessName: "Cortaditos",
+      placeId,
+      identity: { placeId, businessName: "Cortaditos" },
+      reviews: [
+        { review_text: "Hex rating", review_rating: "0x5" },
+        { review_text: "Exponent rating", review_rating: "5e0" },
+      ],
+    });
+
+    await expect(getExtractedReviews("test-request-1", placeId)).rejects.toMatchObject({
+      code: "INSUFFICIENT_REVIEWS",
+    });
+  });
+
+  it("keeps a mixed response usable when at least one rating is valid", async () => {
+    mockGetResult.mockResolvedValue({
+      status: "completed",
+      businessName: "Cortaditos",
+      placeId,
+      identity: { placeId, businessName: "Cortaditos" },
+      reviews: [
+        { review_text: "Valid rating", review_rating: "4.5" },
+        { review_text: "Invalid hexadecimal", review_rating: "0x5" },
+        { review_text: "Invalid exponent", review_rating: "5e0" },
+      ],
+    });
+
+    const result = await getExtractedReviews("test-request-1", placeId);
+
+    expect(result.status).toBe("completed");
+    if (result.status === "completed") {
+      expect(result.reviews).toEqual([
+        expect.objectContaining({ text: "Valid rating", rating: "4.5" }),
+      ]);
+    }
   });
 });

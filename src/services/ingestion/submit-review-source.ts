@@ -1,6 +1,11 @@
 import "server-only";
 
-import { startOutscraperExtraction, type OutscraperJob } from "./outscraper-client";
+import { validateAnalysisTargetInput } from "@/lib/validation/analysis-target";
+import {
+  startOutscraperExtraction,
+  type OutscraperJob,
+  type OutscraperQuery,
+} from "./outscraper-client";
 
 export type IngestionTarget = {
   id: string;
@@ -12,7 +17,7 @@ export type IngestionTarget = {
 
 export type SubmitReviewSourceDependencies = {
   getTargetById: (ownerId: string, targetId: string) => Promise<IngestionTarget | null>;
-  startExtraction?: (placeId: string) => Promise<OutscraperJob>;
+  startExtraction?: (query: OutscraperQuery) => Promise<OutscraperJob>;
 };
 
 export class SubmitReviewSourceError extends Error {
@@ -33,10 +38,8 @@ export type SubmittedReviewSource = {
 };
 
 /**
- * Starts review ingestion after the caller supplies a verified user identity
- * and an ownership-filtered AnalysisTarget lookup. The caller must derive
- * `userId` from the server-side auth guard (for example, `requireApiUser()`),
- * never from request-body data.
+ * Starts review ingestion after an ownership-filtered AnalysisTarget lookup.
+ * The user ID must come from the server-side auth guard, never request input.
  */
 export async function submitReviewSource(
   userId: string,
@@ -56,7 +59,12 @@ export async function submitReviewSource(
     );
   }
 
-  if (target.platform !== "google_maps" || !target.googlePlaceId?.trim()) {
+  const sourceValidation = validateAnalysisTargetInput({
+    name: "review source",
+    sourceUrl: target?.sourceUrl,
+  });
+
+  if (!sourceValidation.success || target.platform !== "google_maps") {
     throw new SubmitReviewSourceError(
       "SOURCE_NOT_CONFIGURED",
       "This analysis target is missing supported review source information.",
@@ -64,7 +72,10 @@ export async function submitReviewSource(
   }
 
   const startExtraction = dependencies.startExtraction ?? startOutscraperExtraction;
-  const job = await startExtraction(target.googlePlaceId);
+  const query: OutscraperQuery = target.googlePlaceId?.trim()
+    ? { kind: "place_id", value: target.googlePlaceId.trim() }
+    : { kind: "source_url", value: sourceValidation.data.sourceUrl };
+  const job = await startExtraction(query);
 
   return {
     status: "accepted",

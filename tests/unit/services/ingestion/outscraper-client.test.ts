@@ -88,6 +88,14 @@ describe("Outscraper API client", () => {
     });
   });
 
+  it("classifies extraction submission timeouts separately", async () => {
+    const mockFetch = jest.fn().mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+
+    await expect(
+      startOutscraperExtraction(placeId, mockFetch as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "PROVIDER_TIMEOUT" });
+  });
+
   it("rejects an invalid provider response", async () => {
     const mockFetch = jest.fn().mockResolvedValue(
       mockResponse(200, {
@@ -125,5 +133,32 @@ describe("Outscraper API client", () => {
     expect(url.searchParams.get("reviewsLimit")).toBe("30");
     expect(url.searchParams.get("async")).toBe("true");
     expect(options.headers["X-API-KEY"]).toBe("test-api-key");
+  });
+
+  it("submits a validated Google Maps URL as the provider query", async () => {
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValue(mockResponse(202, { id: "url-request-1", status: "Pending" }));
+
+    await startOutscraperExtraction(
+      { kind: "source_url", value: "https://www.google.com/maps/place/Cortaditos" },
+      mockFetch as unknown as typeof fetch,
+    );
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url.searchParams.get("query")).toBe("https://www.google.com/maps/place/Cortaditos");
+    expect(url.searchParams.get("async")).toBe("true");
+  });
+
+  it("rejects an unvalidated URL query before provider access", async () => {
+    const mockFetch = jest.fn();
+
+    await expect(
+      startOutscraperExtraction(
+        { kind: "source_url", value: "https://example.com/not-google-maps" },
+        mockFetch as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_SOURCE_URL" });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

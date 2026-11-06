@@ -1,10 +1,27 @@
 import "server-only";
 
+import { validateAnalysisTargetInput } from "@/lib/validation/analysis-target";
+
 const OUTSCRAPER_URL = "https://api.outscraper.cloud/google-maps-reviews";
 
 export type OutscraperJob = {
   id: string;
   status: string;
+};
+
+export type OutscraperQuery =
+  { kind: "place_id"; value: string } | { kind: "source_url"; value: string };
+
+export type VerifiedBusinessIdentity = {
+  placeId: string;
+  googleId?: string;
+  businessName: string;
+  locationLink?: string;
+};
+
+export type OutscraperExpectedIdentity = {
+  sourceUrl: string;
+  googlePlaceId: string | null;
 };
 
 export class OutscraperError extends Error {
@@ -17,26 +34,51 @@ export class OutscraperError extends Error {
   }
 }
 
+function isTimeoutError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (("name" in error && error.name === "TimeoutError") ||
+      ("code" in error && error.code === "ETIMEDOUT"))
+  );
+}
+
+function providerFetchError(error: unknown): OutscraperError {
+  return isTimeoutError(error)
+    ? new OutscraperError("PROVIDER_TIMEOUT", "The review service request timed out.")
+    : new OutscraperError("PROVIDER_UNAVAILABLE", "The review service could not be reached.");
+}
+
 export async function startOutscraperExtraction(
-  placeId: string,
+  query: OutscraperQuery | string,
   fetcher?: typeof fetch,
 ): Promise<OutscraperJob> {
   const apiKey = process.env.OUTSCRAPER_API_KEY;
+  const normalizedQuery: OutscraperQuery =
+    typeof query === "string" ? { kind: "place_id", value: query } : query;
 
   if (!apiKey) {
     throw new OutscraperError("MISSING_API_KEY", "Outscraper is not configured.");
   }
 
-  if (!/^ChIJ[A-Za-z0-9_-]+$/.test(placeId)) {
+  if (normalizedQuery.kind === "place_id" && !/^ChIJ[A-Za-z0-9_-]+$/.test(normalizedQuery.value)) {
     throw new OutscraperError(
       "INVALID_PLACE_ID",
       "The Google Maps business identifier is invalid.",
     );
   }
 
+  if (
+    normalizedQuery.kind === "source_url" &&
+    !validateAnalysisTargetInput({ name: "review source", sourceUrl: normalizedQuery.value })
+      .success
+  ) {
+    throw new OutscraperError("INVALID_SOURCE_URL", "The Google Maps source URL is invalid.");
+  }
+
   const url = new URL(OUTSCRAPER_URL);
 
-  url.searchParams.set("query", placeId);
+  url.searchParams.set("query", normalizedQuery.value);
   url.searchParams.set("reviewsLimit", "30");
   url.searchParams.set("sort", "most_relevant");
   url.searchParams.set("ignoreEmpty", "true");
@@ -54,8 +96,8 @@ export async function startOutscraperExtraction(
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
-  } catch {
-    throw new OutscraperError("PROVIDER_UNAVAILABLE", "The review service could not be reached.");
+  } catch (error) {
+    throw providerFetchError(error);
   }
 
   if (response.status === 429) {
@@ -101,6 +143,7 @@ export type OutscraperResult =
       status: "completed";
       businessName: string;
       placeId: string;
+      identity: VerifiedBusinessIdentity;
       reviews: Record<string, unknown>[];
     };
 
@@ -114,7 +157,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export async function getOutscraperResult(
   requestId: string,
-  expectedPlaceId: string,
+  expectedIdentity: string | OutscraperExpectedIdentity,
   fetcher?: typeof fetch,
 ): Promise<OutscraperResult> {
   const apiKey = process.env.OUTSCRAPER_API_KEY;
@@ -127,11 +170,26 @@ export async function getOutscraperResult(
     throw new OutscraperError("INVALID_REQUEST_ID", "The extraction request ID is invalid.");
   }
 
-  if (!/^ChIJ[A-Za-z0-9_-]+$/.test(expectedPlaceId)) {
+  const expectedPlaceId =
+    typeof expectedIdentity === "string" ? expectedIdentity : expectedIdentity.googlePlaceId;
+  const sourceUrl = typeof expectedIdentity === "string" ? undefined : expectedIdentity.sourceUrl;
+
+  if (expectedPlaceId !== null && !/^ChIJ[A-Za-z0-9_-]+$/.test(expectedPlaceId)) {
     throw new OutscraperError(
       "INVALID_PLACE_ID",
       "The Google Maps business identifier is invalid.",
     );
+  }
+
+  if (
+    sourceUrl !== undefined &&
+    !validateAnalysisTargetInput({ name: "review source", sourceUrl }).success
+  ) {
+    throw new OutscraperError("INVALID_SOURCE_URL", "The Google Maps source URL is invalid.");
+  }
+
+  if (expectedPlaceId === null && sourceUrl === undefined) {
+    throw new OutscraperError("INVALID_IDENTITY_CONTRACT", "A source URL or Place ID is required.");
   }
 
   const url = new URL(`/requests/${encodeURIComponent(requestId)}`, "https://api.outscraper.cloud");
@@ -148,8 +206,8 @@ export async function getOutscraperResult(
       cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
-  } catch {
-    throw new OutscraperError("PROVIDER_UNAVAILABLE", "The review service could not be reached.");
+  } catch (error) {
+    throw providerFetchError(error);
   }
 
   if (response.status === 429) {
@@ -212,35 +270,81 @@ export async function getOutscraperResult(
   if (isFlatResponse) {
     const reviews: Record<string, unknown>[] = payload.data;
 
-    // Reject records belonging to a different Google Maps business.
-    if (reviews.some((review) => review.place_id !== expectedPlaceId)) {
+    const placeIds = uniqueNonEmptyStrings(reviews.map((review) => review.place_id));
+
+    if (reviews.some((review) => typeof review.place_id !== "string" || !review.place_id.trim())) {
+      throw new OutscraperError(
+        "IDENTITY_MISSING",
+        "The review service returned a review without a business identity.",
+      );
+    }
+
+    if (placeIds.length === 0) {
+      throw new OutscraperError(
+        "IDENTITY_MISSING",
+        "The review service did not return a business identity.",
+      );
+    }
+
+    if (expectedPlaceId !== null && placeIds.some((placeId) => placeId !== expectedPlaceId)) {
       throw new OutscraperError(
         "BUSINESS_MISMATCH",
         "The provider returned reviews for a different business.",
       );
     }
 
+    if (placeIds.length !== 1) {
+      throw new OutscraperError(
+        "IDENTITY_AMBIGUOUS",
+        "The review service returned more than one business.",
+      );
+    }
+
+    const resolvedPlaceId = placeIds[0];
+
     const businessName = reviews[0].name;
 
     if (typeof businessName !== "string" || !businessName.trim()) {
       throw new OutscraperError(
-        "INVALID_RESPONSE",
-        "The provider did not return a valid business name.",
+        "IDENTITY_MISSING",
+        "The provider did not return a valid business identity.",
       );
     }
 
     // Make sure all returned records belong to the same business.
     if (reviews.some((review) => review.name !== businessName)) {
       throw new OutscraperError(
-        "BUSINESS_MISMATCH",
+        "IDENTITY_AMBIGUOUS",
         "The provider returned inconsistent business information.",
+      );
+    }
+
+    const googleIds = uniqueNonEmptyStrings(reviews.map((review) => review.google_id));
+    if (googleIds.length > 1) {
+      throw new OutscraperError(
+        "IDENTITY_AMBIGUOUS",
+        "The provider returned inconsistent business identifiers.",
+      );
+    }
+
+    const locationLinks = uniqueNonEmptyStrings(reviews.map((review) => review.location_link));
+    if (locationLinks.length > 1) {
+      throw new OutscraperError(
+        "IDENTITY_AMBIGUOUS",
+        "The provider returned inconsistent business locations.",
       );
     }
 
     return {
       status: "completed",
       businessName,
-      placeId: expectedPlaceId,
+      placeId: resolvedPlaceId,
+      identity: {
+        placeId: resolvedPlaceId,
+        ...(googleIds[0] ? { googleId: googleIds[0] } : {}),
+        businessName,
+        ...(locationLinks[0] ? { locationLink: locationLinks[0] } : {}),
+      },
       reviews,
     };
   }
@@ -248,11 +352,30 @@ export async function getOutscraperResult(
   // Also support nested business responses.
   const places = payload.data.flatMap((group: unknown) => (Array.isArray(group) ? group : [group]));
 
-  const business = places.find(
-    (place: unknown) => isRecord(place) && place.place_id === expectedPlaceId,
-  );
+  if (places.length !== 1) {
+    throw new OutscraperError(
+      "IDENTITY_AMBIGUOUS",
+      "The review service returned more than one business.",
+    );
+  }
+
+  const business = places[0];
 
   if (!isRecord(business)) {
+    throw new OutscraperError(
+      "IDENTITY_MISSING",
+      "The review source did not return a business identity.",
+    );
+  }
+
+  if (typeof business.place_id !== "string" || !/^ChIJ[A-Za-z0-9_-]+$/.test(business.place_id)) {
+    throw new OutscraperError(
+      "IDENTITY_MISSING",
+      "The review source did not return a valid business identity.",
+    );
+  }
+
+  if (expectedPlaceId !== null && business.place_id !== expectedPlaceId) {
     throw new OutscraperError(
       "BUSINESS_MISMATCH",
       "The review source returned a different business.",
@@ -265,8 +388,8 @@ export async function getOutscraperResult(
     !business.reviews_data.every(isRecord)
   ) {
     throw new OutscraperError(
-      "INVALID_RESPONSE",
-      "The review provider returned invalid business data.",
+      "IDENTITY_MISSING",
+      "The review provider returned incomplete business identity data.",
     );
   }
 
@@ -277,7 +400,27 @@ export async function getOutscraperResult(
   return {
     status: "completed",
     businessName: business.name,
-    placeId: expectedPlaceId,
+    placeId: business.place_id,
+    identity: {
+      placeId: business.place_id,
+      ...(typeof business.google_id === "string" && business.google_id.trim()
+        ? { googleId: business.google_id }
+        : {}),
+      businessName: business.name,
+      ...(typeof business.location_link === "string" && business.location_link.trim()
+        ? { locationLink: business.location_link }
+        : {}),
+    },
     reviews: business.reviews_data,
   };
+}
+
+function uniqueNonEmptyStrings(values: unknown[]): string[] {
+  return [
+    ...new Set(
+      values.filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      ),
+    ),
+  ];
 }
