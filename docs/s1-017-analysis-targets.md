@@ -55,3 +55,15 @@ Review checklist: inspect `list-analysis-targets.ts`, GET and the page's guard o
 ## Agent-run acceptance walkthrough
 
 The [November 6 acceptance report](acceptance/s1-017-2026-11-06.md) records a production-mode local walkthrough, screenshots inspected by Codex, and all ten passing observations. It covers the issue's fields and User A/User B isolation, safe failure states, responsive navigation and signed-out Back behavior. It does not replace the author's human verification or the separate normal/security reviews; it does not claim hosted Supabase verification.
+
+## Development refresh-loop fix — November 6, 2026
+
+A subsequent human login attempt reproduced a development-only refresh loop. Capturing the browser's HMR WebSocket showed repeated `reloadPage` messages with `HMR hash mismatch` (19 main-frame navigations in five seconds). This was not an authentication redirect: the server repeatedly returned 200 for the same login URL.
+
+`src/app/globals.css` now imports Tailwind with `source("../")`. Relative to `src/app`, this explicitly scans `src`, where the team's app and component classes live, instead of defaulting to the repository root. It keeps non-application sources out of Tailwind's development watch scope. The theme and component APIs are unchanged. The setting follows [Tailwind's source-detection documentation](https://tailwindcss.com/docs/detecting-classes-in-source-files#setting-your-base-path).
+
+After the change and a server restart, the HMR reload messages stopped. Two standalone checks, including one after a warm restart without another source edit, preserved email/password input for ten seconds across a generated-file write and then signed in successfully. `tests/e2e/auth/development-stability.spec.ts` adds regression coverage for input retention, generated-file writes and forced HMR reloads before signing in. Only synthetic local credentials were used; `.env.local` was not edited.
+
+The previously recorded unsuccessful development acceptance attempts remain historical evidence. The production acceptance results remain valid; this follow-up fixes the development experience needed for the author's own manual check.
+
+Validation after the development fix: 347 unit tests, all 13 isolated auth/target browser tests, both foundation smoke tests, formatting, lint, explicit typecheck and production build passed. The local dummy-provider app was restarted for the author's manual verification; those automated checks do not complete the human sign-off.
