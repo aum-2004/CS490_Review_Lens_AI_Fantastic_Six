@@ -14,3 +14,22 @@ Planned folders (created by the stories that need them):
 
 Every service that touches user-owned data must take the authenticated user's identity as input
 and enforce ownership itself (S1-BR-007 through S1-BR-010).
+
+## Outstanding ingestion integration requirement
+
+- **Provider review-storage permission:** Before persisting Outscraper review content, the team must
+  verify that the provider's terms and applicable source terms permit storing and using the returned
+  review text. This permission has not been confirmed by evidence in this repository. Track the
+  verification and team acceptance as an integration requirement; do not treat S1-020 retrieval as
+  approval to persist provider content.
+
+- **Review-ID evidence and uniqueness:** S1-020 maps a provider `review_id` when one is present, but
+  real-world review-ID presence and uniqueness remain unverified. The checked-in flat-response
+  example is explicitly synthetic and demonstrates adapter mapping only; it is not evidence about
+  live provider payloads. S1-022 must define and implement the deduplication/persistence behavior,
+  including the safe handling of missing or non-unique provider IDs, before real reviews are stored.
+
+- **Integration gate before persistence:** Provider review-storage permissions must be confirmed and
+  recorded before persisting real reviews. The dedicated S1-022 issue is [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22),
+  “Persist Ingested Reviews with Target Ownership”; its guidance calls out future duplicate-source
+  review handling, while the S1-020 evidence does not establish live ID uniqueness.

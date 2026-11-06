@@ -357,7 +357,7 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (S1-005 through S1-009, S1-014, plus S1-010 foundation)**
+**Implemented (S1-005 through S1-009, S1-011, S1-014, plus S1-010 foundation)**
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
 - Responsive starter page.
@@ -378,13 +378,16 @@ require a live Supabase connection.
   verification remain pending. No target feature or database ownership is supplied by these guards.
 - `analysis_targets` table with owner-only Row Level Security, restricted client writes, a
   server-side repository, and database tests in CI (S1-014).
+- `POST /api/analysis-targets`, which takes ownership only from the verified session, never from
+  request input. See [S1-011 ownership rules](docs/s1-011-ownership.md); live Supabase verification
+  remains required.
 
 **Planned (not implemented)**
 
 | Capability                                                      | Story              |
 | --------------------------------------------------------------- | ------------------ |
 | Integrate guards with target pages/APIs as their stories arrive | S1-010 integration |
-| Ownership and cross-user authorization                          | S1-011 – S1-013    |
+| Cross-user authorization                                        | S1-012, S1-013     |
 | Analysis targets (create, validate, list, workspace)            | S1-015 – S1-018    |
 | Review ingestion, normalization, persistence, result state      | S1-019 – S1-023    |
 | AI question answering, ingestion summaries                      | Sprint 2           |
