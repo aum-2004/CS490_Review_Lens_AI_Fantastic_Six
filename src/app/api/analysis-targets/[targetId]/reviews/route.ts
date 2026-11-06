@@ -11,9 +11,12 @@ import { getReviewsForTarget, saveReviews } from "@/services/reviews/review-serv
 import { createSupabaseReviewStore } from "@/services/reviews/supabase-review-store";
 
 import { errorResponse, logFailure, successResponse, targetNotFoundResponse } from "../responses";
-
-/** Upper bound on one request so a single call cannot write an unbounded batch. */
-const MAX_REVIEWS_PER_REQUEST = 100;
+import {
+  findOversizedField,
+  MAX_REQUEST_BODY_BYTES,
+  MAX_REVIEWS_PER_REQUEST,
+  readJsonBodyWithLimit,
+} from "./review-input";
 
 // PUT, PATCH, and DELETE are deliberately not exported (Next answers 405). The reviews table
 // grants no UPDATE or DELETE to clients, so reviews cannot be modified through the app (S1-022).
@@ -62,7 +65,16 @@ export async function POST(
 
     // Only `reviews` is read from the body. Any ownerId, userId, or target id in it is ignored:
     // the owner is the session user and the target is the one in the URL.
-    const body: unknown = await request.json().catch(() => undefined);
+    // The body is read with a byte limit, so an oversized request never reaches parsing or insert.
+    const read = await readJsonBodyWithLimit(request);
+    if (!read.ok) {
+      return errorResponse(
+        400,
+        "INVALID_REVIEW_INPUT",
+        `The request body must be at most ${MAX_REQUEST_BODY_BYTES} bytes.`,
+      );
+    }
+    const body = read.body;
     const records =
       typeof body === "object" && body !== null && "reviews" in body ? body.reviews : undefined;
     if (
@@ -76,6 +88,10 @@ export async function POST(
         `Send between 1 and ${MAX_REVIEWS_PER_REQUEST} reviews.`,
       );
     }
+
+    // Per-field limits are checked on the raw input, so nothing oversized is normalized or stored.
+    const oversized = findOversizedField(records);
+    if (oversized) return errorResponse(400, "INVALID_REVIEW_INPUT", oversized);
 
     const { reviews, rejected } = normalizeBatch(records);
     if (rejected.length > 0) {

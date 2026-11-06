@@ -6,6 +6,15 @@
 import { NextRequest } from "next/server";
 
 import * as ingestionRoute from "@/app/api/analysis-targets/[targetId]/ingestion/route";
+import {
+  MAX_REQUEST_BODY_BYTES,
+  MAX_REVIEW_DATE_CHARS,
+  MAX_REVIEW_METADATA_BYTES,
+  MAX_REVIEW_TEXT_CHARS,
+  MAX_REVIEW_URL_CHARS,
+  MAX_REVIEWER_NAME_CHARS,
+  MAX_SOURCE_REVIEW_ID_CHARS,
+} from "@/app/api/analysis-targets/[targetId]/reviews/review-input";
 import * as reviewsRoute from "@/app/api/analysis-targets/[targetId]/reviews/route";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
@@ -156,6 +165,16 @@ const getReviews = (targetId: string, query = "") =>
 const postReviews = (targetId: string, body: unknown) =>
   reviewsRoute.POST(
     request(`/api/analysis-targets/${targetId}/reviews`, "POST", body),
+    ctx(targetId) as never,
+  );
+/** Sends `body` exactly as given (no JSON encoding), optionally with extra headers. */
+const postReviewsRaw = (targetId: string, body: string, headers?: Record<string, string>) =>
+  reviewsRoute.POST(
+    new NextRequest(`http://localhost/api/analysis-targets/${targetId}/reviews`, {
+      method: "POST",
+      body,
+      headers,
+    }),
     ctx(targetId) as never,
   );
 const postIngestion = (targetId: string, body?: unknown) =>
@@ -323,6 +342,108 @@ describe("POST /api/analysis-targets/[targetId]/reviews", () => {
 
     expect(response.status).toBe(401);
     expect(createSupabaseServerClient).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/analysis-targets/[targetId]/reviews input size limits", () => {
+  // Asserts a 400 INVALID_REVIEW_INPUT where neither the normalizer nor the review store ran.
+  async function expectRejectedBeforeProcessing(
+    response: Response,
+    db: ReturnType<typeof useDatabase>,
+    before: Row[],
+  ) {
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      error: { code: "INVALID_REVIEW_INPUT" },
+    });
+    expect(normalizeBatch).not.toHaveBeenCalled();
+    expect(db.tablesTouched()).not.toContain("reviews");
+    expect(db.tables.reviews).toEqual(before);
+  }
+
+  it("accepts review text at exactly the character limit", async () => {
+    signInAs(USER_A);
+    const { tables } = useDatabase();
+    const text = "a".repeat(MAX_REVIEW_TEXT_CHARS);
+
+    const response = await postReviews(TARGET_A, { reviews: [{ text, rating: 5 }] });
+
+    expect(response.status).toBe(201);
+    expect(tables.reviews.at(-1)?.review_text).toBe(text);
+  });
+
+  it("counts characters, not UTF-16 units, so limit-length emoji text is accepted", async () => {
+    signInAs(USER_A);
+    useDatabase();
+    const text = "😀".repeat(MAX_REVIEW_TEXT_CHARS);
+
+    const response = await postReviews(TARGET_A, { reviews: [{ text, rating: 5 }] });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("rejects review text one character over the limit", async () => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    const before = structuredClone(db.tables.reviews);
+
+    const response = await postReviews(TARGET_A, {
+      reviews: [validReview, { text: "a".repeat(MAX_REVIEW_TEXT_CHARS + 1), rating: 5 }],
+    });
+
+    await expectRejectedBeforeProcessing(response, db, before);
+  });
+
+  it.each([
+    ["reviewerName", { reviewerName: "n".repeat(MAX_REVIEWER_NAME_CHARS + 1) }],
+    ["sourceReviewId", { sourceReviewId: "s".repeat(MAX_SOURCE_REVIEW_ID_CHARS + 1) }],
+    ["reviewUrl", { reviewUrl: `https://maps.google.com/${"u".repeat(MAX_REVIEW_URL_CHARS)}` }],
+    ["reviewDate", { reviewDate: "2".repeat(MAX_REVIEW_DATE_CHARS + 1) }],
+    ["metadata", { metadata: { note: "m".repeat(MAX_REVIEW_METADATA_BYTES) } }],
+  ])("rejects an oversized %s", async (_field, oversized) => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    const before = structuredClone(db.tables.reviews);
+
+    const response = await postReviews(TARGET_A, { reviews: [{ ...validReview, ...oversized }] });
+
+    await expectRejectedBeforeProcessing(response, db, before);
+  });
+
+  it("rejects a body over the byte limit while streaming, without a Content-Length", async () => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    const before = structuredClone(db.tables.reviews);
+    // A single review far larger than the body limit, like the 25 MB review from PR review.
+    const body = JSON.stringify({
+      reviews: [{ text: "a".repeat(MAX_REQUEST_BODY_BYTES + 1), rating: 5 }],
+    });
+
+    const response = await postReviewsRaw(TARGET_A, body);
+
+    await expectRejectedBeforeProcessing(response, db, before);
+  });
+
+  it("rejects a declared Content-Length over the byte limit", async () => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    const before = structuredClone(db.tables.reviews);
+
+    const response = await postReviewsRaw(TARGET_A, JSON.stringify({ reviews: [validReview] }), {
+      "content-length": String(MAX_REQUEST_BODY_BYTES + 1),
+    });
+
+    await expectRejectedBeforeProcessing(response, db, before);
+  });
+
+  it("still denies User B before applying any size checks", async () => {
+    signInAs(USER_B);
+    const { tablesTouched } = useDatabase();
+
+    await expectNotFound(await postReviewsRaw(TARGET_A, "x".repeat(MAX_REQUEST_BODY_BYTES + 1)));
+    expect(normalizeBatch).not.toHaveBeenCalled();
+    expect(tablesTouched()).not.toContain("reviews");
   });
 });
 
