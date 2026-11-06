@@ -14,7 +14,7 @@ import {
   type AnalysisTargetInputField,
   type AnalysisTargetValidationIssue,
 } from "@/lib/validation/analysis-target";
-import type { CreateAnalysisTarget } from "@/types/analysis-target";
+import type { AnalysisTarget, CreateAnalysisTarget } from "@/types/analysis-target";
 
 interface TargetFormProps {
   createTarget?: CreateAnalysisTarget;
@@ -62,16 +62,41 @@ function FieldError({ id, message }: FieldErrorProps) {
   );
 }
 
+function TargetCreationConfirmation({ target }: { target: AnalysisTarget }) {
+  return (
+    <Alert role="status" aria-live="polite">
+      <AlertTitle>Target created</AlertTitle>
+      <AlertDescription>
+        <p>
+          <span className="font-medium text-foreground">{target.name}</span> was saved successfully.
+        </p>
+        <dl className="mt-3 space-y-2">
+          <div>
+            <dt className="font-medium text-foreground">Target ID</dt>
+            <dd className="break-all">{target.id}</dd>
+          </div>
+          <div>
+            <dt className="font-medium text-foreground">Google Maps source</dt>
+            <dd className="break-all">{target.sourceUrl}</dd>
+          </div>
+        </dl>
+        <p className="mt-3">Workspace access will be available in a future update.</p>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormProps) {
   const router = useRouter();
   const nameRef = useRef<HTMLInputElement>(null);
   const sourceUrlRef = useRef<HTMLInputElement>(null);
   const submissionInFlight = useRef(false);
+  const creationComplete = useRef(false);
   const [name, setName] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
-  const [successMessage, setSuccessMessage] = useState<string>();
+  const [createdTarget, setCreatedTarget] = useState<AnalysisTarget>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasValidationAttempted, setHasValidationAttempted] = useState(false);
 
@@ -113,12 +138,11 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (submissionInFlight.current) {
+    if (submissionInFlight.current || creationComplete.current) {
       return;
     }
 
     setFormError(undefined);
-    setSuccessMessage(undefined);
 
     const validation = validateAnalysisTargetInput({ name, sourceUrl });
 
@@ -137,8 +161,8 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
     try {
       const target = await createTarget(validation.data);
       setFieldErrors({});
-      setSuccessMessage("Target created. You can now start ingestion.");
-      router.push(`/analysis-targets/${encodeURIComponent(target.id)}?created=1`);
+      creationComplete.current = true;
+      setCreatedTarget(target);
     } catch (error) {
       if (error instanceof AnalysisTargetCreationError) {
         if (error.code === "AUTHENTICATION_REQUIRED") {
@@ -163,6 +187,10 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
     }
   };
 
+  if (createdTarget) {
+    return <TargetCreationConfirmation target={createdTarget} />;
+  }
+
   return (
     <form className="space-y-6" noValidate onSubmit={submit} aria-busy={isSubmitting}>
       <p className="text-sm text-muted-foreground">
@@ -180,13 +208,6 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         <Alert variant="destructive" role="alert">
           <CircleAlert aria-hidden="true" />
           <AlertTitle>Please fix the highlighted fields.</AlertTitle>
-        </Alert>
-      ) : null}
-
-      {successMessage ? (
-        <Alert role="status">
-          <AlertTitle>Target created</AlertTitle>
-          <AlertDescription>{successMessage}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -262,7 +283,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
       </div>
 
       <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
-        <Button type="button" variant="outline" onClick={() => router.push("/analysis-targets")}>
+        <Button type="button" variant="outline" onClick={() => router.push("/")}>
           Cancel
         </Button>
         <Button type="submit" disabled={isSubmitting}>

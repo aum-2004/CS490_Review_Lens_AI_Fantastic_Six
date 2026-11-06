@@ -26,10 +26,7 @@ describe("NewAnalysisTargetPage", () => {
       screen.getByRole("heading", { level: 1, name: "Create a new target" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "My Targets" })).toHaveAttribute(
-      "href",
-      "/analysis-targets",
-    );
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
     expect(
       screen.getByRole("heading", { level: 2, name: "Target information" }),
     ).toBeInTheDocument();

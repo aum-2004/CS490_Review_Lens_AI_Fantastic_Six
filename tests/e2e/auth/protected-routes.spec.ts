@@ -12,6 +12,21 @@ test("rejects direct API access without identity, including a forged owner argum
     success: false,
     error: { code: "AUTH_REQUIRED", message: "Please sign in to continue." },
   });
+
+  const createResponse = await request.post("/api/analysis-targets", {
+    data: {
+      name: "Unauthenticated target",
+      sourceUrl: "https://www.google.com/maps/place/NJIT",
+      ownerId: "forged-user",
+    },
+  });
+  expect(createResponse.status()).toBe(401);
+  expect(createResponse.headers()["cache-control"]).toContain("no-store");
+  expect(await createResponse.json()).toEqual({
+    success: false,
+    error: { code: "AUTH_REQUIRED", message: "Please sign in to continue." },
+  });
+
   expect((await request.get("/api/health")).status()).toBe(200);
 });
 

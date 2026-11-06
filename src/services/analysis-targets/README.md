@@ -1,10 +1,10 @@
 # AnalysisTarget creation integration contract
 
-S1-015 intentionally does not implement authentication (S1-009) or persistence (S1-014).
-The client form submits only `name` and `sourceUrl` to `POST /api/analysis-targets`; it never sends
-an owner or user identifier.
+S1-015 reuses the S1-011 authenticated `POST /api/analysis-targets` Route Handler, S1-014
+persistence, and S1-016 validation. The client form submits only `name` and `sourceUrl`; it never
+sends an owner or user identifier.
 
-When the dependent stories are available, the protected Route Handler must:
+The protected Route Handler:
 
 1. Resolve and verify the Supabase session. Return `401` before any write when no authenticated
    identity exists.
@@ -17,6 +17,11 @@ When the dependent stories are available, the protected Route Handler must:
 5. Translate expected failures to the shared safe error response and never return fabricated target
    data.
 
-The S1-014 result must expose at least `id`, `name`, `sourceUrl`, and `platform` so the client can
-navigate to `/analysis-targets/{id}?created=1`. The workspace should use that query marker to show
-the standards-required confirmation: “Target created. You can now start ingestion.”
+The result exposes at least `id`, `name`, `sourceUrl`, and `platform`. Until S1-017 and S1-018 are
+merged, the creation form displays an accessible confirmation containing the saved target's name,
+ID, and normalized source URL. It does not link or redirect to routes that do not exist.
+
+S1-017 should restore the `My Targets` breadcrumb and Cancel destination to `/analysis-targets` when
+the list route exists. S1-018 should replace the temporary inline confirmation with navigation to
+`/analysis-targets/{id}?created=1`; the workspace should use that query marker to show the
+standards-required confirmation: “Target created. You can now start ingestion.”

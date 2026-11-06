@@ -298,7 +298,7 @@ describe("TargetForm", () => {
     );
   });
 
-  it("submits normalized data and requests the agreed future workspace destination", async () => {
+  it("submits normalized data and shows an accessible confirmation without broken navigation", async () => {
     const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn().mockResolvedValue({
       id: "target/with spaces",
       name: "NJIT, Newark",
@@ -317,8 +317,16 @@ describe("TargetForm", () => {
         platform: "google_maps",
       }),
     );
-    expect(screen.getByText("Target created. You can now start ingestion.")).toBeInTheDocument();
-    expect(mockPush).toHaveBeenCalledWith("/analysis-targets/target%2Fwith%20spaces?created=1");
+    const confirmation = await screen.findByRole("status");
+    expect(within(confirmation).getByText("Target created")).toBeInTheDocument();
+    expect(within(confirmation).getByText("NJIT, Newark")).toBeInTheDocument();
+    expect(within(confirmation).getByText("target/with spaces")).toBeInTheDocument();
+    expect(within(confirmation).getByText(validSourceUrl)).toBeInTheDocument();
+    expect(
+      within(confirmation).getByText("Workspace access will be available in a future update."),
+    ).toBeInTheDocument();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Create target" })).not.toBeInTheDocument();
   });
 
   it("disables duplicate submissions and shows a loading state", async () => {
@@ -347,7 +355,9 @@ describe("TargetForm", () => {
       sourceUrl: validSourceUrl,
       platform: "google_maps",
     });
-    await waitFor(() => expect(mockPush).toHaveBeenCalled());
+    expect(await screen.findByRole("status")).toHaveTextContent("Target created");
+    expect(createTarget).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("preserves input and shows an understandable request failure", async () => {
@@ -372,6 +382,28 @@ describe("TargetForm", () => {
     expect(screen.getByLabelText(/target name/i)).toHaveValue("  NJIT, Newark  ");
     expect(screen.getByLabelText(/google maps source url/i)).toHaveValue(validSourceUrl);
     expect(screen.getByRole("button", { name: "Create target" })).toBeEnabled();
+  });
+
+  it("preserves input when authentication is temporarily unavailable", async () => {
+    const createTarget = jest
+      .fn()
+      .mockRejectedValue(
+        new AnalysisTargetCreationError(
+          "AUTHENTICATION_UNAVAILABLE",
+          "Authentication is temporarily unavailable. Please try again later.",
+        ),
+      );
+    render(<TargetForm createTarget={createTarget} />);
+    fillValidForm();
+
+    submitForm();
+
+    expect(
+      await screen.findByText("Authentication is temporarily unavailable. Please try again later."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/target name/i)).toHaveValue("  NJIT, Newark  ");
+    expect(screen.getByLabelText(/google maps source url/i)).toHaveValue(validSourceUrl);
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   it("maps authoritative server validation errors back to the field and focuses it", async () => {
@@ -428,11 +460,11 @@ describe("TargetForm", () => {
     );
   });
 
-  it("requests the agreed future target-list destination when cancelled", () => {
+  it("returns to the existing home route when cancelled", () => {
     render(<TargetForm createTarget={jest.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(mockPush).toHaveBeenCalledWith("/analysis-targets");
+    expect(mockPush).toHaveBeenCalledWith("/");
   });
 });

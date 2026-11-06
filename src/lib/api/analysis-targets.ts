@@ -3,6 +3,7 @@ import type { AnalysisTargetValidationIssue } from "@/lib/validation/analysis-ta
 
 type AnalysisTargetCreationErrorCode =
   | "AUTHENTICATION_REQUIRED"
+  | "AUTHENTICATION_UNAVAILABLE"
   | "INVALID_ANALYSIS_TARGET_INPUT"
   | "CREATION_UNAVAILABLE"
   | "CREATION_FAILED";
@@ -67,7 +68,7 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 /**
- * Browser-side client for the future authenticated S1-009/S1-014 creation endpoint.
+ * Browser-side client for the authenticated S1-011 creation endpoint.
  * Ownership is intentionally absent from the request body and must be derived by the server.
  */
 export const createAnalysisTarget: CreateAnalysisTarget = async ({ name, sourceUrl }) => {
@@ -102,6 +103,17 @@ export const createAnalysisTarget: CreateAnalysisTarget = async ({ name, sourceU
         ? payload.error.message
         : "Please fix the highlighted fields.",
       readValidationIssues(payload.error.issues),
+    );
+  }
+
+  if (
+    response.status === 503 &&
+    isErrorPayload(payload) &&
+    payload.error.code === "AUTH_UNAVAILABLE"
+  ) {
+    throw new AnalysisTargetCreationError(
+      "AUTHENTICATION_UNAVAILABLE",
+      "Authentication is temporarily unavailable. Please try again later.",
     );
   }
 

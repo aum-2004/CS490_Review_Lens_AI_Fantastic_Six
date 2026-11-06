@@ -30,9 +30,9 @@ export async function ProtectedNewAnalysisTargetPage() {
             <li>
               <Link
                 className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2"
-                href="/analysis-targets"
+                href="/"
               >
-                My Targets
+                Home
               </Link>
             </li>
             <li aria-hidden="true">/</li>

@@ -79,6 +79,28 @@ describe("createAnalysisTarget browser client", () => {
     });
   });
 
+  it("reports a temporary authentication outage without exposing provider details", async () => {
+    fetchMock.mockResolvedValue(
+      Response.json(
+        {
+          success: false,
+          error: {
+            code: "AUTH_UNAVAILABLE",
+            message: "provider-secret-details",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    await expect(createAnalysisTarget(input)).rejects.toEqual(
+      new AnalysisTargetCreationError(
+        "AUTHENTICATION_UNAVAILABLE",
+        "Authentication is temporarily unavailable. Please try again later.",
+      ),
+    );
+  });
+
   it("reports the absent integration endpoint without fabricating a target", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 404 }));
 
