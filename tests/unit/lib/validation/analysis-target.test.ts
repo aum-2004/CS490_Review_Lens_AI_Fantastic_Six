@@ -145,6 +145,8 @@ describe("validateAnalysisTargetInput", () => {
       ["NUL only", "\u0000"],
       ["embedded bell", "NJ\u0007IT"],
       ["embedded newline", "New\nJersey"],
+      ["lone high surrogate", "NJ\ud800IT"],
+      ["lone low surrogate", "NJ\udfffIT"],
     ])("rejects a name containing an unsafe control character: %s", (_description, name) => {
       expectFailure(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl }), [
         {
@@ -155,23 +157,29 @@ describe("validateAnalysisTargetInput", () => {
       ]);
     });
 
-    it.each(["\u200b", " \t\u200b \n", "\u200b\u2060\ufeff"])(
-      "treats an invisible-only name as missing: %p",
-      (name) => {
-        expectFailure(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl }), [
-          {
-            field: "name",
-            code: "TARGET_NAME_REQUIRED",
-            message: "Enter a name for this target.",
-          },
-        ]);
-      },
-    );
+    it.each([
+      "\u200b",
+      " \t\u200b \n",
+      "\u200b\u2060\ufeff",
+      "\u200c",
+      "\u200d",
+      " \u200c \u200d ",
+    ])("treats an invisible-only name as missing: %p", (name) => {
+      expectFailure(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl }), [
+        {
+          field: "name",
+          code: "TARGET_NAME_REQUIRED",
+          message: "Enter a name for this target.",
+        },
+      ]);
+    });
 
     it.each([
       ["NJIT", "NJIT"],
       ["  Café 東京  ", "Café 東京"],
       ["\u200b  New Jersey Institute of Technology \u2060", "New Jersey Institute of Technology"],
+      ["Family 👨\u200d👩\u200d👧\u200d👦", "Family 👨\u200d👩\u200d👧\u200d👦"],
+      ["می\u200cروم", "می\u200cروم"],
     ])("accepts and consistently normalizes a meaningful name: %p", (name, expectedName) => {
       expect(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl })).toEqual({
         success: true,
@@ -182,6 +190,20 @@ describe("validateAnalysisTargetInput", () => {
         },
       });
     });
+
+    it.each(["NJIT\n", "\tNJIT", "NJIT\t"])(
+      "trims boundary whitespace before checking control characters: %p",
+      (name) => {
+        expect(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl })).toEqual({
+          success: true,
+          data: {
+            name: "NJIT",
+            sourceUrl: validSourceUrl,
+            platform: "google_maps",
+          },
+        });
+      },
+    );
   });
 
   describe("source URL", () => {
@@ -232,6 +254,23 @@ describe("validateAnalysisTargetInput", () => {
         ]);
       },
     );
+
+    it("rejects a source URL containing a lone surrogate", () => {
+      expectFailure(
+        validateAnalysisTargetInput({
+          name: "NJIT",
+          sourceUrl: "https://www.google.com/maps/place/NJ\ud800IT",
+        }),
+        [
+          {
+            field: "sourceUrl",
+            code: "SOURCE_URL_MALFORMED",
+            message:
+              "That doesn't look like a valid web address. Paste the full link, starting with https://.",
+          },
+        ],
+      );
+    });
 
     it.each([
       "ftp://www.google.com/maps/place/NJIT",
@@ -316,7 +355,7 @@ describe("validateAnalysisTargetInput", () => {
             field: "sourceUrl",
             code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
             message:
-              "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
+              "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
           },
         ],
       );
@@ -349,6 +388,21 @@ describe("validateAnalysisTargetInput", () => {
       ]);
     });
 
+    it("rejects a canonical URL that exceeds 2,048 characters after percent-encoding", () => {
+      const prefix = "https://www.google.com/maps/place/";
+      const sourceUrl = `${prefix}${"é".repeat(2_048 - prefix.length)}`;
+
+      expect(sourceUrl).toHaveLength(2_048);
+      expect(new URL(sourceUrl).href.length).toBeGreaterThan(2_048);
+      expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
+        {
+          field: "sourceUrl",
+          code: "SOURCE_URL_TOO_LONG",
+          message: "Google Maps links can be up to 2,048 characters.",
+        },
+      ]);
+    });
+
     it.each([
       "https://example.com/maps/place/NJIT",
       "https://google.com.evil.example/maps/place/NJIT",
@@ -365,7 +419,7 @@ describe("validateAnalysisTargetInput", () => {
           field: "sourceUrl",
           code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
           message:
-            "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
+            "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
         },
       ]);
     });
@@ -422,7 +476,7 @@ describe("validateAnalysisTargetInput", () => {
           field: "sourceUrl",
           code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
           message:
-            "This link isn't a supported Google Maps link. Open the business in Google Maps and copy its full URL.",
+            "This link isn't a Google Maps link. Open the business in Google Maps and copy its link.",
         },
       ]);
     });

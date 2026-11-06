@@ -3,7 +3,7 @@
 This folder is the single place where the application connects to Supabase (PostgreSQL and Auth).
 No other code should construct a Supabase client directly.
 
-Status: **Auth implemented in S1-009; application database schema remains planned.**
+Status: **Auth implemented in S1-009; the AnalysisTarget schema was added in S1-014.**
 The public starter page and health endpoint need no credentials. Authentication requires the
 public URL and publishable key documented in `.env.example`.
 

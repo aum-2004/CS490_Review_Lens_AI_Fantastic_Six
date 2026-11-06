@@ -122,13 +122,15 @@ which contains S1-009. They have not yet been repeated manually on the isolated 
 
 The hosted expiry-refresh check was reported as passed after proposing a temporary JWT duration
 of 300 seconds and a six-minute idle interval. No tokens were inspected by the assistant; this is
-user-reported acceptance evidence. The PM's restoration to the original 3600-second duration is
-**outstanding**, explicitly deferred by the user because the PM is unavailable. No shared project
-setting was changed by the assistant. Confirm restoration before closing the setup follow-up.
+user-reported acceptance evidence. Restoration to 3600 was initially deferred while the PM was
+unavailable; Shawn subsequently reported the original duration restored. The reviewer now requests
+PM confirmation/evidence of the current setting. No shared project setting was changed or inspected
+by the assistant; do not present the user report as an independently verified dashboard value.
 
-Expired/invalid confirmation-link acceptance, exact hosted email-template configuration, isolated
-S1-009 manual acceptance, PR CI, and the required teammate/security review remain pending. The
-automated checks below cover the implementation independently of the shared project.
+Shawn and the PR reviewer report GitHub CI passed. Its current run was not independently inspected
+by the assistant. Expired confirmation-link acceptance, exact hosted email-template configuration,
+full isolated S1-009 manual acceptance, and required teammate/security review remain pending.
+The isolated invalid-link check recorded below passed; it does not prove actual token expiry.
 
 Original live-test exchanges, with personal values redacted, are preserved in the supplementary
 [S1-010 session transcript](../ai-transcripts/2026-11-03_shawn_S1-010_codex.md). Its inclusion here is
@@ -142,6 +144,95 @@ lint, explicit typecheck, formatting, and production build. Browser checks used 
 These are local results, not GitHub CI or new hosted manual acceptance. The initial auth browser
 attempt could not acquire Next's dev lock while the user's server was running; it was stopped
 briefly, both suites/build were verified, and the user's dev server was restarted on S1-009.
+
+### PR review follow-up (2026-11-04)
+
+Keep PR #37 Draft and use `Refs #9` while acceptance and security review remain outstanding. The
+assistant cannot update GitHub PR metadata without a connected PR tool; a revised description is
+prepared separately for the author to paste. Do not infer that CI passing completes human review.
+
+| Review item                          | Evidence / remaining action                                                                                                                                                                                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| JWT expiry                           | User reports restoration to 3600. PM confirmation or a settings check remains requested; do not change the value again for this review.                                                                                                                      |
+| CI                                   | User and reviewer report a passing run. Link the actual run from this PR's Checks tab when updating the description; the supplied `/pull/27` URL is a PR URL rather than an Actions run URL.                                                                 |
+| Invalid confirmation on isolated 009 | Direct fresh/no-cookie request with an invalid dummy token returned 307 to `/login?notice=confirmation-error`; the destination returned 200 with safe error copy. Session API returned 401 `AUTH_REQUIRED` with no data. No real token/account was supplied. |
+| Expired confirmation                 | Automated SDK/route mocks cover rejection. A genuinely expired hosted link has not been independently tested; invalid/reused links must not be recorded as proof of expiry.                                                                                  |
+| Hosted template and Site URL         | Expected Site URL and TokenHash callback are specified above. Actual dashboard values remain unconfirmed. Registration success alone does not establish which callback was used.                                                                             |
+| Full live acceptance on 009          | Earlier hosted happy-path checks ran on dependent 010. Repeat registration/confirmation, sign-in, persistence, identity, logout, and failure cases on this branch; local automated checks already passed here.                                               |
+| Shared UI                            | On 2026-11-04 the 015 owner agreed to PascalCase and 009-first merge order, then reconciliation in 015 after accounting for its 016 dependency. Actual reconciliation and reviewer acceptance of this deferred integration remain pending.                   |
+| Human/security review                | Obtain the normal teammate review and the additional authentication/security-focused review required by S1-004 section 7 before merge. No external review request was sent by the assistant.                                                                 |
+
+Proposed PM confirmation request (no credentials needed): confirm JWT expiry is 3600, the local
+test Site URL is `http://localhost:3000`, and Confirm signup uses the TokenHash `/auth/confirm`
+template shown above. Record only settings/check outcomes, not real confirmation links or tokens.
+
+### Shared UI reconciliation plan for PR #36
+
+On 2026-11-04 Shawn supplied the 015 owner's agreement to PascalCase, one shared implementation,
+and 009 merging first. The owner will update 015 from main, extend the shared Card as needed,
+preserve both forms' accessibility/functionality, and share the reconciliation diff after tests/CI.
+They also confirmed 015 is stacked on 016 and will reconcile that dependency/history before final
+integration. This records owner agreement, not completed implementation or 009 reviewer approval.
+The previously inspected PR #36 head is `aa4e6b9`; no newer implementation was inspected here.
+
+1. Retain PascalCase `Button.tsx`, `Input.tsx`, `Card.tsx`, and `Label.tsx` per the current engineering
+   standard, with one canonical implementation per primitive and consistent imports. Changing the
+   convention requires a reviewed standards change; do not keep case-only duplicates.
+2. Follow the agreed merge order: 009 lands first after its acceptance/reviews pass. The 015 owner
+   then updates from current main, accounts for 016's merge and stacked history, and reconciles
+   imports/primitives before merging 015. Do not blindly accept both file sets.
+3. Reconcile APIs as well as filenames. PR #36 uses Base UI/generated components and compound Card
+   exports, while 009's approved implementation uses Radix/React Hook Form and a smaller Card.
+   Agree on the canonical APIs, extend required shared exports in one place, and adapt both feature
+   consumers. Do not replace the authentication dependency baseline as an incidental rename.
+4. Normalize utility imports to the agreed shared `cn` helper and retain team dimensions, focus,
+   labels, pending state, and keyboard behavior. Existing exports are documented in the UI README.
+5. Case-only renames on Windows require a temporary intermediate name, performed on a branch
+   without an existing conflicting target file. If both cases are present, reconcile in a case-sensitive
+   environment before checkout/merge; do not overwrite one implementation with `git mv -f`.
+6. After reconciliation, run auth and target-form tests, typecheck, lint/formatting, and the Linux CI
+   build. The post-merge Linux check is necessary to catch import-case mistakes Windows may hide.
+
+### Additional live app checks on isolated 009 (2026-11-04)
+
+Using fresh headless Edge sessions against the running localhost app with its existing configured
+Supabase project, the following checks passed without a real account/password/token:
+
+- Signed-out session endpoint returns 401 `AUTH_REQUIRED` without `data`.
+- Empty sign-in fields show accessible invalid state.
+- Malformed email is rejected by form validation.
+- Empty registration fields show accessible invalid state without creating an account.
+- Missing confirmation token, unsupported confirmation type, and an invalid dummy confirmation
+  token each lead to the safe confirmation-error notice; session remains unauthenticated.
+
+The browser probes initially encountered repeated development-page reloads. Only the verified
+project dev process was restarted; validation then passed. The confirmation assertion was scoped
+to the app's main alert to exclude Next's separate route announcer. These were probe/development
+state issues; no application code or shared Auth settings changed. This is live app failure-case
+evidence, not a completed authenticated account lifecycle or proof of provider token expiry.
+
+### Genuine expired-confirmation acceptance procedure — pending
+
+Email confirmation is governed by **Email OTP Expiration**, not the access-token/JWT expiry.
+The user has no unused older confirmation email and cannot currently confirm the email expiry
+duration. No fresh signup was created by the assistant, and no expired-link pass is claimed.
+
+1. Have the PM read the current Email OTP Expiration value in the email provider settings. Keep
+   JWT expiry at 3600 and leave the shared email expiry unchanged. Confirm the Site URL/template.
+2. Register a fresh test account in the 009 app using an inbox controlled by the tester. Record the
+   issuance time and configured duration, without recording email/password or the link/token.
+3. Leave it unconfirmed; do not click the link or request another confirmation before the test.
+   Check for email-link scanners/prefetching or other events that could consume/invalidate it.
+4. After the configured email duration plus a small margin, open the original link in a signed-out
+   test browser. Expect the safe error notice and session API 401 without user data. Confirm the
+   account remains unconfirmed and record timestamps/outcomes only. Provider logs can support
+   the result, but an `otp_expired`/invalid message alone does not establish the cause.
+5. Complete remaining happy-path checks with a fresh valid confirmation flow, sign-in, navigation,
+   identity, logout, and separate-account identity on 009. Retain settings/test evidence for review.
+
+An invalid or previously consumed link is not a substitute for this procedure. Official references:
+[Email OTP expiry](https://supabase.com/docs/guides/auth/auth-email-passwordless),
+[verification-failure causes](https://supabase.com/kb/troubleshooting/otp-verification-failures-token-has-expired-or-otp_expired-errors-5ee4d0).
 
 ## Deliberately deferred decisions
 
@@ -160,3 +251,144 @@ Geist remains until the team approves the font change. Development-tool audit fi
 
 Implementation also follows the installed Next.js authentication, Cache Components authentication,
 Server Actions, Proxy, Route Handler, and async cookies guides under `node_modules/next/dist/docs/`.
+
+### AI-assisted security review completed (2026-11-04)
+
+The focused source review found no blocking issue in the reviewed 009 authentication code;
+48 targeted tests passed in six suites. See [the review evidence](s1-009-security-review.md)
+for scope, assertions, and limits. Shawn explicitly stated that teammate review is unnecessary
+for this step; this latest instruction supersedes the earlier pending teammate-review requests
+in this working record. It does not claim human approval or rewrite S1-004 globally.
+Genuine expired-link, hosted configuration, and isolated authenticated acceptance evidence
+remain pending. The revised PR description records CI passing based on author/reviewer reports;
+no live GitHub metadata was edited by the assistant.
+
+### User-confirmed authenticated checks on isolated 009 (2026-11-04)
+
+With `feature/S1-009-managed-authentication` checked out, Shawn supplied a screenshot of
+`/login` showing the signed-in account panel (personal account values omitted here).
+He then confirmed that all of the following passed in the same browser:
+
+- Refreshing `/login` preserves the authenticated account panel.
+- Navigating home and back through the sign-in link preserves the account panel.
+- `/api/auth/session` returns success and the signed-in account's identity.
+- Signing out returns to the sign-in form; refresh keeps the browser signed out.
+- After logout, `/api/auth/session` returns `AUTH_REQUIRED` without user data.
+- Signing in again restores the account panel.
+
+These are user-confirmed hosted-session checks on isolated 009, not assistant-controlled
+browser observations. Fresh registration/email confirmation on 009, hosted Site URL/template
+verification, and a genuinely expired confirmation link remain outstanding. Dashboard checks
+require the PM because Shawn reports no access. No new JWT-expiry test was claimed.
+
+### Current reviewer handoff status (2026-11-04; supersedes earlier pending lists)
+
+Shawn now reports that fresh registration/email confirmation also passed on isolated 009,
+in addition to the previously confirmed sign-in, persistence, identity, logout, and re-login
+checks. No fresh account or inbox was accessed by the assistant; these are author-reported
+results. Remaining hosted acceptance items are actual Site URL/TokenHash template verification
+and a genuinely expired unused confirmation link. Shawn's latest message expresses uncertainty
+about Aryan restoring JWT expiry, so final PM confirmation of 3600 is pending despite earlier
+reports of restoration. Email OTP Expiration is separate and must be known for the expiry test.
+The 015 owner is also the 009 reviewer and agreed to the shared UI reconciliation plan.
+
+The AI-assisted security review is complete within its documented scope. Prior CI success is
+reported by author/reviewer; this documentation push requires a new passing run. PR metadata
+must use Refs #9 and remain Draft pending acceptance. No claim that remote metadata was edited
+is made. This guide and the security report are the current reviewer handoff evidence.
+
+### Custom SMTP and TokenHash confirmation acceptance (2026-11-04)
+
+Shawn reports configuring custom SMTP using a temporary personal Gmail sender and its separate
+App Password. No SMTP credential or personal sender address was supplied to or inspected by
+the assistant. The project mailbox was created but Google blocked App Password access during
+identity verification, so migration to that mailbox remains a handoff item.
+
+The supplied dashboard screenshot shows Confirm signup source using
+`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`.
+A fresh signup email was delivered to Spam rather than the main inbox. After opening that new
+confirmation link, Shawn confirmed both acceptance checks passed on the running isolated 009:
+
+- `/login` displayed the authenticated account without manually signing in.
+- `/api/auth/session` returned success with the account's identity in the same browser.
+
+This is user-confirmed hosted callback/session acceptance and screenshot evidence of the template;
+it is not an independent dashboard inspection by the assistant. Delivery to Spam is a known
+limitation of the temporary SMTP sender; inbox placement is not guaranteed. Replace the sender
+and SMTP credentials with the team's chosen sender, retest delivery, then revoke the temporary
+personal App Password. Merely replacing the sender address is insufficient.
+
+PM confirmed JWT expiry 3600; Shawn reports restoring Email OTP Expiration to 3600 after testing.
+The prior timed, unused-link rejection test used Supabase's default template and ended with
+`otp_expired` plus session API `AUTH_REQUIRED` without user data. It does not certify a genuinely
+expired link through the newly configured TokenHash callback. That specific callback-expiry
+check remains separate. Actual Site URL value has not been directly inspected; the successful
+callback demonstrates that the tested email reached the local application.
+
+### TokenHash rejection test result (2026-11-04)
+
+After requesting the timed expired-TokenHash callback test, Shawn supplied screenshots showing
+`/login?notice=confirmation-error` with the safe visible confirmation-failure message and
+`/api/auth/session` returning `success: false`, `AUTH_REQUIRED`, and no user data. This confirms
+the observed callback rejection and unauthenticated result. The screenshot alone cannot establish
+issuance time, elapsed duration, or whether the link was previously consumed; exact timing and
+unused-link history are user-controlled test conditions rather than independently observed facts.
+No issuance/open timestamps were supplied in this result. No real link or token was retained.
+
+This test email reached the inbox, while an earlier SMTP test reached Spam. Setup/test guidance:
+if the confirmation email is not initially visible, check Spam/Junk as well as the main inbox.
+Inbox placement varies; delivery to Spam is a possible outcome, not a consistent failure.
+
+After the temporary 300-second Email OTP Expiration test, restore that setting to 3600 seconds.
+Restoration following this latest test has not yet been confirmed. JWT expiry stays at 3600.
+
+### Expiry setting restored after TokenHash test
+
+Shawn confirmed that Email OTP Expiration was restored to 3600 seconds and saved after the
+latest TokenHash rejection test. This is user-confirmed dashboard evidence. JWT expiry remains
+PM-confirmed at 3600; the assistant did not inspect or change either shared setting.
+
+## Current handoff status after SMTP acceptance (2026-11-04)
+
+This dated status supersedes older pending lists above. The new TokenHash signup callback
+established a session without manual sign-in, confirmed by Shawn with a successful session API
+result on 009. The timed-rejection procedure produced the visible safe confirmation-error notice
+and AUTH_REQUIRED without user data, evidenced by screenshots. Timing and unused-link conditions
+were controlled by the tester; no exact timestamps or real tokens were retained. PM confirmed
+JWT expiry 3600; Shawn confirmed Email OTP Expiration restored and saved at 3600 after testing.
+
+SMTP uses a temporary personal sender. Delivery reached Spam in one test and the inbox in the
+next; check Spam/Junk if needed. Replace sender and SMTP credentials together when the team
+mailbox is usable, retest, then revoke the temporary App Password. The required template was
+visible in the supplied screenshot. The actual Site URL setting has not been separately supplied.
+
+The reviewer expressly requested an independent security-focused review under S1-004 section 7;
+the AI report alone was not accepted. Shawn later reported being told to self-review, but no
+completed author review or accepted waiver is claimed. Resolve this directly with the reviewer
+and retain the resulting human review evidence. Keep Refs #9 and Draft until outstanding review
+and acceptance decisions are resolved. A new documentation push requires a new passing CI run.
+
+### Security-review responsibility clarified
+
+Shawn reports that the reviewer assigned the whole security check to him and confirmed no other
+person is needed for 009. The guided author review is recorded in s1-009-security-review.md,
+with 67 unit tests passing afterward. The request for an additional person is therefore resolved
+according to this latest user-reported reviewer direction. This is author review, not independent
+review, and does not itself establish final PR approval. Earlier pending-review statements above
+are historical; this clarification supersedes them for this PR only.
+
+## Original conversation recovery (2026-11-05)
+
+The previously missing saved 009 dialogue has been recovered directly from the matching local
+Codex session log into ai-transcripts/2026-11-04_shawn_S1-009_codex.md. It now contains 143
+user messages and 236 assistant messages, with saved ordering/timestamps and declared privacy
+redactions. This replaces the partial summary-based Nov4 record and supersedes earlier text-gap
+notices. Related initial context and handoff discussion are included; separate 010 execution and
+standalone 014 review were excluded. Earlier Nov3 records remain as implementation/action
+records with intentional overlap. No unrecorded web-chat messages were reconstructed.
+
+Recovery includes shared UI coordination, SMTP restrictions/setup and failed Gmail approach,
+confirmation/expiry tests, and the original guided author-review instructions and confirmations.
+Screenshot pixels, attachment file bodies, internal reasoning and raw tool events are not embedded;
+textless user messages are explicitly identified. The file describes selection and coverage limits.
+No application code or hosted configuration changed during recovery.

@@ -61,7 +61,6 @@ describe("ownership", () => {
       name: "Joe's Pizza",
       platform: "google_maps",
       source_url: SOURCE_URL,
-      google_place_id: null,
     });
     await expect(response.json()).resolves.toMatchObject({
       success: true,
@@ -94,7 +93,6 @@ describe("ownership", () => {
       name: "Joe's Pizza",
       platform: "google_maps",
       source_url: SOURCE_URL,
-      google_place_id: null,
     });
   });
 
