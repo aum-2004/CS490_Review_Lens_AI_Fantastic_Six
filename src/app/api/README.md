@@ -14,11 +14,12 @@ Route Handlers stay thin (see `docs/engineering-standards.md`, sections 3 and 7)
 
 Current endpoints:
 
-| Method | Path                    | Purpose                                                      | Added by   |
-| ------ | ----------------------- | ------------------------------------------------------------ | ---------- |
-| GET    | `/api/health`           | Confirms the server is running. No auth, no database.        | S1-005     |
-| GET    | `/api/auth/session`     | Returns verified identity; rejects missing/invalid sessions. | S1-009/010 |
-| POST   | `/api/analysis-targets` | Creates a target owned by the verified session user.         | S1-011     |
+| Method | Path                    | Purpose                                                       | Added by   |
+| ------ | ----------------------- | ------------------------------------------------------------- | ---------- |
+| GET    | `/api/health`           | Confirms the server is running. No auth, no database.         | S1-005     |
+| GET    | `/api/auth/session`     | Returns verified identity; rejects missing/invalid sessions.  | S1-009/010 |
+| POST   | `/api/analysis-targets` | Creates a target owned by the verified session user.          | S1-011     |
+| GET    | `/api/analysis-targets` | Lists only the verified session user's targets, across pages. | S1-017     |
 
 Other target, ingestion, and review endpoints arrive with their respective stories. Every protected
 handler must independently use `requireApiUser()` from `@/services/auth/access-control` and return
