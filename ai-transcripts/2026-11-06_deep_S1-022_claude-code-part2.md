@@ -9,7 +9,7 @@ Date: November 5–6, 2026
 >
 > **Source:** exported from Claude Code with `/export`. Only the turns after the Nov 5 file's last turn are kept, so nothing is duplicated. The dialogue is as exported; tool calls and their output appear collapsed ("ctrl+o to expand"). Local file-system paths and the local username were redacted as `<local path>` and `<user>`.
 >
-> **Not in this file:** the independent PR #37 (S1-009) security review, which is in `ai-transcripts/2026-11-05_deep_S1-009_claude-code.md` and did not happen during these turns. The export ends with Shawn's re-review of `79eeec6`; the turns that followed (preparing this file and the commit commands) are not included.
+> **Not in this file:** the independent PR #37 (S1-009) security review, which is in `ai-transcripts/2026-11-05_deep_S1-009_claude-code.md` and did not happen during these turns. The export ends with Shawn's re-review of `79eeec6`; the turns that followed (preparing this file and the commit commands) are not included here; they are in `ai-transcripts/2026-11-06_deep_S1-022_claude-code-part3.md`.
 
 ---
 
