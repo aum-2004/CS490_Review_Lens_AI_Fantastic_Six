@@ -47,8 +47,11 @@ create index reviews_target_source_review_idx
 -- (S1-BR-008, S1-BR-009). Server code must still check target ownership; RLS is defense in depth.
 alter table public.reviews enable row level security;
 
-revoke all on table public.reviews from anon;
-grant select, insert, update, delete on table public.reviews to authenticated;
+-- Supabase grants new tables ALL to anon and authenticated by default. Revoke from both first so
+-- authenticated does not keep TRUNCATE (not subject to RLS), REFERENCES, or TRIGGER.
+revoke all on table public.reviews from anon, authenticated;
+grant select, insert, update, delete
+  on table public.reviews to authenticated;
 
 create policy reviews_select_own
   on public.reviews
