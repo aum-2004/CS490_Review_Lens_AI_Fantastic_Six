@@ -273,6 +273,76 @@ describe("Outscraper result retrieval", () => {
     ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
   });
 
+  it("rejects a flat response with an invalid Place ID format", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [{ name: "Cortaditos", place_id: "not-a-place-id", review_text: "A" }],
+    });
+
+    await expect(
+      getOutscraperResult(
+        "test-url-request",
+        {
+          sourceUrl: "https://www.google.com/maps/place/Cortaditos",
+          googlePlaceId: null,
+        },
+        fetcher as unknown as typeof fetch,
+      ),
+    ).rejects.toMatchObject({ code: "IDENTITY_MISSING" });
+  });
+
+  it("rejects inconsistent google IDs in flat responses", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        { name: "Cortaditos", place_id: placeId, google_id: "google-a", review_text: "A" },
+        { name: "Cortaditos", place_id: placeId, google_id: "google-b", review_text: "B" },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-1", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
+  });
+
+  it("rejects inconsistent location links in flat responses", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        {
+          name: "Cortaditos",
+          place_id: placeId,
+          location_link: "https://maps.example/a",
+          review_text: "A",
+        },
+        {
+          name: "Cortaditos",
+          place_id: placeId,
+          location_link: "https://maps.example/b",
+          review_text: "B",
+        },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-1", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
+  });
+
+  it("rejects nested results containing more than one business", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        { name: "Cortaditos", place_id: placeId, reviews_data: [{ review_text: "A" }] },
+        { name: "Other", place_id: placeId, reviews_data: [{ review_text: "B" }] },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-1", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
+  });
+
   it("handles the real flat Outscraper review response", async () => {
     const fetcher = mockFetchResponse(200, {
       status: "Success",

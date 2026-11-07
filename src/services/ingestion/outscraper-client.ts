@@ -3,6 +3,7 @@ import "server-only";
 import { validateAnalysisTargetInput } from "@/lib/validation/analysis-target";
 
 const OUTSCRAPER_URL = "https://api.outscraper.cloud/google-maps-reviews";
+const GOOGLE_PLACE_ID_PATTERN = /^ChIJ[A-Za-z0-9_-]+$/;
 
 export type OutscraperJob = {
   id: string;
@@ -61,7 +62,7 @@ export async function startOutscraperExtraction(
     throw new OutscraperError("MISSING_API_KEY", "Outscraper is not configured.");
   }
 
-  if (normalizedQuery.kind === "place_id" && !/^ChIJ[A-Za-z0-9_-]+$/.test(normalizedQuery.value)) {
+  if (normalizedQuery.kind === "place_id" && !isGooglePlaceId(normalizedQuery.value)) {
     throw new OutscraperError(
       "INVALID_PLACE_ID",
       "The Google Maps business identifier is invalid.",
@@ -174,7 +175,7 @@ export async function getOutscraperResult(
     typeof expectedIdentity === "string" ? expectedIdentity : expectedIdentity.googlePlaceId;
   const sourceUrl = typeof expectedIdentity === "string" ? undefined : expectedIdentity.sourceUrl;
 
-  if (expectedPlaceId !== null && !/^ChIJ[A-Za-z0-9_-]+$/.test(expectedPlaceId)) {
+  if (expectedPlaceId !== null && !isGooglePlaceId(expectedPlaceId)) {
     throw new OutscraperError(
       "INVALID_PLACE_ID",
       "The Google Maps business identifier is invalid.",
@@ -286,6 +287,13 @@ export async function getOutscraperResult(
       );
     }
 
+    if (placeIds.some((placeId) => !isGooglePlaceId(placeId))) {
+      throw new OutscraperError(
+        "IDENTITY_MISSING",
+        "The review service did not return a valid Google business identifier.",
+      );
+    }
+
     if (expectedPlaceId !== null && placeIds.some((placeId) => placeId !== expectedPlaceId)) {
       throw new OutscraperError(
         "BUSINESS_MISMATCH",
@@ -368,7 +376,7 @@ export async function getOutscraperResult(
     );
   }
 
-  if (typeof business.place_id !== "string" || !/^ChIJ[A-Za-z0-9_-]+$/.test(business.place_id)) {
+  if (typeof business.place_id !== "string" || !isGooglePlaceId(business.place_id)) {
     throw new OutscraperError(
       "IDENTITY_MISSING",
       "The review source did not return a valid business identity.",
@@ -423,4 +431,8 @@ function uniqueNonEmptyStrings(values: unknown[]): string[] {
       ),
     ),
   ];
+}
+
+function isGooglePlaceId(value: string): boolean {
+  return GOOGLE_PLACE_ID_PATTERN.test(value);
 }

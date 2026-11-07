@@ -21,6 +21,11 @@ and enforce ownership itself (S1-BR-007 through S1-BR-010).
 provider-start function are injectable so unit tests can verify authorization and provider-call
 ordering without network access or paid extraction requests.
 
+The POST route is disabled unless the server-side environment variable `INGESTION_ENABLED` is
+exactly `"true"`; an absent or any other value returns a safe unavailable response before target
+lookup or provider access. S1-023 owns enabling this only after server-side job binding and
+repeat-submission protection are in place.
+
 The Route Handler must use the shared `requireApiUser()` guard and return its failure response
 before doing target or provider work. It must pass `auth.user.id` to the submission service; an
 owner/user ID from request data is never authoritative. The target lookup should use the shared
@@ -30,13 +35,6 @@ nonexistent and foreign-owned targets to the same not-found error. Do not reimpl
 authentication or target persistence in the Route Handler. S1-019 keeps `submitReviewSource` as
 the ingestion service; the short-lived `startTargetIngestion` duplicate from S1-013 was removed
 after the merged route was switched to this service.
-
-These interfaces are currently in open teammate PRs: [S1-009 #37](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/37)
-and [S1-010 #39](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/39) provide
-authentication and protected-route helpers; [S1-011 #40](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/40)
-shows the owner-derived route pattern; [S1-014 #35](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/35)
-provides the AnalysisTarget repository. Integrate these shared modules when available rather than
-copying them into S1-019.
 
 The S1-014 `AnalysisTarget` type makes `googlePlaceId` nullable and documents that it is resolved
 during ingestion. The submission service therefore sends the stored validated `sourceUrl` to
@@ -54,6 +52,21 @@ S1-022/S1-023 may persist only the completed `VerifiedExtractedReviews` result f
 Pending results contain no reviews, provider failures remain failures, and completed results must
 retain the verified identity alongside normalized reviews.
 
+### S1-023 provider-job binding contract
+
+S1-023 must create a server-side record for every accepted provider job before exposing or
+retrieving its results. That record must bind the provider job ID to the authenticated
+`analysis_target_id` and owner ID derived from the ownership-checked target, along with the
+submitted source and lifecycle status. Result retrieval must look up that record by the
+authenticated owner, target, and provider job ID; an arbitrary client-supplied job ID must never
+be accepted as authority. Repeat submissions must be blocked or made idempotent from that
+server-side record before the feature is enabled.
+
+For URL-based jobs, consistency among the provider's returned Place ID, Google ID, location link,
+and business name proves only that the returned records agree with each other. It does not prove
+that the result belongs to the original stored source URL. S1-023 must retain the verified
+identity and must not describe URL-query consistency alone as proof of source-URL ownership.
+
 ## Outstanding ingestion integration requirement
 
 - **Provider review-storage permission:** Before persisting Outscraper review content, the team must
@@ -67,6 +80,16 @@ retain the verified identity alongside normalized reviews.
   example is explicitly synthetic and demonstrates adapter mapping only; it is not evidence about
   live provider payloads. S1-022 must define and implement the deduplication/persistence behavior,
   including the safe handling of missing or non-unique provider IDs, before real reviews are stored.
+
+- **S1-022 duplicate handling (Sprint 1 decision):** S1-022 persists reviews as-is, with no
+  deduplication, as allowed by [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22)
+  for Sprint 1:
+  - A missing provider ID is stored as `source_review_id = null`; the review is still saved.
+  - Repeated or non-unique provider IDs, within one batch or across batches, are stored as separate
+    rows.
+  - Ingesting the same target again stores its reviews again, creating duplicate rows.
+  - A non-unique `(analysis_target_id, source_review_id)` index lets a later sprint find and resolve
+    duplicates. Deduplication and re-ingestion handling are deferred beyond Sprint 1.
 
 - **Integration gate before persistence:** Provider review-storage permissions must be confirmed and
   recorded before persisting real reviews. The dedicated S1-022 issue is [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22),

@@ -23,6 +23,10 @@ export async function POST(
 ) {
   const auth = await requireApiUser();
   if (auth.response) return auth.response;
+  // Keep paid ingestion opt-in until S1-023 persists provider-job ownership and idempotency.
+  if (process.env.INGESTION_ENABLED !== "true") {
+    return errorResponse(503, "INGESTION_DISABLED", "Review ingestion is temporarily unavailable.");
+  }
   const { targetId } = await ctx.params;
 
   try {

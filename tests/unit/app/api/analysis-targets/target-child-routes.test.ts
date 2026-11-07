@@ -194,11 +194,18 @@ const SPOOFED_OWNER = {
   user_id: USER_A.id,
 };
 const validReview = { text: "Lovely place", rating: 5 };
+const originalIngestionEnabled = process.env.INGESTION_ENABLED;
 
 beforeEach(() => {
+  process.env.INGESTION_ENABLED = "true";
   jest.clearAllMocks();
   jest.spyOn(console, "error").mockImplementation(() => {});
   jest.mocked(startOutscraperExtraction).mockResolvedValue({ id: "job-1", status: "Pending" });
+});
+
+afterAll(() => {
+  if (originalIngestionEnabled === undefined) delete process.env.INGESTION_ENABLED;
+  else process.env.INGESTION_ENABLED = originalIngestionEnabled;
 });
 
 async function expectNotFound(response: Response) {
