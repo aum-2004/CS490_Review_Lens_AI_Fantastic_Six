@@ -34,6 +34,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_text: "Great coffee!",
@@ -52,6 +53,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           text: "Great coffee!",
@@ -78,6 +80,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [{ review_text: "Great coffee!", review_rating: 5 }],
     });
 
@@ -94,6 +97,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           place_id: "ChIJDifferentPlace",
@@ -113,6 +117,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_id: "test-002",
@@ -138,6 +143,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_text: "   ",
@@ -156,6 +162,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         {
           review_text: "Great coffee!",
@@ -174,6 +181,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         { review_text: "Hex rating", review_rating: "0x5" },
         { review_text: "Exponent rating", review_rating: "5e0" },
@@ -190,6 +198,7 @@ describe("Outscraper ingestion service", () => {
       status: "completed",
       businessName: "Cortaditos",
       placeId,
+      identity: { placeId, businessName: "Cortaditos" },
       reviews: [
         { review_text: "Valid rating", review_rating: "4.5" },
         { review_text: "Invalid hexadecimal", review_rating: "0x5" },

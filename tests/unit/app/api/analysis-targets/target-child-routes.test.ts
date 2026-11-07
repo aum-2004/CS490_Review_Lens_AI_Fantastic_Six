@@ -194,11 +194,18 @@ const SPOOFED_OWNER = {
   user_id: USER_A.id,
 };
 const validReview = { text: "Lovely place", rating: 5 };
+const originalIngestionEnabled = process.env.INGESTION_ENABLED;
 
 beforeEach(() => {
+  process.env.INGESTION_ENABLED = "true";
   jest.clearAllMocks();
   jest.spyOn(console, "error").mockImplementation(() => {});
   jest.mocked(startOutscraperExtraction).mockResolvedValue({ id: "job-1", status: "Pending" });
+});
+
+afterAll(() => {
+  if (originalIngestionEnabled === undefined) delete process.env.INGESTION_ENABLED;
+  else process.env.INGESTION_ENABLED = originalIngestionEnabled;
 });
 
 async function expectNotFound(response: Response) {
@@ -467,20 +474,26 @@ describe("POST /api/analysis-targets/[targetId]/ingestion", () => {
       },
     });
     expect(startOutscraperExtraction).toHaveBeenCalledTimes(1);
-    expect(startOutscraperExtraction).toHaveBeenCalledWith(PLACE_ID_A);
+    expect(startOutscraperExtraction).toHaveBeenCalledWith({
+      kind: "place_id",
+      value: PLACE_ID_A,
+    });
   });
 
-  it("returns 409 for an owned target with no review source, without calling the provider", async () => {
+  it("uses the stored Google Maps URL when an owned target has no resolved Place ID", async () => {
     signInAs(USER_A);
     useDatabase();
 
     const response = await postIngestion(TARGET_A_NO_SOURCE);
 
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(202);
     await expect(response.json()).resolves.toMatchObject({
-      error: { code: "SOURCE_NOT_CONFIGURED" },
+      data: { status: "accepted" },
     });
-    expect(startOutscraperExtraction).not.toHaveBeenCalled();
+    expect(startOutscraperExtraction).toHaveBeenCalledWith({
+      kind: "source_url",
+      value: "https://www.google.com/maps/place/Example",
+    });
   });
 
   it("denies User B ingesting against User A's target, and no review processing runs", async () => {
