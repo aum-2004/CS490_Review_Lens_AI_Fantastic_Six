@@ -408,6 +408,10 @@ export async function getOutscraperResult(
 
   const parentGoogleId = getOptionalIdentityField(business.google_id, "Google ID");
   const parentLocationLink = getOptionalIdentityField(business.location_link, "location link");
+  const parentBusinessName = business.name.trim();
+  const childBusinessNames = business.reviews_data.map((review) =>
+    getOptionalIdentityField(review.name, "business name"),
+  );
   const childGoogleIds = business.reviews_data.map((review) =>
     getOptionalIdentityField(review.google_id, "Google ID"),
   );
@@ -423,6 +427,17 @@ export async function getOutscraperResult(
     throw new OutscraperError(
       "IDENTITY_AMBIGUOUS",
       "The review provider returned conflicting Google business identifiers.",
+    );
+  }
+
+  if (
+    childBusinessNames.some(
+      (businessName) => businessName !== undefined && businessName !== parentBusinessName,
+    )
+  ) {
+    throw new OutscraperError(
+      "IDENTITY_AMBIGUOUS",
+      "The review provider returned inconsistent business names.",
     );
   }
 
