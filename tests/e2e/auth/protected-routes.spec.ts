@@ -12,6 +12,21 @@ test("rejects direct API access without identity, including a forged owner argum
     success: false,
     error: { code: "AUTH_REQUIRED", message: "Please sign in to continue." },
   });
+
+  const createResponse = await request.post("/api/analysis-targets", {
+    data: {
+      name: "Unauthenticated target",
+      sourceUrl: "https://www.google.com/maps/place/NJIT",
+      ownerId: "forged-user",
+    },
+  });
+  expect(createResponse.status()).toBe(401);
+  expect(createResponse.headers()["cache-control"]).toContain("no-store");
+  expect(await createResponse.json()).toEqual({
+    success: false,
+    error: { code: "AUTH_REQUIRED", message: "Please sign in to continue." },
+  });
+
   expect((await request.get("/api/health")).status()).toBe(200);
 });
 
@@ -19,8 +34,9 @@ test("redirects protected navigation, returns after login, and rejects it again 
   page,
   context,
 }) => {
-  // No target feature is supplied by S1-010. For signed-in users this route
-  // reaches Next's existing 404 until the owning story adds the target page.
+  test.slow();
+
+  // S1-015 owns this page; S1-010 owns the redirect and safe return flow.
   const destination = "/analysis-targets/new?source=direct";
   await page.goto(destination);
   await expect(page).toHaveURL(`/login?next=${encodeURIComponent(destination)}`);
@@ -31,6 +47,7 @@ test("redirects protected navigation, returns after login, and rejects it again 
     .getByRole("button", { name: "Sign in", exact: true })
     .click();
   await expect(page).toHaveURL(destination);
+  await expect(page.getByRole("heading", { level: 1, name: "Create a new target" })).toBeVisible();
   expect((await context.request.get("/api/auth/session")).status()).toBe(200);
 
   await page.goto("/login");
