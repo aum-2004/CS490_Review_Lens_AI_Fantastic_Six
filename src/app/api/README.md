@@ -24,6 +24,11 @@ Current endpoints:
 | POST   | `/api/analysis-targets/[targetId]/reviews`   | Saves 1–100 reviews under a target the user owns.                                                         | S1-013     |
 | POST   | `/api/analysis-targets/[targetId]/ingestion` | Starts asynchronous ingestion for an owned target using its stored Place ID or validated Google Maps URL. | S1-019     |
 
+`POST /api/analysis-targets/[targetId]/ingestion` is disabled by default. It returns HTTP `503`
+with error code `INGESTION_DISABLED` unless the server-side `INGESTION_ENABLED` environment
+variable is exactly `"true"`. This gate must remain closed until S1-023 persists provider-job
+ownership, lifecycle, and repeat-submission safeguards.
+
 ### Target child routes (S1-013)
 
 Every route under `/api/analysis-targets/[targetId]/` runs `requireApiUser()`, then

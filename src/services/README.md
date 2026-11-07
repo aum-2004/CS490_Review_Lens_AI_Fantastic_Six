@@ -78,8 +78,7 @@ identity and must not describe URL-query consistency alone as proof of source-UR
 - **Review-ID evidence and uniqueness:** S1-020 maps a provider `review_id` when one is present, but
   real-world review-ID presence and uniqueness remain unverified. The checked-in flat-response
   example is explicitly synthetic and demonstrates adapter mapping only; it is not evidence about
-  live provider payloads. S1-022 must define and implement the deduplication/persistence behavior,
-  including the safe handling of missing or non-unique provider IDs, before real reviews are stored.
+  live provider payloads.
 
 - **S1-022 duplicate handling (Sprint 1 decision):** S1-022 persists reviews as-is, with no
   deduplication, as allowed by [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22)
