@@ -14,6 +14,8 @@ export class IngestionLimitError extends Error {
 /**
  * Metadata is capped at 16 KiB of compact JSON. The SQL RPC allows 32 KiB of
  * jsonb::text because PostgreSQL adds spaces when rendering that same metadata.
+ * review_date comes from the normalizer's toISOString(), intrinsically shorter
+ * than the defensive 64-character bound enforced by the SQL completion RPC.
  */
 export function assertIngestionResultWithinLimits(
   rows: Record<string, unknown>[],
@@ -32,7 +34,6 @@ export function assertIngestionResultWithinLimits(
         tooLong(row.reviewer_name, 200) ||
         tooLong(row.source_review_id, 256) ||
         tooLong(row.review_url, 2048) ||
-        tooLong(row.review_date, 64) ||
         Buffer.byteLength(JSON.stringify(row.source_metadata ?? null), "utf8") > 16_384,
     )
   )

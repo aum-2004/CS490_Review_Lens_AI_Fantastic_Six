@@ -13,6 +13,7 @@ const attempt = {
   status: "processing",
 };
 const rpc = jest.fn();
+const previousEnabled = process.env.INGESTION_ENABLED;
 const maybeSingle = jest.fn();
 const from = jest.fn(() => ({ select: () => ({ eq: () => ({ maybeSingle }) }) }));
 beforeEach(() => {
@@ -23,11 +24,16 @@ beforeEach(() => {
   process.env.INGESTION_CALLBACK_ORIGIN = "https://app.example.com";
   process.env.INGESTION_CALLBACK_SECRET = "synthetic-test-secret-that-is-not-a-real-key";
   process.env.OUTSCRAPER_API_KEY = "synthetic-provider-api-key";
+  process.env.INGESTION_ENABLED = "true";
   maybeSingle.mockResolvedValue({ data: attempt, error: null });
   rpc.mockResolvedValue({ data: attempt, error: null });
   jest.mocked(createIngestionAdminClient).mockReturnValue({ from, rpc } as never);
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  if (previousEnabled === undefined) delete process.env.INGESTION_ENABLED;
+  else process.env.INGESTION_ENABLED = previousEnabled;
+});
 const context = { params: Promise.resolve({ attemptId }) };
 function callback(url: string, body: string) {
   const signature =
@@ -37,7 +43,30 @@ function callback(url: string, body: string) {
     context as never,
   );
 }
-it("rejects a leaked correlation URL without a valid provider body signature", async () => {
+it.each([undefined, "false"])(
+  "accepts only binding recovery with INGESTION_ENABLED=%s",
+  async (flag) => {
+    if (flag === undefined) delete process.env.INGESTION_ENABLED;
+    else process.env.INGESTION_ENABLED = flag;
+    const fetch = jest.spyOn(globalThis, "fetch");
+    const response = await callback(ingestionRecoveryUrl(attemptId), '{"id":"synthetic-job"}');
+    expect(response.status).toBe(200);
+    expect(rpc.mock.calls).toEqual([
+      [
+        "bind_ingestion_job",
+        {
+          p_attempt_id: attemptId,
+          p_owner_id: "stored-owner",
+          p_request_id: "synthetic-job",
+        },
+      ],
+    ]);
+    expect(from.mock.calls).toEqual([["ingestion_attempts"]]);
+    expect(fetch).not.toHaveBeenCalled();
+  },
+);
+it("rejects a leaked correlation URL without a valid provider body signature even while disabled", async () => {
+  process.env.INGESTION_ENABLED = "false";
   const response = await POST(
     new NextRequest(ingestionRecoveryUrl(attemptId), {
       method: "POST",

@@ -1,32 +1,29 @@
-Addressed the §7 re-review of **40af2a3** locally:
+Addressed the re-review of **31ad6f3** locally:
 
-- **Concurrent start cap:** added a real two-session PostgreSQL test to
-  `npm run test:db`. One session holds the fifth reservation uncommitted; another
-  reserves a different target. The test observes the advisory-lock wait, commits
-  the fifth slot, and requires INGESTION_START_LIMIT with exactly five attempts.
-  It passes normally and fails when the owner advisory lock is removed.
-- **Forward migration:** restored 010000 exactly to e69f084 and moved completion
-  size/count/field guards into `20261107030000_bound_ingestion_completions.sql`.
-  Databases that already ran 010000 receive the checks through the new migration.
-- **Identity:** googleId and locationLink now use toStorableText alongside business
-  names. Tests cover NULs in flat/nested responses and at the persistence boundary.
-- **Finite stream:** the lying-Content-Length test now ends after 2 MiB + 1 byte,
-  so removing the byte guard produces a prompt assertion failure rather than an
-  infinite stream.
-  Removing the streamed byte guard now fails an assertion in about two seconds.
-- Updated the local PR description for 40af2a3 and these corrections. It is ready
-  to copy to GitHub; no remote description was changed.
+- Added the failed-start budget SQL regression: five reservations finish as
+  PROVIDER_REJECTED, SUBMISSION_UNCERTAIN, PROVIDER_QUOTA, PROVIDER_AUTH and
+  PROVIDER_BILLING; a sixth new target must receive INGESTION_START_LIMIT. The
+  baseline passes and excluding failed rows from the count fails this test.
+- Added app source_review_id boundary coverage (256 accepted / 257 rejected).
+  Removing its guard fails the regression. Removed the unreachable app date-length
+  check; dates come from toISOString(), and SQL retains its defensive bound.
+- Corrected metadata wording: sanitizeMetadata omits oversized optional metadata
+  and stores null while otherwise valid reviews may save. Added a lifecycle test
+  proving that behavior; retained data still has final limits.
+- Documented intentional late callbacks while INGESTION_ENABLED is off. Tests for
+  unset/false flags confirm signed binding recovery only, with no fetch or other
+  RPC, and forged callbacks remain denied before privileged access.
+- Updated the local PR description and verification document: the prior transcript
+  is committed in 31ad6f3, and CI passed on that head as confirmed in your review.
 
-With the accompanying normal-review follow-up, validation is now 629 unit tests /
-47 suites; all nine SQL files plus the two-session
-regression across six migrations on local PostgreSQL 18; lint, formatting,
-typecheck and production build passed. Fresh PostgreSQL 16 CI and the separate
-security re-review are still required on the next published head.
+Validation: **633 unit tests / 47 suites**, all nine SQL files plus the two-session
+concurrency regression across six migrations on local PostgreSQL 18, lint,
+formatting, typecheck and build passed. Provider data was synthetic; no paid calls.
 
-The five-start limit is per account. A global paid-start/spend-control policy remains
-a team decision required before enabling ingestion; it is recorded in the runbook.
-Ingestion stays off, with recovery/storage approval and hosted verification still
-required. No commit, push, GitHub edit, paid call or hosted migration was performed.
+Fresh CI and both reviewers' approvals must cover the final published commit.
+Ingestion remains off, with all live-use prerequisites retained. No commit, push,
+GitHub edit or hosted migration was performed. The updated PR description is in
+`docs/pr-48-description.md`; hosted verification is still required for closure.
 
 Refs #18
 Refs #23

@@ -70,6 +70,12 @@ database/provider reconciliation. Read-only status remains available and signed
 callbacks can still recover bindings. Restore the approved configuration before
 resuming the same job, subject to its existing deadline.
 
+Callback availability while disabled is intentional: late callbacks retain the
+provider-body and per-attempt signature checks and only recover an existing
+binding. They do not start paid jobs, fetch results or save reviews. Start and
+refresh remain disabled. The route tests cover both unset/false enable flags and
+forged-signature denial while disabled.
+
 - INGESTION_CALLBACK_ORIGIN must be the stable, publicly reachable HTTPS application
   origin, without credentials, path, query or fragment. Keep the old endpoint
   reachable for outstanding jobs if changing domains.

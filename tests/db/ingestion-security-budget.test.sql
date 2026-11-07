@@ -131,4 +131,33 @@ do $$ declare target uuid; reserved jsonb; begin
   assert (reserved->>'created')::boolean,'rolling window did not release an old budget slot';
 end $$;
 reset role;
+
+-- Failed reservations consume the same rolling budget as active/succeeded starts.
+insert into auth.users(id) values ('88888888-8888-4888-8888-888888888888');
+insert into public.analysis_targets(id,owner_id,name,platform,source_url)
+select ('88888888-8888-4888-8888-'||lpad(n::text,12,'0'))::uuid,
+  '88888888-8888-4888-8888-888888888888','Failed budget '||n,'google_maps',
+  'https://www.google.com/maps/place/FailedBudget'||n from generate_series(1,6)n;
+set role service_role;
+do $$ declare reserved jsonb; finished public.ingestion_attempts; n integer:=0; code text; begin
+  foreach code in array array['PROVIDER_REJECTED','SUBMISSION_UNCERTAIN','PROVIDER_QUOTA','PROVIDER_AUTH','PROVIDER_BILLING'] loop
+    n:=n+1;
+    reserved:=public.reserve_ingestion_attempt(('88888888-8888-4888-8888-'||lpad(n::text,12,'0'))::uuid,
+      '88888888-8888-4888-8888-888888888888');
+    assert (reserved->>'created')::boolean;
+    select * into finished from public.finish_ingestion_attempt((reserved->'attempt'->>'id')::uuid,
+      '88888888-8888-4888-8888-888888888888','[]',0,null,code);
+    assert finished.status='failed' and finished.error_code=code,'Synthetic rejection must be recorded';
+  end loop;
+  begin
+    perform public.reserve_ingestion_attempt('88888888-8888-4888-8888-000000000006',
+      '88888888-8888-4888-8888-888888888888');
+    raise exception 'Failed starts were refunded from the owner budget';
+  exception when raise_exception then
+    if sqlerrm<>'INGESTION_START_LIMIT' then raise; end if;
+  end;
+  assert (select count(*) from public.ingestion_attempts
+    where owner_id='88888888-8888-4888-8888-888888888888' and status='failed')=5;
+end $$;
+reset role;
 rollback;

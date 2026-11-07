@@ -123,12 +123,19 @@ Provider result bodies are streamed with a 2 MiB maximum before parsing. Only
 jsonb::text per metadata value to accommodate PostgreSQL's added spaces; identity
 retains its separate 16 KiB SQL guard. A dense 16,306-byte compact metadata fixture
 is accepted by both layers and successfully finalized in the SQL suite.
-Whole batches are rejected, never silently
-truncated. Oversized lookups retain the existing job hold. The existing
+Count, transport and retained field-limit breaches reject completion rather than
+truncate the review batch. Optional metadata is different: sanitizeMetadata omits
+invalid/oversized metadata (over 16 KiB compact JSON), saving null metadata while
+allowing the otherwise valid review to save. The final limits helper checks only
+the sanitized metadata that remains. Oversized lookups retain the existing job hold. The existing
 manual-review API has separate limits; this does not claim to change its Data API grants.
 Business names, googleId and locationLink are made PostgreSQL-safe using the shared
 NUL/surrogate cleaner before persistence.
 Both start and refresh honor INGESTION_ENABLED; read-only status remains available.
+Signed callbacks intentionally remain available while the flag is off to recover
+existing job bindings. Both signatures and bounded-body validation still apply;
+callbacks cannot start jobs, fetch results or persist reviews. Disabled-flag tests
+cover both valid recovery and forged callback rejection.
 
 The current branch includes merged S1-019 commit `0388c43`. It retains its submission
 service, latest nested identity checks and regression tests, and composes submission

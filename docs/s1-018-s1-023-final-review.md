@@ -1,7 +1,7 @@
 # S1-018 / S1-023 final integration review
 
 Date: 2026-11-07, America/New_York. Branch: s1-018.
-Latest reviewer baseline: 40af2a3, followed by local security corrections
+Latest reviewer baseline: 31ad6f3, followed by local security corrections
 documented at the end of this report. Earlier review targets and
 counts below remain historical checkpoints.
 Earlier integration review target: e5ce0c3, containing implementation 0558509, main merge
@@ -11,6 +11,25 @@ are historical descriptions of the preceding implementation turn. This is an imp
 not independent teammate/security approval or hosted acceptance.
 
 ## Requirement coverage
+
+### Latest re-review follow-up to 31ad6f3
+
+The failed-reservation budget now has an actual SQL regression: five separately
+reserved attempts finish as rejected/uncertain/quota/auth/billing failures and a
+sixth target must hit INGESTION_START_LIMIT. Excluding failed rows from the count
+fails this test. The app source-ID boundary test also rejects guard removal.
+The unreachable app date-length check is removed, retaining generated ISO dates
+and the independent SQL bound. Disabled-flag callbacks intentionally recover
+existing bindings only; tests cover unset/false flags, no fetch or other mutation,
+and forged-signature denial. Metadata docs now describe sanitizer omission of
+oversized optional metadata, with an explicit successful-review/null-metadata test.
+
+Local checks: 633 unit tests / 47 suites, nine SQL files plus the concurrency
+regression across six migrations on PostgreSQL 18, lint, typecheck, formatting and
+build passed. Prior transcript is committed in 31ad6f3; reviewer-confirmed CI/native
+PostgreSQL 16 results apply to that baseline, not these local changes. Fresh CI
+and both approvals remain required on the final head. No push, hosted migration
+or paid call. Refs #18 / Refs #23 remain pending hosted verification.
 
 ### Additional normal-review follow-up to 40af2a3
 

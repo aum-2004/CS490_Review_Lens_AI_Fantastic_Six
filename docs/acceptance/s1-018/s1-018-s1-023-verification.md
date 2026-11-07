@@ -1,5 +1,35 @@
 # S1-018 / S1-023 local verification
 
+## Latest re-review follow-up to 31ad6f3
+
+The reviewer confirmed passing CI and native PostgreSQL 16 verification on
+31ad6f3; the retained transcript is already committed in that baseline. Current
+local corrections still require fresh CI and both approvals on the final head.
+
+The new SQL regression reserves five starts on separate targets and records
+PROVIDER_REJECTED, SUBMISSION_UNCERTAIN, PROVIDER_QUOTA, PROVIDER_AUTH and
+PROVIDER_BILLING failures using the completion RPC. A sixth new target must return
+INGESTION_START_LIMIT. Baseline passes, and adding status <> 'failed' to the budget
+count fails specifically with the failed-start refund assertion. App source-ID
+tests cover 256 accepted / 257 rejected characters; removing that guard also fails.
+
+Signed callbacks intentionally remain available with INGESTION_ENABLED unset or
+false for existing binding recovery only. Tests verify bind_ingestion_job is the
+only mutation and forged callbacks still fail before privileged access. The
+unreachable application date-length check is removed; normalization generates
+toISOString() values and SQL retains its defensive 64-character bound.
+
+The metadata wording now matches sanitizeMetadata: invalid/oversized optional
+metadata is omitted and persisted as null while an otherwise valid review may
+complete. A lifecycle regression verifies this behavior. Retained metadata still
+has app/SQL limits; review batches are not silently truncated by count limits.
+
+Local validation: 633 tests / 47 suites; all nine SQL files plus the two-session
+concurrency test across six migrations on PostgreSQL 18; lint, formatting,
+typecheck and production build. Provider data is synthetic. No browser rerun,
+commit, push, GitHub edit, hosted migration or paid call in this follow-up. Earlier
+browser evidence is historical; Refs #18 / Refs #23 remain pending hosted acceptance.
+
 ## Latest normal-review follow-up to 40af2a3
 
 629 unit tests / 47 suites and all nine SQL files plus the two-session concurrency
@@ -15,8 +45,9 @@ parsing. App tests reject review_url (2,049) and reviewer_name (201), accepting 
 test failure. Restoring the old 16 KiB SQL metadata threshold also fails the dense
 success case. The restored cross-user getExtractedReviews assertion passes.
 
-The original AI dialogue is retained in the continuation transcript and must be
-included in the next commit. Fresh CI, normal approval and independent §7 security
+The original AI dialogue and this preceding follow-up are committed in 31ad6f3.
+The reviewer confirmed passing CI and native PostgreSQL 16 verification on that head.
+The latest local continuation still needs fresh CI, normal approval and independent §7 security
 approval must apply to the final published head. No commit, push, GitHub change,
 hosted migration, paid call or live provider storage was performed. Keep Refs #18
 and Refs #23 until hosted verification. Previous checkpoints follow.

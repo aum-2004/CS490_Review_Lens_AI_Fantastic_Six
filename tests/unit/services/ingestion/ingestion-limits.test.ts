@@ -51,7 +51,7 @@ it("reads valid bounded JSON and rejects malformed JSON", async () => {
   );
 });
 
-it.each(["count", "bytes", "text", "url", "reviewer", "metadata", "identity"])(
+it.each(["count", "bytes", "text", "url", "reviewer", "source_id", "metadata", "identity"])(
   "bounds normalized %s before persistence",
   (limit) => {
     let rows: Record<string, unknown>[] = [{ text: "valid", rating: 4 }];
@@ -63,6 +63,7 @@ it.each(["count", "bytes", "text", "url", "reviewer", "metadata", "identity"])(
       rows[0].review_url =
         "https://example.test/" + "x".repeat(2049 - "https://example.test/".length);
     if (limit === "reviewer") rows[0].reviewer_name = "x".repeat(201);
+    if (limit === "source_id") rows[0].source_review_id = "x".repeat(257);
     if (limit === "metadata") rows[0].source_metadata = { note: "x".repeat(16385) };
     if (limit === "identity") identity.businessName = "x".repeat(201);
     expect(() => assertIngestionResultWithinLimits(rows, identity)).toThrow(
@@ -79,10 +80,17 @@ it("accepts compact metadata whose PostgreSQL rendering exceeds 16 KiB", () => {
     }),
   ).not.toThrow();
 });
-it("accepts review URL and reviewer name exactly at their character limits", () => {
+it("accepts review URL, reviewer name and source ID exactly at their character limits", () => {
   expect(() =>
     assertIngestionResultWithinLimits(
-      [{ text: "valid", review_url: "x".repeat(2048), reviewer_name: "x".repeat(200) }],
+      [
+        {
+          text: "valid",
+          review_url: "x".repeat(2048),
+          reviewer_name: "x".repeat(200),
+          source_review_id: "x".repeat(256),
+        },
+      ],
       { businessName: "Synthetic" },
     ),
   ).not.toThrow();

@@ -85,6 +85,10 @@ their own stored bindings through RLS-protected table access. Browser-supplied
 job IDs never select or authorize a provider lookup. Callback recovery has an
 explicit service_role SELECT grant.
 
+Provider callbacks deliberately remain enabled while INGESTION_ENABLED is off so
+signed late delivery can recover an existing binding. Both signatures and body
+limits remain required; callbacks cannot start jobs, fetch results or save reviews.
+
 A successful target cannot submit another run in Sprint 1. Lookup errors without
 definitive provider/identity/no-review failure evidence return retryable feedback
 and preserve the accepted job. Bound attempts have a four-hour database deadline;

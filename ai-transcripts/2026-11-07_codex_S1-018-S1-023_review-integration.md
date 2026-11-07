@@ -1205,3 +1205,175 @@ Validation: 629 unit tests / 47 suites; all nine SQL files plus the two-session 
 Updated local PR description, normal/security responses, verification, final review, service docs and recovery notes. Include this changed retained original dialogue in the next commit to meet the transcript requirement. No summary replaces the original messages above. The earlier request to update GitHub was blocked because Chrome access was not approved; the subsequent PR rewrite was delivered as text, and no remote edit occurred.
 
 No commit, push, GitHub edit/comment, hosted migration, paid call or real provider storage. Original available messages retain the existing privacy/path/identifier redactions and whitespace normalization. Fresh CI and both normal and independent section 7 approvals must apply to the final published head. Ingestion remains off; global spend-control decision, recovery/storage prerequisites and hosted verification remain outstanding. Keep Refs #18 / Refs #23.
+
+## Assistant (final_answer) — 2026-11-07T22:44:10.482Z
+
+All four items are fixed locally:
+
+- Updated the retained AI transcript for the next commit.
+- Added SQL metadata allowance for PostgreSQL’s JSON spacing.
+- Added the missing boundary tests and verified their mutations fail.
+- Restored the `getExtractedReviews` cross-user assertion.
+
+Passed: **629 unit tests**, nine SQL files plus concurrency testing, lint, formatting, typecheck and build.
+
+[Updated PR comment](docs/pr-48-review-response.md). Nothing committed, pushed or posted to GitHub. Both reviewers must approve the final published commit.
+
+## User — 2026-11-07T22:46:18.487Z
+
+# Context from my IDE setup:
+
+## Active file: docs/pr-48-review-response.md
+
+## Open tabs:
+- pr-48-review-response.md: docs/pr-48-review-response.md
+- pr-48-security-review-response.md: docs/pr-48-security-review-response.md
+- pr-48-description.md: docs/pr-48-description.md
+
+# Files pasted by the user:
+
+## "## Summary Adds the owned AnalysisTarget workspace and persistent ingestion res…": [LOCAL_USER]\.codex/attachments/e12c89b3-8e6b-4708-889d-e50632455b66/Pasted text.txt
+
+## My request:
+update the original pr comment locally:
+
+## Assistant (commentary) — 2026-11-07T22:46:20.735Z
+
+I’ll read the pasted text and update the local PR draft with the latest fixes and validation results.
+
+## Assistant (final_answer) — 2026-11-07T22:47:13.563Z
+
+Updated [docs/pr-48-description.md](docs/pr-48-description.md) locally with the latest fixes, **629 tests**, final-review requirements and corrected links. Formatting checks passed.
+
+Nothing pushed or changed on GitHub.
+
+## User — 2026-11-07T23:13:40.451Z
+
+# Context from my IDE setup:
+
+## Active file: docs/pr-48-description.md
+
+## Active selection of the file:
+## Summary
+
+Adds the owned AnalysisTarget workspace and persistent ingestion results for S1-018 and S1-023. Includes both deferred integrations:
+
+- **S1-015:** successful target creation opens `/analysis-targets/{id}?created=1` with confirmation.
+- **S1-017:** target cards display authoritative, owner-scoped ingestion badges.
+
+Refs #18
+
+Refs #23
+
+Issues remain open until hosted verification is complete.
+
+Reviewed baseline: `40af2a3`. This description includes the subsequent security and normal-review corrections. Fresh CI and review are required on the final PR head.
+
+## Implementation
+
+- Verifies authentication and target ownership before workspace, review, status or ingestion operations. Foreign, missing and malformed IDs share a safe denial.
+- Integrates main through S1-015 `e8839ef`. Creation confirmation offers ingestion only when available, consumes the URL marker after display and does not replay after reload or successful ingestion. Stale form completions cannot redirect another page.
+- Uses one shared **Not ingested / Ingesting / Ingested / Failed** badge on cards and the workspace. Missing or unavailable status never becomes **Not ingested**.
+- Persists owner, target, source and provider-job bindings with RLS and restricted mutation RPCs. Browser-supplied job IDs cannot select or authorize reconciliation.
+- Blocks repeat ingestion after success in both the database and UI. Review insertion and successful finalization remain atomic and idempotent.
+- Preserves accepted jobs and submission holds across lookup, account, configuration, transport and malformed-response errors. Retries resume the same job without another paid start.
+- Applies a four-hour deadline under the database row lock before lookup and finalization. Expired attempts retain their billing hold until documented operator reconciliation.
+- Distinguishes clear submission rejections from uncertain acceptance. Submission 4xx responses other than 408 fail normally; timeouts, 5xx and malformed acceptance responses remain blocked.
+- Provides service-role recovery access and an operator-only release RPC that retains bindings and records evidence. Authenticated owners cannot read operator resolution notes or timestamps.
+- Revokes authenticated target deletion so owners cannot erase billing holds or audit records through the Data API.
+- Limits reservations to **five per account per rolling 24 hours**, serialized across targets. Rejected and uncertain reservations count toward the limit.
+- Limits streamed provider results to **2 MiB** and completion to **30 reviews**, with field, metadata and identity limits independently enforced in application code and SQL.
+- Keeps the application metadata limit at **16 KiB of compact JSON**, with a **32 KiB PostgreSQL-rendered allowance** in migration `030000` to accommodate `jsonb::text` spacing. The same dense 16,306-byte fixture passes application validation and successfully finalizes in PostgreSQL.
+- Adds independent SQL boundary regressions for `review_url`, `source_review_id` and `review_date`, and application regressions for `review_url` and `reviewer_name`. Restores the distinct cross-user `getExtractedReviews` assertion.
+- Requires `INGESTION_ENABLED` for both submission and refresh. Cleans provider business names, `googleId` and `locationLink` with `toStorableText`.
+- Restores migration `20261107010000` to its `e69f084` version and installs completion limits through the new forward migration `20261107030000_bound_ingestion_completions.sql`.
+- Retains provider-resolved URL identity as qualified provenance, without treating it as independent proof of a match to the saved URL or overwriting target identity.
+
+## Reviewer guidance
+
+Please review **both stories and both deferred integrations**:
+
+1. **Creation handoff:** verify successful creation, availability-aware confirmation, marker removal, reload, mobile wrapping and navigation away while creation is pending.
+2. **Card badges:** verify all four states and owner scoping. **Not ingested** requires successful backend confirmation that no attempt exists; failed or incomplete status reads must remain unavailable.
+3. **Workspace:** verify target context, saved reviews, loading/empty/error states, keyboard navigation, refresh and cross-user denial.
+4. **Ingestion lifecycle:** verify reservation, binding, retry, completion, expiry and operator recovery. Failed lookups must preserve accepted jobs; successful targets must remain blocked from another run.
+5. **Concurrency and migration:** inspect the two-session start-limit regression and confirm existing databases receive completion limits through migration `030000`.
+6. **Metadata and field boundaries:** verify dense application-valid metadata saves successfully, oversized metadata is rejected, and the URL, source-ID, date and reviewer-name limits have independent coverage.
+7. **Additional §7 security review:** inspect ownership predicates, RLS/RPC grants, operator-note privacy, deletion restrictions, callback signatures, result limits and server-only secrets.
+
+## Validation
+
+- **629 unit tests passed across 47 suites.**
+- **Nine SQL test files plus the two-session concurrency regression passed across six migrations on local PostgreSQL 18.**
+- The concurrency test passed normally and failed when the owner advisory lock was removed.
+- The finite streaming test rejected removal of the byte guard through a prompt assertion failure.
+- NUL-cleaning tests cover flat and nested provider responses and the persistence boundary.
+- Independent mutations removing each of the five requested field guards fail their corresponding tests. Restoring the old SQL metadata threshold also fails the dense-metadata success case.
+- Formatting, lint, typecheck and production build passed.
+- The preceding implementation pass passed all **22 authentication, creation and workspace browser tests**. This follow-up changes server ingestion and database tests; browsers were not rerun.
+- Fresh application and PostgreSQL 16 CI results are required on the final PR head.
+- Tests use synthetic provider data and no paid calls. Local [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md) does not replace hosted acceptance.
+
+Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md), [final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md), [recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
+
+## Deployment and review requirements
+
+Apply all **six repository migrations**, including all **four ingestion migrations** through `20261107030000_bound_ingestion_completions.sql`.
+
+`INGESTION_ENABLED` and provider-review storage approval remain off by default. Live use requires configured recovery, recorded provider/source storage approval and a team decision on the global paid-start/spend-control policy. The implemented five-start limit is per account and does not provide a global cap.
+
+No hosted migration, paid extraction or real provider-review persistence was performed during these corrections.
+
+Normal code re-review, the separate §7 security review, human acceptance and fresh CI are required before merge. Both reviewers must approve the final published commit. Hosted verification is required before manually closing either issue.
+
+## AI usage disclaimer
+
+The retained original dialogue and follow-up execution records have been updated locally. Include the changed continuation transcript in the next commit to meet the Definition of Done.
+
+OpenAI Codex assisted with implementation, tests, integration, review remediation and documentation. The author remains responsible for reviewing the code and tests; automated checks do not replace human or security approval.
+
+- [Original dialogue](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/ai-transcripts/2026-11-06_codex_S1-018-S1-023_original.md)
+- [Review and main-integration continuation](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/ai-transcripts/2026-11-07_codex_S1-018-S1-023_review-integration.md)
+
+## Open tabs:
+- pr-48-description.md: docs/pr-48-description.md
+- pr-48-review-response.md: docs/pr-48-review-response.md
+- pr-48-security-review-response.md: docs/pr-48-security-review-response.md
+
+## My request:
+"**@MP**    Hi Melissa, I re-reviewed PR #48 at 31ad6f3. Nice work again: everything from my last two reviews checks out. 010000 is byte-identical to e69f084, and 030000 installs the limits on existing databases (I upgraded from both the e69f084 and 40af2a3 states). The two-session test fails when the lock is removed. Owners can't read operator notes or delete anything, and both owner checks in each expiry function are tested. I ran everything myself on native Postgres 16: 629 tests, all 9 SQL files plus the concurrency test, and the build. All seven mutations I tried were caught.  I'm requesting changes for one blocker, a small test:  Blocker: the PR says rejected and uncertain starts count toward the 5-per-day limit, and the code does count them. But if I change the count to skip failed starts (and status <> 'failed'), every test still passes. Please add a SQL test: reserve five starts, finish them as PROVIDER_REJECTED, SUBMISSION_UNCERTAIN, PROVIDER_QUOTA and so on, then check that a 6th start on a new target gets INGESTION_START_LIMIT.  Smaller things, ideally in the same push:  Add an app test for the source_review_id limit in assertIngestionResultWithinLimits. Removing that check still passes; SQL still catches it. The app review_date check can never trigger, because toISOString() is always 24 characters, so remove it or add a comment. Oversized metadata isn't actually rejected in the app. sanitizeMetadata drops anything over 16 KiB and the review saves with null metadata. Please fix the wording in the PR and in src/services/README.md ("never silently truncated"), or make it reject. The provider callback route doesn't check INGESTION_ENABLED. If accepting late callbacks while ingestion is off is intentional, write that down and add a test. If not, add the check. PR description: the transcript is already committed, so remove "include it in the next commit" there and in the verification doc (line 19). CI has also already passed on this head.  "
+once done give me an updated pr description based on pr-48-description.md locally
+
+## Assistant (commentary) — 2026-11-07T23:13:44.887Z
+
+I’ll add the missing quota and app-limit tests, document and test late callbacks while ingestion is off, and correct the metadata and transcript wording. Then I’ll update the local PR description. I won’t push anything.
+
+## Assistant (commentary) — 2026-11-07T23:18:37.755Z
+
+Late signed callbacks will intentionally remain available while ingestion is off. They only recover an existing job binding; they do not start jobs, fetch results or save reviews. I’ve added off-flag tests for that behavior.
+
+I’m preserving the metadata sanitizer’s existing behavior and correcting the docs: oversized optional metadata is omitted while an otherwise valid review may still save.
+
+## Assistant (commentary) — 2026-11-07T23:21:30.643Z
+
+The new SQL test catches the reported mutation: excluding failed attempts lets the sixth reservation through and makes the test fail. The app source-ID test also catches removal of its guard.
+
+The updated PR description distinguishes the reviewer-confirmed green CI on `31ad6f3` from the fresh checks this local follow-up will need.
+
+## Assistant (commentary) — 2026-11-07T23:24:31.651Z
+
+All checks passed: 633 unit tests, the nine-file SQL suite and concurrency test, lint, typecheck and production build. The callback tests also passed after adding a check that disabled-mode recovery makes no fetch calls.
+
+The local PR description and security-review response are updated. I’m finishing transcript retention and formatting checks.
+
+## Re-review follow-up to 31ad6f3 — execution record
+
+Added the requested failed-reservation SQL regression: five distinct targets are reserved then finalized unbound as PROVIDER_REJECTED, SUBMISSION_UNCERTAIN, PROVIDER_QUOTA, PROVIDER_AUTH and PROVIDER_BILLING. A sixth distinct target must receive INGESTION_START_LIMIT. A native PostgreSQL mutation excluding failed rows from the budget was rejected specifically by this new assertion. Existing concurrency baseline and owner-lock mutation still behave correctly. No migration change was needed.
+
+Added app source_review_id tests at 256 accepted / 257 rejected; removing that guard fails its new test. Removed the unreachable app review_date length check and documented generated toISOString() values; SQL keeps its independent bound. Preserved existing metadata sanitizer behavior and corrected PR/service docs to state oversized optional metadata is omitted and stored null while a valid review may save. A new lifecycle regression proves that behavior rather than claiming all oversized metadata rejects the batch.
+
+Late callbacks deliberately remain available while INGESTION_ENABLED is unset or false for signed recovery of existing job bindings only. Added tests asserting the only RPC is bind_ingestion_job, only ingestion_attempts is read, no fetch occurs, and forged provider signatures remain denied before privileged access. Start and refresh remain gated. Documented this in the callback route, API/service docs, runbook and PR description.
+
+Validation: 633 tests / 47 suites; all nine SQL files and the two-session test across six migrations on throwaway PostgreSQL 18; lint, typecheck, formatting and production build passed. The callback suite was rerun after the final no-fetch assertion and all 12 tests passed. No browser rerun for these server/test-only changes. The reviewer reports green CI and native PostgreSQL 16 checks on 31ad6f3; no independent remote-head CI inspection was claimed.
+
+Updated docs/pr-48-description.md and the security-response draft. Removed stale instructions to include an already-committed transcript and recorded the reviewer-confirmed green baseline CI, while retaining fresh checks and both approvals for the final published commit. Retained the current available original dialogue using the documented privacy/path/identifier and whitespace transformations. No requested fix was declined. No commit, push, GitHub edit/comment, hosted migration, paid call or real provider storage. Live flags remain off; global spend policy, recovery/storage approval and hosted verification prerequisites remain. Keep Refs #18 / Refs #23.

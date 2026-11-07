@@ -24,6 +24,8 @@ function failure(status: number, code: string) {
 
 /** Public provider boundary authenticated by the provider body HMAC and a per-attempt HMAC.
  * This endpoint binds metadata only. It never fetches results, saves reviews or starts a job.
+ * Deliberately remains available when INGESTION_ENABLED is off: signed late
+ * callbacks must recover existing paid-job bindings while start/refresh are paused.
  */
 export async function POST(
   request: NextRequest,

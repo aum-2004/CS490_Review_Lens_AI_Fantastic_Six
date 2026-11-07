@@ -165,6 +165,23 @@ it("cleans verified business identity strings before sending them to persistence
     null,
   );
 });
+it("omits oversized optional metadata while saving an otherwise valid review", async () => {
+  const deps = dependencies();
+  deps.extract.mockResolvedValue({
+    ...completed,
+    reviews: [{ ...completed.reviews[0], metadata: { note: "x".repeat(16385) } }],
+  });
+  const result = await reconcileIngestion({} as never, "user-a", "target-a", deps);
+  expect(result.state).toBe("succeeded");
+  expect(deps.writer.finish).toHaveBeenCalledWith(
+    "attempt-a",
+    "user-a",
+    [expect.objectContaining({ text: "Synthetic review", source_metadata: null })],
+    0,
+    completed.identity,
+    null,
+  );
+});
 it("does not start another run for a successfully ingested target", async () => {
   const deps = dependencies();
   deps.writer.reserve.mockResolvedValue({
