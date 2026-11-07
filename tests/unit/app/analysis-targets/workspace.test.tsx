@@ -67,7 +67,7 @@ it("opens an owned target with the shared shell, context, empty reviews and inge
   expect(screen.getByText("Google Maps", { exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Start ingestion" })).toBeEnabled();
   expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
-  expect(screen.getAllByText("Not ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Not ingested")).toHaveLength(1);
   expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
 });
 
@@ -75,7 +75,7 @@ it("never labels unavailable status as no ingestion", async () => {
   jest.mocked(getLatestAttempt).mockRejectedValue(new Error("status database unavailable"));
   render(await ProtectedTargetWorkspace({ params }));
   expect(screen.queryByText("Not ingested")).not.toBeInTheDocument();
-  expect(screen.getAllByText("Status unavailable")).toHaveLength(2);
+  expect(screen.getAllByText("Status unavailable")).toHaveLength(1);
 });
 it("shows the creation confirmation only after verifying the owned target", async () => {
   render(

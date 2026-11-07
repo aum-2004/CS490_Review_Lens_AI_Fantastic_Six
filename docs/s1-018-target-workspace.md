@@ -7,7 +7,14 @@ hosted verification. Current remote publication/CI was not inspected in this rev
 The user extended this branch to S1-023 and assigned the
 S1-017 card-badge integration to it. Merged S1-019 is now included and integrated.
 Main through S1-015 commit `e8839ef` was merged in `366dc01`. Successful creation
-now opens the owned workspace with `?created=1` and its required success notice.
+now opens the owned workspace with `?created=1` and an availability-aware success
+notice. The marker is consumed after display; reload does not replay it.
+
+The latest review baseline is `4e0ff89`; subsequent local changes restrict operator
+columns, remove conflicting creation/empty-review copy and the duplicate workspace
+badge, improve polling/account feedback, add SQL regressions and redact transcript
+paths. Current PR text and response are prepared locally only; no GitHub operation
+was performed in this follow-up.
 
 ## Workspace and shared UI
 

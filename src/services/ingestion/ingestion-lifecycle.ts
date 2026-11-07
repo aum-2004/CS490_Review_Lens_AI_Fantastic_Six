@@ -116,7 +116,9 @@ export async function beginIngestion(
         ].includes(error.code))
         ? error.code === "PROVIDER_QUOTA"
           ? "PROVIDER_QUOTA"
-          : "PROVIDER_REJECTED"
+          : ["PROVIDER_AUTH", "PROVIDER_BILLING", "MISSING_API_KEY"].includes(error.code)
+            ? "PROVIDER_CONFIGURATION_UNAVAILABLE"
+            : "PROVIDER_REJECTED"
         : "SUBMISSION_UNCERTAIN";
     const failed = await deps.writer.finish(reserved.attempt.id, ownerId, [], 0, null, code);
     log("start-failed", code);

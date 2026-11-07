@@ -8,10 +8,10 @@ export function ReviewList({ reviews }: { reviews: Review[] }) {
     return (
       <EmptyState
         title="Reviews"
-        description="No saved reviews yet. Start ingestion above to collect reviews for this target."
+        description="No saved reviews yet."
         action={
           <Button asChild>
-            <a href="#ingestion">Go to ingestion</a>
+            <a href="#ingestion">View ingestion status</a>
           </Button>
         }
       />

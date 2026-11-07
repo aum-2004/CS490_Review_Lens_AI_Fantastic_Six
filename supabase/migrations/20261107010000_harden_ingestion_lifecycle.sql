@@ -6,6 +6,13 @@ create policy ingestion_service_read on public.ingestion_attempts for select to 
 alter table public.ingestion_attempts add column resolution_reference text;
 alter table public.ingestion_attempts add column resolved_at timestamptz;
 
+-- Owners may read lifecycle/binding data, but operator evidence is restricted to the server.
+revoke select on public.ingestion_attempts from authenticated;
+grant select (id, analysis_target_id, owner_id, source_url, submitted_query, query_kind,
+  expected_place_id, provider_request_id, status, started_at, finished_at, saved_count,
+  skipped_count, error_code, verified_identity, identity_basis)
+  on public.ingestion_attempts to authenticated;
+
 drop index public.ingestion_one_processing_per_target;
 create unique index ingestion_one_processing_per_target on public.ingestion_attempts(analysis_target_id)
   where status = 'processing' or error_code in ('SUBMISSION_UNCERTAIN', 'RESULT_WINDOW_EXPIRED');

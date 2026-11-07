@@ -1,6 +1,9 @@
 # S1-018 / S1-023 final integration review
 
 Date: 2026-11-07, America/New_York. Branch: s1-018.
+Latest reviewer baseline: 4e0ff89, followed by the local privacy/copy/polling
+corrections documented at the end of this report. Earlier review targets and
+counts below remain historical checkpoints.
 Current review target: e5ce0c3, containing implementation 0558509, main merge
 366dc01 and the PR #48 review corrections. Main includes S1-015 e8839ef.
 The fixes are now committed; earlier references to uncommitted corrections below
@@ -98,3 +101,48 @@ expected behavior and test entry points for both deferred integrations in additi
 to the two stories and the additional security review. No GitHub operation was
 performed. Only local documentation/transcript changes were made; the previously
 passing application suites were not repeated for this documentation-only update.
+
+## Follow-up to review of 4e0ff89
+
+The local follow-up resolves the reported operator-note exposure with an explicit
+allowlist of authenticated lifecycle/binding columns, excluding resolution_reference
+and resolved_at. Actual SQL owner reads of those fields are denied; allowed columns
+and both status views remain readable, and service_role retains recovery reads.
+The pending-hosted follow-up migration was corrected; no hosted migration was run.
+
+The operator state guard and expired-hold unique-index entry now have direct SQL
+regressions. Mutation probes pass the baseline and reject removal of the expired
+predicate, the operator status predicate, the entire operator state guard, and the
+revoke of authenticated table-wide SELECT. These test the actual privilege/index
+boundaries rather than relying solely on the reservation service's duplicate guard.
+
+Creation notice copy is availability-aware. The marker is consumed through Next's
+supported native history API without losing other query parameters/hash; reload
+no longer replays it and completion hides it. Disabled collection is not offered
+by the notice or empty review copy. One workspace badge remains in the header;
+the panel retains processing/error/count text. This follows the explicit PR review
+refinement of the earlier UI wording/duplicate badge behavior; normative standards
+were not silently edited. Both deferred integrations remain covered.
+
+Auth/billing/missing-key submission failures explain an account/configuration
+problem. Polling is five seconds, with two automatic retries after ten and twenty
+seconds, then manual status retry. These requests never start a provider job.
+
+All three affected transcripts use documented repository-relative or privacy
+placeholder paths instead of local usernames; original dialogue is preserved
+apart from these redactions and trailing-whitespace normalization. The local PR
+description names baseline 4e0ff89, removes stale CI #112/current-head assertions,
+and distinguishes these uncommitted follow-ups. The local PR response is
+saved in docs/pr-48-review-response.md. Neither was posted to GitHub.
+
+Validation: 608 unit tests / 46 suites, 22 Edge browser tests, eight SQL test files
+across four migrations, lint, formatting, explicit typecheck and production build
+passed. All four new mutation probes rejected the weakened variants. The lifecycle
+suite was rerun after adding explicit checks of account/configuration wording:
+39 tests passed. No new source changes followed those checks.
+
+No requested fix was declined; the optional polling improvement was implemented.
+Nothing was committed/pushed, posted, deployed, migrated on hosted Supabase or
+sent to a paid provider. Refs #18 / Refs #23, disabled live gates, fresh CI on the
+next published head, independent section 7 security review and hosted acceptance
+remain required. This agent review is not an independent human/security approval.

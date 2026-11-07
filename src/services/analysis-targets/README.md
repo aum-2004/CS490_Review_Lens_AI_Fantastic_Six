@@ -24,7 +24,11 @@ stale completion after navigation and prevents duplicate submission during hando
 
 S1-017 now supplies the shared `AppShell`, navigation, and `/analysis-targets` list. The creation
 page uses that shell; its breadcrumb and Cancel action return to My Targets.
-After verifying target ownership, the workspace uses the marker to show the
-standards-required confirmation: "Target created. You can now start ingestion."
+After verifying target ownership, the workspace consumes the marker using native
+history replacement, preserving other query parameters and the hash. The notice
+remains for the current view but does not reappear after reload. It says
+"Target created. You can now start ingestion." only when collection is available;
+otherwise it says "Target created." without offering a disabled action. It hides
+after ingestion succeeds. This availability-aware refinement follows PR #48 review.
 The marker controls presentation only; it never creates a target, starts ingestion,
 or bypasses ownership. Reopening without the marker does not show the notice.

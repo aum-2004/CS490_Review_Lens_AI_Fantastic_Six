@@ -41,12 +41,12 @@ it("starts once and shows processing without claiming success", async () => {
   expect(button).toBeDisabled();
   finish(response(processing, 202));
   await screen.findByText("Collecting reviews for Bakery from Google Maps…");
-  expect(screen.getAllByText("Ingesting")).toHaveLength(2);
+  expect(screen.getAllByText("Ingesting")).toHaveLength(1);
   expect(screen.queryByText(/reviews saved/)).not.toBeInTheDocument();
 });
 it("blocks another submission after success and explains why", async () => {
   render(workspace(succeeded));
-  expect(screen.getAllByText("Ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Ingested")).toHaveLength(1);
   const button = screen.getByRole("button", { name: "Ingestion complete" });
   expect(button).toBeDisabled();
   fireEvent.click(button);
@@ -64,13 +64,13 @@ it("polls a restored active run and refreshes persisted reviews on completion", 
   fetchMock.mockResolvedValue(response(succeeded));
   render(workspace(processing));
   await act(async () => {
-    jest.advanceTimersByTime(2000);
+    jest.advanceTimersByTime(5000);
   });
   expect(fetchMock).toHaveBeenCalledWith("/api/analysis-targets/target-a/ingestion/refresh", {
     method: "POST",
   });
   expect(screen.getByText("Last completed run: 3 reviews saved.")).toBeInTheDocument();
-  expect(screen.getAllByText("Ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Ingested")).toHaveLength(1);
   expect(router.refresh).toHaveBeenCalled();
 });
 it("stops polling when leaving without cancelling the server job", async () => {
@@ -82,7 +82,7 @@ it("stops polling when leaving without cancelling the server job", async () => {
   });
   expect(fetchMock).not.toHaveBeenCalled();
 });
-it("retries a lookup outage on the existing job without submitting another job", async () => {
+it("automatically retries a lookup outage on the existing job without another submission", async () => {
   jest.useFakeTimers();
   fetchMock
     .mockResolvedValueOnce({
@@ -93,17 +93,42 @@ it("retries a lookup outage on the existing job without submitting another job",
     .mockResolvedValue(response(processing));
   render(workspace(processing));
   await act(async () => {
-    jest.advanceTimersByTime(2000);
+    jest.advanceTimersByTime(5000);
   });
   expect(screen.getByRole("alert")).toHaveTextContent("Your existing request is saved");
-  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-  await act(async () => {});
+  await act(async () => {
+    jest.advanceTimersByTime(10000);
+  });
   expect(fetchMock).toHaveBeenCalledTimes(2);
   for (const [endpoint, options] of fetchMock.mock.calls) {
     expect(endpoint).toBe("/api/analysis-targets/target-a/ingestion/refresh");
     expect(options).toEqual({ method: "POST" });
   }
-  expect(screen.getAllByText("Ingesting")).toHaveLength(2);
+  expect(screen.getAllByText("Ingesting")).toHaveLength(1);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+it("bounds automatic retries before offering a manual status retry", async () => {
+  jest.useFakeTimers();
+  fetchMock.mockRejectedValue(new Error("synthetic outage"));
+  render(workspace(processing));
+  for (const delay of [5000, 10000, 20000]) {
+    await act(async () => {
+      jest.advanceTimersByTime(delay);
+    });
+  }
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+  await act(async () => {
+    jest.advanceTimersByTime(60000);
+  });
+  expect(fetchMock).toHaveBeenCalledTimes(3);
+  fetchMock.mockResolvedValue(response(processing));
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await act(async () => {});
+  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/analysis-targets/target-a/ingestion/refresh", {
+    method: "POST",
+  });
 });
 it("does not mistake unknown status for no ingestion, and retries a read before enabling start", async () => {
   fetchMock.mockResolvedValue(response(NO_INGESTION));

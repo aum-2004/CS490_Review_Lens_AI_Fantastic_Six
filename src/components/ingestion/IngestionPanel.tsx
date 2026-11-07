@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/shared/Spinner";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
-import { IngestionStatus } from "./IngestionStatus";
+
+const POLL_INTERVAL_MS = 5000;
+const MAX_AUTOMATIC_RETRIES = 2;
 
 export function IngestionPanel({
   targetId,
@@ -34,6 +36,7 @@ export function IngestionPanel({
   useEffect(() => {
     if (summary?.state !== "processing" || pollFailed) return;
     let active = true;
+    let failures = 0;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
@@ -48,8 +51,10 @@ export function IngestionPanel({
           throw new Error(ingestionErrorMessage(result.error?.code));
         if (!active) return;
         onSummary(result.data);
+        failures = 0;
+        setError(null);
         if (result.data.state !== "processing") router.refresh();
-        else timer = setTimeout(poll, 2000);
+        else timer = setTimeout(poll, POLL_INTERVAL_MS);
       } catch (error) {
         if (active) {
           setError(
@@ -57,11 +62,14 @@ export function IngestionPanel({
               ? error.message
               : "We couldn't refresh the ingestion status. Please try again.",
           );
-          setPollFailed(true);
+          failures++;
+          if (failures <= MAX_AUTOMATIC_RETRIES) {
+            timer = setTimeout(poll, POLL_INTERVAL_MS * 2 ** failures);
+          } else setPollFailed(true);
         }
       }
     }
-    timer = setTimeout(poll, 2000);
+    timer = setTimeout(poll, POLL_INTERVAL_MS);
     return () => {
       active = false;
       clearTimeout(timer);
@@ -112,9 +120,7 @@ export function IngestionPanel({
       <h2 className="text-xl font-semibold">Ingestion</h2>
       {pending ? (
         <p role="status">{recovering ? "Loading ingestion status…" : "Starting ingestion..."}</p>
-      ) : (
-        <IngestionStatus state={summary?.state ?? null} />
-      )}
+      ) : null}
       {processing ? (
         <p role="status" className="max-w-prose break-words">
           Collecting reviews for {targetName} from Google Maps…

@@ -29,6 +29,8 @@ const ERRORS: Record<string, string> = {
     "We couldn't complete this collection within four hours. Nothing new was saved. Contact the project team to reconcile it before another request.",
   PROVIDER_REJECTED:
     "The review service rejected this request before collection started. Check the source and try again.",
+  PROVIDER_CONFIGURATION_UNAVAILABLE:
+    "Review collection is unavailable because the review service account or configuration needs attention. Please try again later or contact the project team.",
   SUBMISSION_NOT_ACCEPTED:
     "The project team confirmed that this request was not accepted. You can try collection again.",
   EXPIRED_JOB_RECONCILED:

@@ -134,3 +134,28 @@ confirmed no document overflow; focused ESLint and formatting passed. The earlie
 full 600-unit / 22-browser / seven-SQL results remain the integration baseline.
 No GitHub access, edit, push, commit, hosted migration or provider operation was
 performed. The final spacing correction and documentation updates remain local.
+
+## Review of 4e0ff89 — privacy, notice, badge and polling corrections
+
+Latest local follow-up: 608 unit tests / 46 suites; all 22 local Edge browser
+tests; all eight SQL files with four migrations; lint, formatting, typecheck and
+production build passed. A focused lifecycle rerun passed all 39 tests after
+asserting account/configuration feedback does not blame the source.
+
+The SQL privacy suite executes denied owner reads of operator fields and successful
+service-role/allowed-column/status-view reads. Mutation baseline passes; removing
+the expired-hold index predicate, operator status predicate, whole operator state
+guard or authenticated table-wide SELECT revoke causes failure as intended.
+
+Browser regressions verify one workspace badge, disabled collection copy without
+start invitations, creation-marker consumption, no notice replay after reload,
+normal creation/navigation and mobile wrapping. Unit tests also verify preservation
+of unrelated query/hash data, notice removal on completion and bounded polling
+recovery without a new submission. Screenshots were refreshed after the UI changes.
+
+Three historical transcript files have local-user paths redacted and trailing
+whitespace normalized. The transcript comparison applies these documented privacy
+and formatting replacements to the source messages. The PR description and review
+response were prepared locally; no remote-head CI result is asserted and no
+GitHub operation was performed. No commit, push, hosted migration, real provider
+storage or paid extraction. See docs/pr-48-review-response.md for the draft reply.

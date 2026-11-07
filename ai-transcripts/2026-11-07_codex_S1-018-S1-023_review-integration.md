@@ -75,7 +75,7 @@ Nothing committed or pushed. Teammate/security review, human acceptance, and PR 
 
 ## User — 2026-11-07T03:20:48.359Z
 
-Write a proper PR summary that includes: summary (plus closes 018 and 023 commands), implementation, and ai usage disclaimer. For reference, use closed/done PR requests and their pr request contents. 
+Write a proper PR summary that includes: summary (plus closes 018 and 023 commands), implementation, and ai usage disclaimer. For reference, use closed/done PR requests and their pr request contents.
 
 
 ---
@@ -97,7 +97,7 @@ Adds an authenticated AnalysisTarget workspace and persistent ingestion results.
 
 Completes S1-017’s deferred integration of the shared ingestion-status badge into target cards.
 
-Closes #18  
+Closes #18
 Closes #23
 
 ## Implementation
@@ -179,7 +179,7 @@ The full code review covers correctness, story requirements, UI/UX, maintainabil
 
 ## User — 2026-11-07T03:43:23.310Z
 
-can you verify that its alright within the documents and if it follows rules in ""C:\Users\tired\Downloads\CS490 ReviewLens Requirements""  to close two stories in one pr? 
+can you verify that its alright within the documents and if it follows rules in ""[LOCAL_DOWNLOADS]/CS490 ReviewLens Requirements""  to close two stories in one pr?
 
 
 ---
@@ -197,9 +197,9 @@ I’ll check the requirements folder and repository standards for any rule about
 
 The relevant rules require:
 
-- **Story traceability and test evidence:** [Technical Specifications, §12](</C:/Users/tired/Downloads/CS490 ReviewLens Requirements/Technical Specifications.txt:491>).
-- **Each story independently meets its Definition of Done:** [Sprint 1 Stories](</C:/Users/tired/Downloads/CS490 ReviewLens Requirements/Sprint 1 Stories.txt:80>).
-- **Changes stay within the assigned scope:** [Engineering Standards, §13](/C:/Users/tired/Downloads/CS490_Review_Lens_AI_Fantastic_Six-main/docs/engineering-standards.md:268). You explicitly expanded this branch’s scope to both stories.
+- **Story traceability and test evidence:** [Technical Specifications, §12](</[LOCAL_DOWNLOADS]/CS490 ReviewLens Requirements/Technical Specifications.txt:491>).
+- **Each story independently meets its Definition of Done:** [Sprint 1 Stories](</[LOCAL_DOWNLOADS]/CS490 ReviewLens Requirements/Sprint 1 Stories.txt:80>).
+- **Changes stay within the assigned scope:** [Engineering Standards, §13](../docs/engineering-standards.md:268). You explicitly expanded this branch’s scope to both stories.
 
 That supports a combined PR; it is an interpretation of the documented rules, rather than an explicit “multiple stories per PR” provision.
 
@@ -225,7 +225,7 @@ Before merging, ensure **both stories’ acceptance criteria**, normal/security 
 
 Add this to the review request:
 
-> Check all documents in `C:\Users\tired\Downloads\CS490 ReviewLens Requirements`, the standards in `docs/`, and both stories’ acceptance criteria for any requirements, restrictions, dependencies, or Definition of Done conditions affecting this PR—including whether S1-018 and S1-023 may be closed together. Report anything unmet or unclear, cite the exact document and section, and distinguish explicit rules from your interpretation.
+> Check all documents in `[LOCAL_DOWNLOADS]/CS490 ReviewLens Requirements`, the standards in `docs/`, and both stories’ acceptance criteria for any requirements, restrictions, dependencies, or Definition of Done conditions affecting this PR—including whether S1-018 and S1-023 may be closed together. Report anything unmet or unclear, cite the exact document and section, and distinguish explicit rules from your interpretation.
 
 ---
 
@@ -325,9 +325,9 @@ Finally, this branch addresses the final two main stories of the sprint so pleas
 
 Rules for task, DO NOT GO OUTSIDE OF THESE BOUNDS, stop and ask whether to continue:
 
-- Make sure you follow standards set in the ""C:\Users\tired\Downloads\CS490_Review_Lens_AI_Fantastic_Six"",&#x20;
-- Follow requirements in: ""C:\Users\tired\Downloads\CS490 ReviewLens Requirements""
-- Follow UI/UX standards in "C:\Users\tired\Downloads\CS490_Review_Lens_AI_Fantastic_Six\docs\UI_UX_Standards.md"
+- Make sure you follow standards set in the ""[LOCAL_DOWNLOADS]/CS490_Review_Lens_AI_Fantastic_Six"",&#x20;
+- Follow requirements in: ""[LOCAL_DOWNLOADS]/CS490 ReviewLens Requirements""
+- Follow UI/UX standards in "[LOCAL_DOWNLOADS]/CS490_Review_Lens_AI_Fantastic_Six\docs\UI_UX_Standards.md"
 
 
 ---
@@ -405,7 +405,7 @@ Completed:
 
 **Passed:** 600 unit tests, 22 browser tests, seven SQL test files, lint, formatting, typecheck, and production build. Mutation probes also confirmed the SQL tests catch removed safeguards.
 
-[Final scope review](/C:/Users/tired/Downloads/CS490_Review_Lens_AI_Fantastic_Six-main/docs/s1-018-s1-023-final-review.md)
+[Final scope review](../docs/s1-018-s1-023-final-review.md)
 
 [PR #48](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/48) now uses `Refs #18` / `Refs #23` and accurately distinguishes published code from local corrections.
 
@@ -477,9 +477,9 @@ Reviewed `e5ce0c3`. S1-018/S1-023 behavior, security controls, and both deferred
 
 I audited and updated the transcript against **95 original messages** and corrected stale documentation.
 
-Created the local [PR description with reviewer guidance](/C:/Users/tired/Downloads/CS490_Review_Lens_AI_Fantastic_Six-main/docs/pr-48-description.md), covering both stories, creation integration, authoritative badges, lifecycle regressions, and security review.
+Created the local [PR description with reviewer guidance](../docs/pr-48-description.md), covering both stories, creation integration, authoritative badges, lifecycle regressions, and security review.
 
-[Detailed review](/C:/Users/tired/Downloads/CS490_Review_Lens_AI_Fantastic_Six-main/docs/s1-018-s1-023-final-review.md)
+[Detailed review](../docs/s1-018-s1-023-final-review.md)
 
 Only local documentation/transcripts changed. Existing passing test evidence was retained; application suites weren’t repeated. **Nothing was edited or pushed to GitHub.** Independent reviews, current-head CI, and hosted acceptance remain required.
 
@@ -516,3 +516,275 @@ checks. No new tests were added for this presentation-only change. Some document
 patch contexts did not match and made no partial changes; corrected the contexts.
 No GitHub access/edit, push, commit, migration, paid call or configuration change.
 The spacing correction and documentation remain local and uncommitted.
+Privacy redaction follow-up: absolute local-user paths in this historical record
+were replaced with repository-relative paths where possible and [LOCAL_DOWNLOADS]
+or [LOCAL_USER] placeholders elsewhere. Original messages are otherwise retained;
+these documented privacy redactions are applied when comparing to the source log.
+
+Formatting note: trailing whitespace was normalized alongside the documented
+local-path privacy redactions; message wording and leading indentation are retained.
+
+---
+
+## Assistant (final_answer) — 2026-11-07T19:00:38.337Z
+
+Aligned the form spacing: `space-y-4` between fields and `gap-1.5` within field groups. Updated the PR description and transcript to mark the issue resolved.
+
+Passed: **28 form tests**, the mobile creation browser test, ESLint, and formatting.
+
+[Updated PR description](../docs/pr-48-description.md)
+
+Changes remain local and uncommitted. Nothing changed on GitHub.
+
+---
+
+## User — 2026-11-07T19:12:30.083Z
+
+# Context from my IDE setup:
+
+## Active file: docs/pr-48-description.md
+
+## Active selection of the file:
+## Summary
+
+Adds the owned AnalysisTarget workspace and persistent ingestion results for
+S1-018/S1-023. Includes both deferred integrations: S1-015 creation opens the new
+workspace with confirmation, and S1-017 cards use authoritative ingestion badges.
+
+Refs #18
+Refs #23
+
+Issues remain open until hosted verification is complete.
+
+Review target: local commit `e5ce0c3` plus the final form-spacing correction,
+including main merge `366dc01` and S1-015 `e8839ef`. This description was prepared locally. Remote publication and current
+GitHub checks were not inspected or changed during this review.
+
+## Implementation
+
+- Verifies authentication and target ownership before workspace, review, status or
+  ingestion operations. Foreign, missing and malformed IDs share a safe denial.
+- Integrates main through S1-015 `e8839ef`. Creation navigates to
+  `/analysis-targets/{id}?created=1`, shows the required workspace notice, and
+  removes the temporary workspace-unavailable message. A stale form completion
+  after navigation cannot redirect another page.
+- Uses one shared Not ingested / Ingesting / Ingested / Failed badge on cards and
+  workspace. Missing or unavailable status never becomes Not ingested.
+- Persists ownership/source snapshots and accepted provider bindings with RLS and
+  restricted mutation RPCs. Browser input cannot choose a reconciliation job.
+- Blocks further ingestion after a target succeeds, both in the reservation RPC
+  and UI. Review insertion and success state remain atomic and idempotent.
+- Preserves accepted jobs across auth, billing, configuration, JSON, HTTP and
+  transport lookup failures. Safe status retry resumes the same job without a
+  second paid start. Only explicit provider failure, identity failure or no usable
+  reviews are terminal result failures.
+- Adds a four-hour application deadline checked under the database row lock before
+  lookup and finalization. Overdue attempts become Failed with a clear message;
+  their billing hold requires documented operator reconciliation before retry.
+- Treats clear submission 4xx rejections, except 408, as normal failures. Timeouts,
+  5xx and malformed acceptance responses remain uncertain and blocked.
+- Explicitly grants service-role recovery SELECT and adds an operator-only,
+  ownership-checked release RPC with retained binding and recorded evidence.
+- Retains provider-resolved URL identity with an explicit disclosure. It is not
+  independent proof of a match to the saved URL and never overwrites target identity.
+- UI/API summaries omit job IDs. Owners can read their own provider_request_id
+  through RLS-protected SELECT; this never authorizes a browser-supplied job ID.
+
+## Reviewer guidance: include the deferred integrations
+
+Please review **both stories and both integration handoffs**. This PR is broader
+than a standalone workspace page or status-table change:
+
+1. **S1-015 creation to workspace:** Start with TargetForm and
+   ProtectedTargetWorkspace. After a genuine saved creation, expect navigation to
+   the encoded `/analysis-targets/{id}?created=1`, the exact success notice and
+   the new target's context. Check refresh, a second creation, navigation away
+   while creation is pending, and a 120-character mobile title. The notice is
+   presentation only: a forged marker must not disclose another user's target,
+   start ingestion, or create data. Reopening normally has no creation notice.
+2. **S1-017 card badge integration:** Follow TargetCard through
+   listTargetsWithIngestion and getTargetIngestionSummaries to the security-invoker
+   status view. Verify all four shared badge states and owner scoping. A successful
+   backend confirmation of no attempt is required for Not ingested; failed,
+   missing or truncated status reads must show unavailable status while preserving
+   the target list. Newly created targets must use this same authoritative path.
+3. **Standard S1-018 review:** Verify the shared shell, target/platform/source,
+   saved reviews, ingestion path, loading/empty/error states, refresh, keyboard
+   navigation, mobile wrapping and direct cross-user denial. No invented reviews
+   or ingestion outcome may substitute for failed reads.
+4. **Standard S1-023 and previous findings:** Trace reservation, accepted binding,
+   lookup, completion, expiry and operator resolution in the lifecycle and both
+   ingestion migrations. Check atomic/idempotent finalization and unchanged old
+   reviews on failure. Lookup 401/402/403/404/502, missing keys and invalid JSON
+   must preserve the same accepted job and prevent another paid start. A succeeded
+   target cannot start again. Confirm the four-hour application deadline is
+   checked under the row lock, including a fetch that crosses it; expiry retains
+   the billing hold until an evidenced operator release. Submission 4xx rejections
+   except 408 must be distinguished from uncertain acceptance.
+
+The final UI/UX follow-up is resolved: TargetForm uses space-y-4 between fields
+and grid gap-1.5 within each field group, matching UI/UX sections 3.2 and 7.3.
+Please include this spacing and the mobile creation flow in the normal UI review.
+
+Useful test entry points:
+
+- `tests/e2e/auth/analysis-targets.spec.ts`: real local SDK creation/handoff,
+  confirmation, refresh, fresh form navigation, card state and mobile layout.
+- `tests/e2e/auth/target-workspace.spec.ts`: context, shared badges, status outage,
+  URL provenance, cross-user access and logout.
+- `tests/unit/services/ingestion/ingestion-lifecycle.test.ts`: paid-start counters,
+  lookup recovery, rejection versus uncertainty and expiry behavior.
+- `tests/db/ingestion-review-regressions.test.sql`: actual RPC owner checks,
+  expected Place ID mismatch, recovery SELECT, post-success blocking, expiry and
+  restricted operator release. Run the complete database suite as well.
+
+## Additional section 7 security review
+
+Please independently inspect verified session identity and parent ownership before
+child/provider work, RLS and RPC execution grants, empty function search paths,
+service-role confinement, callback HMACs over the raw bounded body, and safe logs
+and responses. Verify forged owner/source/job inputs cannot influence the stored
+binding. Owner-readable job IDs are not authorization. Verify URL identity remains
+qualified provenance and that provider/source storage approval and ingestion flags
+remain off by default. Use synthetic provider responses for failure probes; a paid
+provider call or enabling live ingestion is not required for this review.
+
+## Validation
+
+The following evidence covers the implementation now committed as `e5ce0c3`.
+The preceding pass reviewed code, requirements and transcript accuracy without
+changing application code. The subsequent local correction only aligns TargetForm
+spacing; its focused verification is recorded in the acceptance evidence.
+
+Final spacing verification: all 28 TargetForm tests, the existing mobile creation
+browser test with a 120-character title, focused ESLint and formatting passed.
+
+- 600 unit tests passed across 45 suites.
+- All 22 local Edge authentication/creation/workspace browser tests passed.
+- All seven SQL test files passed in isolated PGlite with all four migrations.
+- Mutation probes rejected removal of the reservation owner filter, each finish
+  owner predicate, the expected Place ID comparison and service-role SELECT grant.
+- Formatting, lint, explicit typecheck and production build passed.
+- CI #112 passed for reviewed commit `0558509`, including
+  [application checks](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/actions/runs/42333931440/job/128286455006)
+  and [PostgreSQL checks](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/actions/runs/42333931440/job/128286454770).
+  That green result predates these corrections. Require passing checks on the
+  actual PR head; current-head CI is not asserted by this local review.
+- Tests use synthetic provider data and no paid calls. Local PGlite verification
+  does not replace the PR's native PostgreSQL job or hosted acceptance.
+
+Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md),
+[final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md),
+[recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
+
+## Deployment and review requirements
+
+Apply both ingestion migrations, including
+`20261107010000_harden_ingestion_lifecycle.sql`, before using the feature.
+INGESTION_ENABLED and provider-review storage approval remain off by default.
+No hosted migration, paid extraction or real provider-review persistence was
+performed in this follow-up. Live use requires recovery configuration and recorded
+provider/source storage approval. Normal code re-review, the additional section 7
+security review, human acceptance and fresh CI are required before merge; hosted
+verification is required before manually closing either issue.
+
+## AI usage disclaimer
+
+OpenAI Codex assisted with implementation, tests, integration, review remediation
+and documentation. The author remains responsible for reviewing the code and tests;
+automated checks do not replace human/security approval.
+
+- [Original dialogue](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/ai-transcripts/2026-11-06_codex_S1-018-S1-023_original.md)
+- [Review and main-integration continuation](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/ai-transcripts/2026-11-07_codex_S1-018-S1-023_review-integration.md)
+
+## Open tabs:
+- pr-48-description.md: docs/pr-48-description.md
+
+## My request:
+Reviewer fixes, do not git push anything and once done create a PR comment that addresses fixes made :
+"[REDACTED] Reviewed 4e0ff89. This is close, and the main problems from my last review are fixed: no second paid job after success, outages no longer fail or unlock a paid job, jobs can't lock a target forever, clear rejections fail normally, and service_role can read attempts. Cross-user denial and forged callbacks also held. Please fix these before merge:
+
+1. Owners can read the operator note. authenticated has SELECT on the whole ingestion_attempts table, so an owner can read resolution_reference through the Data API, even though the runbook treats it as a restricted team reference. In my test the owner read it back. Since this migration isn't on hosted yet, please limit authenticated to the columns it needs (leaving out resolution_reference and resolved_at) and add a DB test.
+2. The PR description is out of date. It says the fixes aren't pushed and that the head is 0558509, and it cites CI #112. Reviewers, including the security review, need it to describe 4e0ff89.
+3. The workspace gives conflicting messages. With ingestion off, which is the default, it says "You can now start ingestion" and "Start ingestion above" next to a disabled button and "currently unavailable". The created notice also stays after a reload because ?created=1 stays in the URL, so it could still show after ingestion finishes. Please only offer ingestion when it's available, and clear the marker once the notice has shown.
+
+Small fixes, same push:
+- Add DB tests for the status check in resolve_ingestion_no_job and for RESULT_WINDOW_EXPIRED in the unique index. Removing either one didn't fail any test.
+- Show one status badge on the workspace. It currently shows two.
+- Replace the [LOCAL_USER] paths in the three ai-transcripts files, since they include a local username.
+- PROVIDER_AUTH, PROVIDER_BILLING and MISSING_API_KEY tell the user to "check the source", but these are our own account or config problems. Please use a message that says so.
+
+Optional: result checks run every 2 seconds, and one failed check stops them until the user clicks Try again. A slower interval with a few automatic retries would be kinder to the provider and the user.
+
+Keep Refs #18 and #23 until hosted verification. Your next push needs fresh CI and the separate security review."
+
+
+---
+
+## Assistant (commentary) — 2026-11-07T19:12:36.608Z
+
+I’ll fix the reported permissions, workspace messages, and regression gaps, then update the local PR description and draft a response comment. I won’t push or change anything on GitHub.
+
+
+---
+
+## Assistant (commentary) — 2026-11-07T19:14:36.687Z
+
+The findings are valid. I’ll exclude operator-only columns from authenticated reads, make the creation notice availability-aware and clear its URL marker after display, and keep one workspace badge. I’ll also address the optional polling improvement with a slower interval and bounded retries, plus tests for the missing database guards.
+
+
+---
+
+## Assistant (commentary) — 2026-11-07T19:20:30.176Z
+
+The new SQL tests pass and reject mutations that remove the expired-job index protection, operator state guard, or column-privacy restriction. The first unit run also passed; I’ve added three more account/configuration error cases since then. The browser suite is now checking marker cleanup, reload behavior, availability-aware copy, and the single workspace badge.
+
+
+---
+
+## Assistant (commentary) — 2026-11-07T19:24:16.178Z
+
+All 608 unit tests, 22 browser tests, eight SQL test files, and the production build pass. The browser checks confirm that the creation marker is cleared, the notice disappears after reload, and the workspace has one badge. I’ve also drafted the local PR response and updated the description to use `4e0ff89` as the reviewed baseline without claiming fresh CI results.
+
+
+---
+
+## Assistant (commentary) — 2026-11-07T19:27:53.299Z
+
+The fixes and local PR comment draft are ready. Final checks also found no local-user paths in the three affected transcripts and no private configuration identifiers in browser JS. Nothing has been committed, pushed, or posted to GitHub. I’m finishing the transcript record; fresh CI and the separate security review are still required after publication.
+
+
+## Review of 4e0ff89 — accepted follow-up and verification
+
+Addressed all required fixes and the optional polling improvement. Restricted
+operator evidence/time to server-role reads while retaining named lifecycle/binding
+columns and both status views for owners. Added actual privilege, operator-state
+and expired-index tests; a baseline passed and four weakened mutations were rejected.
+Creation now uses availability-aware copy, consumes its marker with native history,
+preserves unrelated URL state and does not replay on reload/completion. Empty
+reviews do not suggest a disabled start; the workspace has one header badge.
+Auth/billing/missing-key submissions explain account/configuration issues. Polling
+is five seconds with two backoff retries at ten and twenty seconds, then manual.
+
+Updated the local PR description for reviewed baseline 4e0ff89 and these uncommitted
+follow-ups, removing stale CI #112/current-head assertions. Saved the local response
+in docs/pr-48-review-response.md. Nothing was posted to GitHub. All three affected
+transcript files have local-user paths removed using the documented transformations;
+comparison to source messages applies path redaction and trailing-space normalization.
+A multi-file test edit did not change the URL regex as intended; it was corrected
+with an explicit patch before the browser run. Diff checks initially flagged trailing
+whitespace on redacted historical lines; documented normalization resolved it.
+
+Checks: 608 tests across 46 Jest suites, 22 Edge browser tests, eight SQL files with
+four migrations, lint, formatting, typecheck and production build passed. The
+lifecycle suite was rerun after adding explicit account-feedback wording assertions;
+all 39 tests passed. Browser snapshots were refreshed and the single-badge screenshot
+was inspected. Private configuration identifiers were absent from browser JS assets.
+Original dialogue was retained with the stated privacy/formatting redactions.
+
+No commit, push, GitHub edit/comment, hosted migration, paid call or real provider
+storage. Live flags remain disabled. Keep Refs #18 / Refs #23 until hosted
+verification; the next published head needs fresh CI and independent section 7
+security review. No requested fix was declined and normative standards were not
+silently changed; availability-aware copy/single workspace badge follow the explicit
+review directions accepted by the user.

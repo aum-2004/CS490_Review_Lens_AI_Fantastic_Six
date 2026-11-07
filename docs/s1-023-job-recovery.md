@@ -125,6 +125,14 @@ Apply `20261107010000_harden_ingestion_lifecycle.sql` as well as the initial att
 migration. Callback recovery explicitly has service-role SELECT permission and an
 RLS read policy; it does not depend on Supabase's default table grants.
 
+Operator resolution_reference and resolved_at are restricted server/operator
+columns. The follow-up migration replaces authenticated table-wide SELECT with an
+explicit lifecycle/binding column allowlist. Owners can still read their own job
+IDs under RLS, but cannot retrieve these operator fields through the Data API.
+Keep evidence references free of secrets even though their access is restricted.
+The database suite verifies denied owner reads, permitted service-role reads,
+the operator state guard and direct unique-index protection of expired holds.
+
 ## Regression coverage
 
 Historical results after S1-019 integration: 42 Jest suites / 541 tests passed; all 20 auth/browser

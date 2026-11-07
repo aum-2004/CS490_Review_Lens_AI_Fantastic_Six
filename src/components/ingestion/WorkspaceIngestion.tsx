@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { IngestionSummary } from "@/services/ingestion/ingestion-state";
 import { IngestionStatus } from "./IngestionStatus";
 import { IngestionPanel } from "./IngestionPanel";
+import { TargetCreatedNotice } from "@/components/analysis-targets/TargetCreatedNotice";
 
 export function WorkspaceIngestion({
   targetId,
@@ -11,17 +12,31 @@ export function WorkspaceIngestion({
   sourceUrl,
   initialSummary,
   unavailableReason,
+  created = false,
 }: {
   targetId: string;
   targetName: string;
   sourceUrl: string;
   initialSummary: IngestionSummary | null;
   unavailableReason: string | null;
+  created?: boolean;
 }) {
   const [summary, setSummary] = useState(initialSummary);
   const [pending, setPending] = useState(false);
+  const canStart =
+    !pending &&
+    !unavailableReason &&
+    !!summary &&
+    (summary.state === "not_ingested" ||
+      (summary.state === "failed" &&
+        !["SUBMISSION_UNCERTAIN", "RESULT_WINDOW_EXPIRED"].includes(summary.errorCode ?? "")));
   return (
     <>
+      <TargetCreatedNotice
+        created={created}
+        canStart={canStart}
+        completed={summary?.state === "succeeded"}
+      />
       <div className="min-w-0 space-y-3">
         <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
           Google Maps

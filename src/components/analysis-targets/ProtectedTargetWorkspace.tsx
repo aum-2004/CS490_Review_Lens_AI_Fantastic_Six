@@ -4,7 +4,6 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Alert } from "@/components/ui/Alert";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { RetryTargetsButton } from "./RetryTargetsButton";
@@ -97,14 +96,10 @@ export async function ProtectedTargetWorkspace({
         />
       ) : (
         <div className="space-y-6">
-          {created && (
-            <Alert role="status" aria-live="polite">
-              <p className="max-w-prose">Target created. You can now start ingestion.</p>
-            </Alert>
-          )}
           <WorkspaceIngestion
             key={`${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
             targetId={target.id}
+            created={!!created}
             targetName={target.name}
             sourceUrl={target.sourceUrl}
             initialSummary={ingestion}

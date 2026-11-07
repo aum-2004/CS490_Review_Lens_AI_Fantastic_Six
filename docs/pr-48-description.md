@@ -9,9 +9,11 @@ Refs #23
 
 Issues remain open until hosted verification is complete.
 
-Review target: local commit `e5ce0c3` plus the final form-spacing correction,
-including main merge `366dc01` and S1-015 `e8839ef`. This description was prepared locally. Remote publication and current
-GitHub checks were not inspected or changed during this review.
+Reviewed baseline: `4e0ff89`, including the earlier main/S1-015 integration and
+spacing correction. This description also covers the subsequent local reviewer
+fixes listed below; those follow-up changes have not been committed or pushed by
+this agent. Require fresh CI and the separate security review on the next published
+head. No current-head GitHub checks were asserted or changed during this follow-up.
 
 ## Implementation
 
@@ -41,7 +43,18 @@ GitHub checks were not inspected or changed during this review.
 - Retains provider-resolved URL identity with an explicit disclosure. It is not
   independent proof of a match to the saved URL and never overwrites target identity.
 - UI/API summaries omit job IDs. Owners can read their own provider_request_id
-  through RLS-protected SELECT; this never authorizes a browser-supplied job ID.
+  through RLS-protected, named-column SELECT; this never authorizes a browser-supplied job ID.
+- Excludes operator resolution_reference and resolved_at from authenticated reads;
+  service_role retains explicit recovery access. Adds actual SQL denial/read tests.
+- Consumes the creation marker after display, preserves other URL parameters,
+  hides the notice on reload/completion, and offers collection only when available.
+  Empty review copy no longer suggests a disabled start. One badge appears in the
+  workspace header; cards use the same shared badge component.
+- Uses account/configuration feedback for submission auth, billing and missing-key
+  failures. Polling runs every five seconds, with two bounded backoff retries
+  before manual status retry. All checks remain bound-job refreshes, never starts.
+- Redacts local-user paths in the three affected AI transcripts while preserving
+  the dialogue with documented privacy replacements.
 
 ## Reviewer guidance: include the deferred integrations
 
@@ -50,11 +63,13 @@ than a standalone workspace page or status-table change:
 
 1. **S1-015 creation to workspace:** Start with TargetForm and
    ProtectedTargetWorkspace. After a genuine saved creation, expect navigation to
-   the encoded `/analysis-targets/{id}?created=1`, the exact success notice and
+   the encoded `/analysis-targets/{id}?created=1` handoff, its consumed URL marker and
    the new target's context. Check refresh, a second creation, navigation away
    while creation is pending, and a 120-character mobile title. The notice is
    presentation only: a forged marker must not disclose another user's target,
-   start ingestion, or create data. Reopening normally has no creation notice.
+   start ingestion, or create data. When collection is off, expect only "Target created."
+   without a start invitation. When available, expect the full start notice. The
+   notice is absent after reload or successful ingestion. Reopening normally has no creation notice.
 2. **S1-017 card badge integration:** Follow TargetCard through
    listTargetsWithIngestion and getTargetIngestionSummaries to the security-invoker
    status view. Verify all four shared badge states and owner scoping. A successful
@@ -90,6 +105,9 @@ Useful test entry points:
 - `tests/db/ingestion-review-regressions.test.sql`: actual RPC owner checks,
   expected Place ID mismatch, recovery SELECT, post-success blocking, expiry and
   restricted operator release. Run the complete database suite as well.
+- `tests/db/ingestion-privacy-and-resolution.test.sql`: denied owner reads of
+  operator evidence/time, valid allowed-column/status reads, service-role access,
+  operator state rejection and direct expired-hold unique-index enforcement.
 
 ## Additional section 7 security review
 
@@ -101,34 +119,27 @@ binding. Owner-readable job IDs are not authorization. Verify URL identity remai
 qualified provenance and that provider/source storage approval and ingestion flags
 remain off by default. Use synthetic provider responses for failure probes; a paid
 provider call or enabling live ingestion is not required for this review.
+Verify operator evidence stays inaccessible to authenticated owners, including
+direct Data API requests; job-ID readability does not imply operator-note access.
 
 ## Validation
 
-The following evidence covers the implementation now committed as `e5ce0c3`.
-The preceding pass reviewed code, requirements and transcript accuracy without
-changing application code. The subsequent local correction only aligns TargetForm
-spacing; its focused verification is recorded in the acceptance evidence.
+Current local follow-up checks on top of reviewed baseline 4e0ff89:
 
-Final spacing verification: all 28 TargetForm tests, the existing mobile creation
-browser test with a 120-character title, focused ESLint and formatting passed.
-
-- 600 unit tests passed across 45 suites.
+- 608 unit tests passed across 46 suites.
 - All 22 local Edge authentication/creation/workspace browser tests passed.
-- All seven SQL test files passed in isolated PGlite with all four migrations.
-- Mutation probes rejected removal of the reservation owner filter, each finish
-  owner predicate, the expected Place ID comparison and service-role SELECT grant.
+- All eight SQL test files passed in isolated PGlite with all four migrations.
+- New mutation probes passed the baseline and rejected weakened operator-state
+  checks, removal of expired-hold index protection and operator-column privacy.
+  Prior owner/identity/recovery-read mutation evidence remains in the verification.
 - Formatting, lint, explicit typecheck and production build passed.
-- CI #112 passed for reviewed commit `0558509`, including
-  [application checks](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/actions/runs/42333931440/job/128286455006)
-  and [PostgreSQL checks](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/actions/runs/42333931440/job/128286454770).
-  That green result predates these corrections. Require passing checks on the
-  actual PR head; current-head CI is not asserted by this local review.
+- No current-head CI result is asserted. Require fresh application and native
+  PostgreSQL checks on the next published head, plus the separate security review.
 - Tests use synthetic provider data and no paid calls. Local PGlite verification
   does not replace the PR's native PostgreSQL job or hosted acceptance.
-
-Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md),
-[final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md),
-[recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
+  Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md),
+  [final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md),
+  [recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
 
 ## Deployment and review requirements
 

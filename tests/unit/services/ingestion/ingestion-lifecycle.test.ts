@@ -8,6 +8,7 @@ import {
 } from "@/services/ingestion/ingestion-attempt-repository";
 import { OutscraperError, startOutscraperExtraction } from "@/services/ingestion/outscraper-client";
 import { getExtractedReviews } from "@/services/ingestion/outscraper-service";
+import { ingestionErrorMessage } from "@/services/ingestion/ingestion-state";
 
 jest.mock("@/services/analysis-targets/target-ownership", () => ({
   getOwnedTargetOrThrow: jest.fn(),
@@ -126,6 +127,22 @@ it("does not start another run for a successfully ingested target", async () => 
   expect((await beginIngestion({} as never, "user-a", "target-a", deps)).state).toBe("succeeded");
   expect(deps.start).not.toHaveBeenCalled();
 });
+it.each(["PROVIDER_AUTH", "PROVIDER_BILLING", "MISSING_API_KEY"])(
+  "explains submission %s as an account/configuration issue rather than a source error",
+  async (code) => {
+    const deps = dependencies();
+    deps.start.mockRejectedValue(
+      new OutscraperError(code, "synthetic private configuration detail"),
+    );
+    const result = await beginIngestion({} as never, "user-a", "target-a", deps);
+    expect(result).toMatchObject({
+      state: "failed",
+      errorCode: "PROVIDER_CONFIGURATION_UNAVAILABLE",
+    });
+    expect(ingestionErrorMessage(result.errorCode)).toMatch(/account or configuration/);
+    expect(ingestionErrorMessage(result.errorCode)).not.toMatch(/check the source/i);
+  },
+);
 it.each([401, 402, 403, 404, 502, "invalid-json", "missing-key"])(
   "preserves the paid job across lookup %s, prevents another start, and resumes the same job",
   async (failure) => {

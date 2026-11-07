@@ -85,12 +85,28 @@ it must not automatically close unverified stories.
 ## S1-015 and S1-017 deferred integration
 
 Successful creation now navigates to `/analysis-targets/{id}?created=1`. The owned
-workspace displays the standards-required success notice, and the temporary
+workspace displays an availability-aware success notice, and the temporary
 workspace-unavailable message is removed. Stale form completions after navigation
 cannot redirect another page. Creation never starts a provider job automatically.
+The client clears created=1 after consuming it, without a server navigation;
+reload does not replay the notice. Starting collection is suggested only when
+configuration and attempt state allow it. A completed run hides the notice.
 
 The S1-017 follow-up is implemented by the shared IngestionStatus component on
 every target card. The owner-scoped status view confirms Not ingested only when
 no attempt exists; missing/unavailable/truncated state stays unavailable. Browser
 coverage includes new target creation, card status, refresh, all four badge states,
 status outages and User A/User B isolation.
+
+## Review follow-up on 4e0ff89
+
+The latest local corrections restrict authenticated table reads to named lifecycle
+and binding columns. Operator resolution_reference and resolved_at are excluded;
+service_role retains explicit recovery reads. The unchanged status views expose
+only their originally defined columns, under security-invoker RLS.
+
+The workspace has one status badge, in its header. Empty review copy no longer
+prompts starting collection while it is disabled. Submission auth/billing/missing
+key errors describe an account/configuration issue rather than blaming the source.
+Polling now uses a five-second interval, two automatic retries delayed ten and
+twenty seconds, then manual status retry; it never submits a second provider job.

@@ -91,7 +91,7 @@ test("shows provider-resolved URL identity without claiming an independent match
     await expect(
       page.getByText(/The review service identified this business as Provider coffee shop/),
     ).toContainText("has not been independently matched to the saved link");
-    await expect(page.getByText("Ingested", { exact: true })).toHaveCount(2);
+    await expect(page.getByText("Ingested", { exact: true })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
     await expect(page.getByText(/Further collection is unavailable/)).toBeVisible();
     await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
