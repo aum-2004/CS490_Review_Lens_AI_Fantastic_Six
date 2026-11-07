@@ -2,6 +2,7 @@
 
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { CircleAlert } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Spinner } from "@/components/shared/Spinner";
@@ -89,6 +90,11 @@ function TargetCreationConfirmation({ target }: { target: AnalysisTarget }) {
           </div>
         </dl>
         <p className="mt-3">Workspace access will be available in a future update.</p>
+        <Button asChild className="mt-4">
+          <Link href="/analysis-targets" prefetch={false}>
+            Back to My Targets
+          </Link>
+        </Button>
       </AlertDescription>
     </Alert>
   );
@@ -313,7 +319,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
           type="button"
           variant="outline"
           disabled={isSubmitting}
-          onClick={() => router.push("/")}
+          onClick={() => router.push("/analysis-targets")}
         >
           Cancel
         </Button>

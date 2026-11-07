@@ -382,6 +382,10 @@ describe("TargetForm", () => {
     expect(
       within(confirmation).getByText("Workspace access will be available in a future update."),
     ).toBeInTheDocument();
+    expect(within(confirmation).getByRole("link", { name: "Back to My Targets" })).toHaveAttribute(
+      "href",
+      "/analysis-targets",
+    );
     expect(mockPush).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Create target" })).not.toBeInTheDocument();
   });
@@ -452,7 +456,7 @@ describe("TargetForm", () => {
 
     fireEvent.click(cancelButton);
 
-    expect(mockPush).toHaveBeenCalledWith("/");
+    expect(mockPush).toHaveBeenCalledWith("/analysis-targets");
   });
 
   it("preserves input when authentication is temporarily unavailable", async () => {
@@ -531,11 +535,11 @@ describe("TargetForm", () => {
     );
   });
 
-  it("returns to the existing home route when cancelled", () => {
+  it("returns to My Targets when cancelled", () => {
     render(<TargetForm createTarget={jest.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(mockPush).toHaveBeenCalledWith("/");
+    expect(mockPush).toHaveBeenCalledWith("/analysis-targets");
   });
 });

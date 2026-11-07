@@ -39,7 +39,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 export class AnalysisTargetPersistenceError extends Error {
   readonly code = "ANALYSIS_TARGET_PERSISTENCE_FAILED";
 
-  constructor(operation: "create" | "get", options?: { cause?: unknown }) {
+  constructor(operation: "create" | "get" | "list", options?: { cause?: unknown }) {
     // The message is safe to show; database details stay on `cause` for server-side logging.
     super(`Could not ${operation} the analysis target.`, options);
     this.name = "AnalysisTargetPersistenceError";

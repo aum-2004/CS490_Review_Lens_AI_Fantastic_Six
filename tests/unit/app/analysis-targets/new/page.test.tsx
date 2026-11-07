@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 
 import { ProtectedNewAnalysisTargetPage } from "@/app/analysis-targets/new/page";
 import { requirePageUser } from "@/services/auth/access-control";
 
 jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() }));
+jest.mock("@/app/login/actions", () => ({ signOut: jest.fn() }));
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -25,8 +26,18 @@ describe("NewAnalysisTargetPage", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Create a new target" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(breadcrumb).getByRole("link", { name: "My Targets" })).toHaveAttribute(
+      "href",
+      "/analysis-targets",
+    );
+    expect(within(breadcrumb).getByText("New Target")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New Target" })).toHaveAttribute(
+      "href",
+      "/analysis-targets/new",
+    );
+    expect(screen.getByRole("button", { name: /a@example\.com/i })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 2, name: "Target information" }),
     ).toBeInTheDocument();

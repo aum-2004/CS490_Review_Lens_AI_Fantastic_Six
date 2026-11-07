@@ -17,11 +17,12 @@ The protected Route Handler:
 5. Translate expected failures to the shared safe error response and never return fabricated target
    data.
 
-The result exposes at least `id`, `name`, `sourceUrl`, and `platform`. Until S1-017 and S1-018 are
-merged, the creation form displays an accessible confirmation containing the saved target's name,
-ID, and normalized source URL. It does not link or redirect to routes that do not exist.
+The result exposes at least `id`, `name`, `sourceUrl`, and `platform`. Until S1-018 is merged, the
+creation form displays an accessible confirmation containing the saved target's name, ID, and
+normalized source URL. It does not link or redirect to the unfinished target workspace.
 
-S1-017 should restore the `My Targets` breadcrumb and Cancel destination to `/analysis-targets` when
-the list route exists. S1-018 should replace the temporary inline confirmation with navigation to
+S1-017 now supplies the shared `AppShell`, navigation, and `/analysis-targets` list. The creation
+page uses that shell; its breadcrumb, Cancel action, and post-creation link return to My Targets.
+S1-018 should replace the temporary inline confirmation with navigation to
 `/analysis-targets/{id}?created=1`; the workspace should use that query marker to show the
-standards-required confirmation: “Target created. You can now start ingestion.”
+standards-required confirmation: "Target created. You can now start ingestion."

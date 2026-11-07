@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Suspense } from "react";
 
 import { TargetForm } from "@/components/analysis-targets/TargetForm";
+import { AppShell } from "@/components/shared/AppShell";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { requirePageUser } from "@/services/auth/access-control";
 
@@ -20,32 +21,19 @@ export default function NewAnalysisTargetPage() {
 }
 
 export async function ProtectedNewAnalysisTargetPage() {
-  await requirePageUser("/analysis-targets/new");
+  const user = await requirePageUser("/analysis-targets/new");
 
   return (
-    <main className="flex-1 bg-muted/30 px-4 py-10 sm:px-6 sm:py-14">
+    <AppShell email={user.email}>
       <div className="mx-auto w-full max-w-xl">
-        <nav aria-label="Breadcrumb" className="mb-5 text-sm text-muted-foreground">
-          <ol className="flex items-center gap-2">
-            <li>
-              <Link
-                className="rounded-sm underline-offset-4 hover:underline focus-visible:outline-2"
-                href="/"
-              >
-                Home
-              </Link>
-            </li>
-            <li aria-hidden="true">/</li>
-            <li aria-current="page">New Target</li>
-          </ol>
-        </nav>
-
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold tracking-tight">Create a new target</h1>
-          <p className="mt-2 text-muted-foreground">
-            Add a Google Maps business listing to begin collecting and analyzing its reviews.
-          </p>
-        </div>
+        <PageHeader
+          title="Create a new target"
+          description="Add a Google Maps business listing to begin collecting and analyzing its reviews."
+          breadcrumbs={[
+            { label: "My Targets", href: "/analysis-targets" },
+            { label: "New Target" },
+          ]}
+        />
 
         <Card>
           <CardHeader>
@@ -61,7 +49,7 @@ export async function ProtectedNewAnalysisTargetPage() {
           </CardContent>
         </Card>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

@@ -1,16 +1,5 @@
-/**
- * Thrown when the target does not exist OR belongs to another user.
- * The two cases are deliberately indistinguishable (maps to HTTP 404) so
- * responses never reveal another user's private resource.
- */
-export class TargetNotFoundError extends Error {
-  readonly code = "TARGET_NOT_FOUND";
-
-  constructor() {
-    super("Analysis target not found.");
-    this.name = "TargetNotFoundError";
-  }
-}
+// S1-013 moved the shared denial next to the ownership guard; re-exported so imports keep working.
+export { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
 
 /** Thrown when a review in the batch is not a valid S1-021 NormalizedReview. */
 export class InvalidReviewError extends Error {
