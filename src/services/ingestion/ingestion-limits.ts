@@ -11,7 +11,10 @@ export class IngestionLimitError extends Error {
   }
 }
 
-/** Bound the normalized persistence input as well as the provider transport. */
+/**
+ * Metadata is capped at 16 KiB of compact JSON. The SQL RPC allows 32 KiB of
+ * jsonb::text because PostgreSQL adds spaces when rendering that same metadata.
+ */
 export function assertIngestionResultWithinLimits(
   rows: Record<string, unknown>[],
   identity: { businessName: string },

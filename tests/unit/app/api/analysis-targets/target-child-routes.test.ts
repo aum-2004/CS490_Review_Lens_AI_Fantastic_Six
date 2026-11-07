@@ -577,7 +577,7 @@ describe("POST /api/analysis-targets/[targetId]/ingestion", () => {
 
     expect(startOutscraperExtraction).not.toHaveBeenCalled();
     expect(getOutscraperResult).not.toHaveBeenCalled();
-    expect(getOutscraperResult).not.toHaveBeenCalled();
+    expect(getExtractedReviews).not.toHaveBeenCalled();
     expect(normalizeBatch).not.toHaveBeenCalled();
     expect(tablesTouched()).not.toContain("reviews");
     expect(tables).toEqual(before);

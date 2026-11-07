@@ -197,6 +197,12 @@ export async function reconcileIngestion(
     identity: {
       ...extracted.identity,
       businessName: toStorableText(extracted.identity.businessName).trim(),
+      ...(extracted.identity.googleId !== undefined
+        ? { googleId: toStorableText(extracted.identity.googleId).trim() }
+        : {}),
+      ...(extracted.identity.locationLink !== undefined
+        ? { locationLink: toStorableText(extracted.identity.locationLink).trim() }
+        : {}),
     },
   };
   // A result must match an expected Place ID when one existed at submission. For URL jobs,

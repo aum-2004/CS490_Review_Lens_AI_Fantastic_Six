@@ -1,5 +1,57 @@
 # S1-018 / S1-023 local verification
 
+## Latest normal-review follow-up to 40af2a3
+
+629 unit tests / 47 suites and all nine SQL files plus the two-session concurrency
+test across six migrations passed. PostgreSQL 18 accepted dense metadata with
+16,306 bytes of compact JSON and over 16 KiB of jsonb::text, atomically saving the
+review and finalizing the attempt. The app retains its 16 KiB compact metadata
+limit; new migration 030000 allows 32 KiB of PostgreSQL-rendered metadata.
+
+Independent SQL failures cover review_url (2,049), source_review_id (257) and
+review_date (65), with accepted 2,048/256/64-character boundaries and valid timestamp
+parsing. App tests reject review_url (2,049) and reviewer_name (201), accepting their
+2,048/200 boundaries. Removing each of these five guards causes its respective
+test failure. Restoring the old 16 KiB SQL metadata threshold also fails the dense
+success case. The restored cross-user getExtractedReviews assertion passes.
+
+The original AI dialogue is retained in the continuation transcript and must be
+included in the next commit. Fresh CI, normal approval and independent §7 security
+approval must apply to the final published head. No commit, push, GitHub change,
+hosted migration, paid call or live provider storage was performed. Keep Refs #18
+and Refs #23 until hosted verification. Previous checkpoints follow.
+
+## Latest §7 re-review follow-up to 40af2a3
+
+The real PostgreSQL 18 suite passed all nine SQL files across six migrations and
+the new two-session owner-budget test. The test holds reservation five open on
+one target, observes reservation six waiting on the owner advisory lock in another
+session, then commits five and requires INGESTION_START_LIMIT. A separate baseline
+passed; removing the advisory lock caused the expected sixth-reservation failure.
+The CI database runner now includes this test. Existing 010000 is byte-for-byte
+restored to e69f084, with completion limits in new migration 030000 so existing
+databases receive the replacement function. The limits SQL suite executes only
+after the ordered migrations and verifies independent count/size/field rejection.
+
+625 unit tests / 47 suites, lint, typecheck, formatting and production build passed.
+Flat/nested provider and persistence-boundary tests verify businessName, googleId
+and locationLink NUL cleaning. The streaming test is finite (2 MiB + 1 byte), with
+no prefetch so cancellation is observable. The earlier browser pass of 22 tests is
+historical evidence; this server-only correction did not rerun browsers.
+
+A streamed-byte-guard mutation was rejected by an assertion in approximately two
+seconds (a 20-second outer bound ensured timeout would count as a failure of the
+probe). The final expanded lifecycle suite passed all 42 tests. A direct byte
+comparison confirms 010000 exactly matches the file at e69f084.
+
+The local PostgreSQL tools were installed in WSL for these throwaway database
+tests; no project dependency or hosted database changed. No paid calls, real
+provider storage, commit, push or GitHub edit. The local PR description and reply
+are ready to copy. Fresh PostgreSQL 16 CI and independent §7 re-review remain
+required. The per-account cap does not provide a global budget; the team must
+record its global spend-control decision before enabling ingestion. Live flags
+remain off; issue closure awaits hosted verification.
+
 ## Latest §7 security follow-up to e69f084
 
 625 tests across 47 Jest suites, all 22 Edge browser tests, all nine SQL files across

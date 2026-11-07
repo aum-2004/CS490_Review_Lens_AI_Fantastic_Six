@@ -28,4 +28,7 @@ for test_file in tests/db/*.test.sql; do
   psql "${psql_args[@]}" --file "$test_file"
 done
 
+echo "Running two-session ingestion start-limit regression"
+bash tests/db/ingestion-start-limit-concurrency.test.sh "$db"
+
 echo "All database tests passed."

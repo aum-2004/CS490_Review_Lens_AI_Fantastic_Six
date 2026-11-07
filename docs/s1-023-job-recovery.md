@@ -38,8 +38,10 @@ its active-submission lock. Restoring approval resumes that same job.
 
 ## Configuration before enabling live ingestion
 
-Apply all three ingestion migrations, including
-`20261107020000_enforce_ingestion_safety_limits.sql`. Browser users cannot DELETE
+Apply all four ingestion migrations, including
+`20261107030000_bound_ingestion_completions.sql`. The 010000 migration is restored
+to e69f084; completion limits are installed by 030000 for fresh and already-migrated
+databases. Browser users cannot DELETE
 analysis_targets, so deleting a target cannot erase its billing hold or audit rows.
 Administrative deletion remains privileged and must not be used to bypass recovery.
 
@@ -48,9 +50,17 @@ serialized across different targets. Rejected and uncertain submissions also cou
 operator release does not refund a reservation. Existing held/succeeded attempts
 remain readable/idempotent at the limit. Do not delete audit rows to reset it.
 
+This is a per-account budget, not a global paid-start cap. Before enabling ingestion,
+the team must decide and record a global spend-control policy. Cross-account
+protection is not claimed by this implementation; keep INGESTION_ENABLED off until
+that decision and the other live-use prerequisites are satisfied.
+
 Provider result bodies are streamed with a 2 MiB ceiling. Completion accepts at
 most 30 reviews, bounded review fields and metadata, and a bounded business identity;
 the completion RPC independently enforces limits before inserting anything.
+Metadata uses a 16 KiB compact JSON application limit and a 32 KiB jsonb::text SQL
+allowance so PostgreSQL's rendering spaces do not reject an application-valid
+batch. The remaining count/field guards are unchanged.
 INGESTION_RESULT_LIMIT preserves the accepted binding and submission hold and saves
 no partial batch. Investigate the provider result and storage limits with the project
 team; starting another paid job is not a recovery step.

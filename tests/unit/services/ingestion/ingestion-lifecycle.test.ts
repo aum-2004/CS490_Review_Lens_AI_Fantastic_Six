@@ -139,12 +139,17 @@ it("preserves an accepted job when result size limits reject a lookup", async ()
   await beginIngestion({} as never, "user-a", "target-a", deps);
   expect(deps.start).not.toHaveBeenCalled();
 });
-it("cleans the verified business name before sending it to persistence", async () => {
+it("cleans verified business identity strings before sending them to persistence", async () => {
   const deps = dependencies();
   deps.extract.mockResolvedValue({
     ...completed,
     businessName: "Syn\u0000thetic",
-    identity: { ...completed.identity, businessName: "Syn\u0000thetic" },
+    identity: {
+      ...completed.identity,
+      businessName: "Syn\u0000thetic",
+      googleId: "synthetic\u0000-id",
+      locationLink: "https://maps.google.com/\u0000synthetic",
+    },
   });
   await reconcileIngestion({} as never, "user-a", "target-a", deps);
   expect(deps.writer.finish).toHaveBeenCalledWith(
@@ -152,7 +157,11 @@ it("cleans the verified business name before sending it to persistence", async (
     "user-a",
     expect.any(Array),
     0,
-    expect.objectContaining({ businessName: "Synthetic" }),
+    expect.objectContaining({
+      businessName: "Synthetic",
+      googleId: "synthetic-id",
+      locationLink: "https://maps.google.com/synthetic",
+    }),
     null,
   );
 });

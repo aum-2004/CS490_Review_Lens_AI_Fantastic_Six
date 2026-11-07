@@ -9,12 +9,22 @@ import { createIngestionAttemptWriter } from "@/services/ingestion/ingestion-att
 
 it("cancels an oversized result stream without trusting Content-Length or parsing it", async () => {
   const cancel = jest.fn();
-  const stream = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      controller.enqueue(new Uint8Array(1024 * 1024));
+  let remaining = MAX_PROVIDER_RESULT_BYTES + 1;
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (remaining === 0) {
+          controller.close();
+          return;
+        }
+        const size = Math.min(remaining, 64 * 1024);
+        controller.enqueue(new Uint8Array(size));
+        remaining -= size;
+      },
+      cancel,
     },
-    cancel,
-  });
+    { highWaterMark: 0 },
+  );
   await expect(
     readBoundedProviderJson(new Response(stream, { headers: { "content-length": "1" } })),
   ).rejects.toMatchObject({ code: "INGESTION_RESULT_LIMIT" });
@@ -41,7 +51,7 @@ it("reads valid bounded JSON and rejects malformed JSON", async () => {
   );
 });
 
-it.each(["count", "bytes", "text", "metadata", "identity"])(
+it.each(["count", "bytes", "text", "url", "reviewer", "metadata", "identity"])(
   "bounds normalized %s before persistence",
   (limit) => {
     let rows: Record<string, unknown>[] = [{ text: "valid", rating: 4 }];
@@ -49,6 +59,10 @@ it.each(["count", "bytes", "text", "metadata", "identity"])(
     if (limit === "count") rows = Array.from({ length: 31 }, () => ({ text: "valid", rating: 4 }));
     if (limit === "bytes") rows[0].ignored = "x".repeat(MAX_PROVIDER_RESULT_BYTES + 1);
     if (limit === "text") rows[0].text = "x".repeat(10001);
+    if (limit === "url")
+      rows[0].review_url =
+        "https://example.test/" + "x".repeat(2049 - "https://example.test/".length);
+    if (limit === "reviewer") rows[0].reviewer_name = "x".repeat(201);
     if (limit === "metadata") rows[0].source_metadata = { note: "x".repeat(16385) };
     if (limit === "identity") identity.businessName = "x".repeat(201);
     expect(() => assertIngestionResultWithinLimits(rows, identity)).toThrow(
@@ -56,6 +70,23 @@ it.each(["count", "bytes", "text", "metadata", "identity"])(
     );
   },
 );
+it("accepts compact metadata whose PostgreSQL rendering exceeds 16 KiB", () => {
+  const metadata = { values: Array.from({ length: 5700 }, () => 0), note: "x".repeat(4884) };
+  expect(Buffer.byteLength(JSON.stringify(metadata), "utf8")).toBe(16306);
+  expect(() =>
+    assertIngestionResultWithinLimits([{ text: "valid", rating: 4, source_metadata: metadata }], {
+      businessName: "Synthetic",
+    }),
+  ).not.toThrow();
+});
+it("accepts review URL and reviewer name exactly at their character limits", () => {
+  expect(() =>
+    assertIngestionResultWithinLimits(
+      [{ text: "valid", review_url: "x".repeat(2048), reviewer_name: "x".repeat(200) }],
+      { businessName: "Synthetic" },
+    ),
+  ).not.toThrow();
+});
 it("permits the supported 30-review batch at the review text boundary", () => {
   expect(() =>
     assertIngestionResultWithinLimits(
@@ -72,12 +103,16 @@ it.each(["flat", "nested"])(
     process.env.OUTSCRAPER_API_KEY = "synthetic-test-key";
     try {
       const reviews = [
-        { name: "Ca\u0000fe", place_id: "ChIJSynthetic", review_text: "valid", review_rating: 4 },
+        {
+          name: "Ca\u0000fe",
+          google_id: "synthetic\u0000-id",
+          location_link: "https://maps.google.com/\u0000synthetic",
+          place_id: "ChIJSynthetic",
+          review_text: "valid",
+          review_rating: 4,
+        },
       ];
-      const data =
-        shape === "flat"
-          ? reviews
-          : [{ name: "Ca\u0000fe", place_id: "ChIJSynthetic", reviews_data: reviews }];
+      const data = shape === "flat" ? reviews : [{ ...reviews[0], reviews_data: reviews }];
       const result = await getOutscraperResult(
         "synthetic-job",
         "ChIJSynthetic",
@@ -86,7 +121,11 @@ it.each(["flat", "nested"])(
       expect(result).toMatchObject({
         status: "completed",
         businessName: "Cafe",
-        identity: { businessName: "Cafe" },
+        identity: {
+          businessName: "Cafe",
+          googleId: "synthetic-id",
+          locationLink: "https://maps.google.com/synthetic",
+        },
       });
       const oversized = Array.from({ length: 31 }, () => reviews[0]);
       const oversizedData =

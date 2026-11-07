@@ -52,13 +52,18 @@ update public.ingestion_attempts set status='processing',error_code=null,finishe
 set role service_role;
 do $$ declare payload jsonb; code text; identity jsonb := '{"placeId":"ChIJExpected","businessName":"Synthetic"}'; begin
   -- Each limit is tested independently with otherwise valid input; no partial review insert.
-  foreach code in array array['count','bytes','text','reviewer','metadata','identity'] loop
+  perform ('2026-11-07T12:00:00.'||repeat('0',44)||'Z')::timestamptz;
+  foreach code in array array['count','bytes','text','reviewer','url','source_id','date','metadata','identity'] loop
     payload:='[{"text":"valid","rating":4}]';
     if code='count' then select jsonb_agg(jsonb_build_object('text','valid','rating',4)) into payload from generate_series(1,31); end if;
     if code='bytes' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'ignored',repeat('x',2097153))); end if;
     if code='text' then payload:=jsonb_build_array(jsonb_build_object('text',repeat('x',10001),'rating',4)); end if;
     if code='reviewer' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'reviewer_name',repeat('x',201))); end if;
-    if code='metadata' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'source_metadata',jsonb_build_object('note',repeat('x',16385)))); end if;
+    if code='url' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'review_url','https://example.test/'||repeat('x',2049-length('https://example.test/')))); end if;
+    if code='source_id' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'source_review_id',repeat('x',257))); end if;
+    -- Valid timestamp with a long zero fraction: only the 64-character guard should reject it.
+    if code='date' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'review_date','2026-11-07T12:00:00.'||repeat('0',44)||'Z')); end if;
+    if code='metadata' then payload:=jsonb_build_array(jsonb_build_object('text','valid','rating',4,'source_metadata',jsonb_build_object('note',repeat('x',32769)))); end if;
     if code='identity' then identity:=jsonb_build_object('placeId','ChIJExpected','businessName',repeat('x',201)); end if;
     begin
       perform public.finish_ingestion_attempt(current_setting('test.security_attempt')::uuid,'66666666-6666-4666-8666-666666666661',payload,0,identity,null);
@@ -68,7 +73,17 @@ do $$ declare payload jsonb; code text; identity jsonb := '{"placeId":"ChIJExpec
     end;
     identity:='{"placeId":"ChIJExpected","businessName":"Synthetic"}';
   end loop;
-  perform public.finish_ingestion_attempt(current_setting('test.security_attempt')::uuid,'66666666-6666-4666-8666-666666666661','[{"text":"valid","rating":4}]',0,identity,null);
+  -- Compact JSON for this same fixture is below 16 KiB; PostgreSQL adds array spaces.
+  select jsonb_build_array(jsonb_build_object('text','valid','rating',4,
+    'review_url','https://example.test/'||repeat('x',2048-length('https://example.test/')),
+    'source_review_id',repeat('x',256),'review_date','2026-11-07T12:00:00.'||repeat('0',43)||'Z',
+    'source_metadata',
+    jsonb_build_object('values',(select jsonb_agg(0) from generate_series(1,5700)), 'note',repeat('x',4884)))) into payload;
+  assert octet_length((payload->0->'source_metadata')::text) > 16384;
+  assert octet_length((payload->0->'source_metadata')::text) <= 32768;
+  perform public.finish_ingestion_attempt(current_setting('test.security_attempt')::uuid,'66666666-6666-4666-8666-666666666661',payload,0,identity,null);
+  assert (select status from public.ingestion_attempts where id=current_setting('test.security_attempt')::uuid)='succeeded',
+    'App-valid dense metadata must complete rather than leave a paid job held';
 end $$;
 set role authenticated;
 do $$ begin

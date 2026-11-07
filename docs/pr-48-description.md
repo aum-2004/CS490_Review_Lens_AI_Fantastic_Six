@@ -1,183 +1,80 @@
 ## Summary
 
-Adds the owned AnalysisTarget workspace and persistent ingestion results for
-S1-018/S1-023. Includes both deferred integrations: S1-015 creation opens the new
-workspace with confirmation, and S1-017 cards use authoritative ingestion badges.
+Adds the owned AnalysisTarget workspace and persistent ingestion results for S1-018 and S1-023. Includes both deferred integrations:
+
+- **S1-015:** successful target creation opens `/analysis-targets/{id}?created=1` with confirmation.
+- **S1-017:** target cards display authoritative, owner-scoped ingestion badges.
 
 Refs #18
+
 Refs #23
 
 Issues remain open until hosted verification is complete.
 
-Reviewed baseline: `e69f084`, including the earlier main/S1-015 integration,
-spacing correction and normal-review fixes. This description also covers the subsequent local security-review
-fixes listed below; those follow-up changes have not been committed or pushed by
-this agent. Require fresh CI and the separate security review on the next published
-head. No current-head GitHub checks were asserted or changed during this follow-up.
+Reviewed baseline: `40af2a3`. This description includes the subsequent security and normal-review corrections. Fresh CI and review are required on the final PR head.
 
 ## Implementation
 
-- Verifies authentication and target ownership before workspace, review, status or
-  ingestion operations. Foreign, missing and malformed IDs share a safe denial.
-- Integrates main through S1-015 `e8839ef`. Creation navigates to
-  `/analysis-targets/{id}?created=1`, shows the required workspace notice, and
-  removes the temporary workspace-unavailable message. A stale form completion
-  after navigation cannot redirect another page.
-- Uses one shared Not ingested / Ingesting / Ingested / Failed badge on cards and
-  workspace. Missing or unavailable status never becomes Not ingested.
-- Persists ownership/source snapshots and accepted provider bindings with RLS and
-  restricted mutation RPCs. Browser input cannot choose a reconciliation job.
-- Blocks further ingestion after a target succeeds, both in the reservation RPC
-  and UI. Review insertion and success state remain atomic and idempotent.
-- Preserves accepted jobs across auth, billing, configuration, JSON, HTTP and
-  transport lookup failures. Safe status retry resumes the same job without a
-  second paid start. Only explicit provider failure, identity failure or no usable
-  reviews are terminal result failures.
-- Adds a four-hour application deadline checked under the database row lock before
-  lookup and finalization. Overdue attempts become Failed with a clear message;
-  their billing hold requires documented operator reconciliation before retry.
-- Treats clear submission 4xx rejections, except 408, as normal failures. Timeouts,
-  5xx and malformed acceptance responses remain uncertain and blocked.
-- Explicitly grants service-role recovery SELECT and adds an operator-only,
-  ownership-checked release RPC with retained binding and recorded evidence.
-- Retains provider-resolved URL identity with an explicit disclosure. It is not
-  independent proof of a match to the saved URL and never overwrites target identity.
-- UI/API summaries omit job IDs. Owners can read their own provider_request_id
-  through RLS-protected, named-column SELECT; this never authorizes a browser-supplied job ID.
-- Excludes operator resolution_reference and resolved_at from authenticated reads;
-  service_role retains explicit recovery access. Adds actual SQL denial/read tests.
-- Consumes the creation marker after display, preserves other URL parameters,
-  hides the notice on reload/completion, and offers collection only when available.
-  Empty review copy no longer suggests a disabled start. One badge appears in the
-  workspace header; cards use the same shared badge component.
-- Uses account/configuration feedback for submission auth, billing and missing-key
-  failures. Polling runs every five seconds, with two bounded backoff retries
-  before manual status retry. All checks remain bound-job refreshes, never starts.
-- Redacts local-user paths in the three affected AI transcripts while preserving
-  the dialogue with documented privacy replacements.
-- Revokes browser DELETE on analysis_targets, preserving uncertain/succeeded
-  attempts, billing holds and audit rows. No delete route or UI is introduced.
-- Enforces a database-serialized cap of five reservations per owner in a rolling
-  24 hours, including rejected/uncertain reservations. Existing held/completed
-  requests remain idempotent at the cap; new targets do not reset the budget.
-- Bounds provider result transport to 2 MiB before JSON parsing and completion to
-  30 reviews, with normalized field/identity limits and independent SQL guards.
-  Oversized results save nothing and preserve the accepted job's submission hold.
-- Requires INGESTION_ENABLED on refresh as well as start, and cleans NUL/lone
-  surrogate characters from verified provider business names before persistence.
+- Verifies authentication and target ownership before workspace, review, status or ingestion operations. Foreign, missing and malformed IDs share a safe denial.
+- Integrates main through S1-015 `e8839ef`. Creation confirmation offers ingestion only when available, consumes the URL marker after display and does not replay after reload or successful ingestion. Stale form completions cannot redirect another page.
+- Uses one shared **Not ingested / Ingesting / Ingested / Failed** badge on cards and the workspace. Missing or unavailable status never becomes **Not ingested**.
+- Persists owner, target, source and provider-job bindings with RLS and restricted mutation RPCs. Browser-supplied job IDs cannot select or authorize reconciliation.
+- Blocks repeat ingestion after success in both the database and UI. Review insertion and successful finalization remain atomic and idempotent.
+- Preserves accepted jobs and submission holds across lookup, account, configuration, transport and malformed-response errors. Retries resume the same job without another paid start.
+- Applies a four-hour deadline under the database row lock before lookup and finalization. Expired attempts retain their billing hold until documented operator reconciliation.
+- Distinguishes clear submission rejections from uncertain acceptance. Submission 4xx responses other than 408 fail normally; timeouts, 5xx and malformed acceptance responses remain blocked.
+- Provides service-role recovery access and an operator-only release RPC that retains bindings and records evidence. Authenticated owners cannot read operator resolution notes or timestamps.
+- Revokes authenticated target deletion so owners cannot erase billing holds or audit records through the Data API.
+- Limits reservations to **five per account per rolling 24 hours**, serialized across targets. Rejected and uncertain reservations count toward the limit.
+- Limits streamed provider results to **2 MiB** and completion to **30 reviews**, with field, metadata and identity limits independently enforced in application code and SQL.
+- Keeps the application metadata limit at **16 KiB of compact JSON**, with a **32 KiB PostgreSQL-rendered allowance** in migration `030000` to accommodate `jsonb::text` spacing. The same dense 16,306-byte fixture passes application validation and successfully finalizes in PostgreSQL.
+- Adds independent SQL boundary regressions for `review_url`, `source_review_id` and `review_date`, and application regressions for `review_url` and `reviewer_name`. Restores the distinct cross-user `getExtractedReviews` assertion.
+- Requires `INGESTION_ENABLED` for both submission and refresh. Cleans provider business names, `googleId` and `locationLink` with `toStorableText`.
+- Restores migration `20261107010000` to its `e69f084` version and installs completion limits through the new forward migration `20261107030000_bound_ingestion_completions.sql`.
+- Retains provider-resolved URL identity as qualified provenance, without treating it as independent proof of a match to the saved URL or overwriting target identity.
 
-## Reviewer guidance: include the deferred integrations
+## Reviewer guidance
 
-Please review **both stories and both integration handoffs**. This PR is broader
-than a standalone workspace page or status-table change:
+Please review **both stories and both deferred integrations**:
 
-1. **S1-015 creation to workspace:** Start with TargetForm and
-   ProtectedTargetWorkspace. After a genuine saved creation, expect navigation to
-   the encoded `/analysis-targets/{id}?created=1` handoff, its consumed URL marker and
-   the new target's context. Check refresh, a second creation, navigation away
-   while creation is pending, and a 120-character mobile title. The notice is
-   presentation only: a forged marker must not disclose another user's target,
-   start ingestion, or create data. When collection is off, expect only "Target created."
-   without a start invitation. When available, expect the full start notice. The
-   notice is absent after reload or successful ingestion. Reopening normally has no creation notice.
-2. **S1-017 card badge integration:** Follow TargetCard through
-   listTargetsWithIngestion and getTargetIngestionSummaries to the security-invoker
-   status view. Verify all four shared badge states and owner scoping. A successful
-   backend confirmation of no attempt is required for Not ingested; failed,
-   missing or truncated status reads must show unavailable status while preserving
-   the target list. Newly created targets must use this same authoritative path.
-3. **Standard S1-018 review:** Verify the shared shell, target/platform/source,
-   saved reviews, ingestion path, loading/empty/error states, refresh, keyboard
-   navigation, mobile wrapping and direct cross-user denial. No invented reviews
-   or ingestion outcome may substitute for failed reads.
-4. **Standard S1-023 and previous findings:** Trace reservation, accepted binding,
-   lookup, completion, expiry and operator resolution in the lifecycle and both
-   ingestion migrations. Check atomic/idempotent finalization and unchanged old
-   reviews on failure. Lookup 401/402/403/404/502, missing keys and invalid JSON
-   must preserve the same accepted job and prevent another paid start. A succeeded
-   target cannot start again. Confirm the four-hour application deadline is
-   checked under the row lock, including a fetch that crosses it; expiry retains
-   the billing hold until an evidenced operator release. Submission 4xx rejections
-   except 408 must be distinguished from uncertain acceptance.
-
-The final UI/UX follow-up is resolved: TargetForm uses space-y-4 between fields
-and grid gap-1.5 within each field group, matching UI/UX sections 3.2 and 7.3.
-Please include this spacing and the mobile creation flow in the normal UI review.
-
-Useful test entry points:
-
-- `tests/e2e/auth/analysis-targets.spec.ts`: real local SDK creation/handoff,
-  confirmation, refresh, fresh form navigation, card state and mobile layout.
-- `tests/e2e/auth/target-workspace.spec.ts`: context, shared badges, status outage,
-  URL provenance, cross-user access and logout.
-- `tests/unit/services/ingestion/ingestion-lifecycle.test.ts`: paid-start counters,
-  lookup recovery, rejection versus uncertainty and expiry behavior.
-- `tests/db/ingestion-review-regressions.test.sql`: actual RPC owner checks,
-  expected Place ID mismatch, recovery SELECT, post-success blocking, expiry and
-  restricted operator release. Run the complete database suite as well.
-- `tests/db/ingestion-privacy-and-resolution.test.sql`: denied owner reads of
-  operator evidence/time, valid allowed-column/status reads, service-role access,
-  operator state rejection and direct expired-hold unique-index enforcement.
-- `tests/db/ingestion-security-budget.test.sql`: owner deletion denial without
-  losing holds/audit, foreign-owner expiry denial, cross-target owner budgets,
-  rolling-window/isolation behavior and rejected oversized completions.
-
-## Additional section 7 security review
-
-Please independently inspect verified session identity and parent ownership before
-child/provider work, RLS and RPC execution grants, empty function search paths,
-service-role confinement, callback HMACs over the raw bounded body, and safe logs
-and responses. Verify forged owner/source/job inputs cannot influence the stored
-binding. Owner-readable job IDs are not authorization. Verify URL identity remains
-qualified provenance and that provider/source storage approval and ingestion flags
-remain off by default. Use synthetic provider responses for failure probes; a paid
-provider call or enabling live ingestion is not required for this review.
-Verify operator evidence stays inaccessible to authenticated owners, including
-direct Data API requests; job-ID readability does not imply operator-note access.
-Also probe browser deletion of uncertain/succeeded targets and both expiry owner
-checks. Review per-owner advisory locking, quota accounting across targets and
-the independent stream/app/SQL result limits. Confirm refresh cannot contact the
-provider while the feature flag is off. Use the new mutation/SQL tests for the
-deletion, expiry and persistence boundaries; production paid calls are unnecessary.
+1. **Creation handoff:** verify successful creation, availability-aware confirmation, marker removal, reload, mobile wrapping and navigation away while creation is pending.
+2. **Card badges:** verify all four states and owner scoping. **Not ingested** requires successful backend confirmation that no attempt exists; failed or incomplete status reads must remain unavailable.
+3. **Workspace:** verify target context, saved reviews, loading/empty/error states, keyboard navigation, refresh and cross-user denial.
+4. **Ingestion lifecycle:** verify reservation, binding, retry, completion, expiry and operator recovery. Failed lookups must preserve accepted jobs; successful targets must remain blocked from another run.
+5. **Concurrency and migration:** inspect the two-session start-limit regression and confirm existing databases receive completion limits through migration `030000`.
+6. **Metadata and field boundaries:** verify dense application-valid metadata saves successfully, oversized metadata is rejected, and the URL, source-ID, date and reviewer-name limits have independent coverage.
+7. **Additional §7 security review:** inspect ownership predicates, RLS/RPC grants, operator-note privacy, deletion restrictions, callback signatures, result limits and server-only secrets.
 
 ## Validation
 
-Current local follow-up checks on top of reviewed baseline e69f084:
+- **629 unit tests passed across 47 suites.**
+- **Nine SQL test files plus the two-session concurrency regression passed across six migrations on local PostgreSQL 18.**
+- The concurrency test passed normally and failed when the owner advisory lock was removed.
+- The finite streaming test rejected removal of the byte guard through a prompt assertion failure.
+- NUL-cleaning tests cover flat and nested provider responses and the persistence boundary.
+- Independent mutations removing each of the five requested field guards fail their corresponding tests. Restoring the old SQL metadata threshold also fails the dense-metadata success case.
+- Formatting, lint, typecheck and production build passed.
+- The preceding implementation pass passed all **22 authentication, creation and workspace browser tests**. This follow-up changes server ingestion and database tests; browsers were not rerun.
+- Fresh application and PostgreSQL 16 CI results are required on the final PR head.
+- Tests use synthetic provider data and no paid calls. Local [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md) does not replace hosted acceptance.
 
-- 625 unit tests passed across 47 suites.
-- All 22 local Edge authentication/creation/workspace browser tests passed.
-- All nine SQL test files passed in isolated PGlite with all five migrations.
-- New mutation probes passed the baseline and rejected weakened operator-state
-  checks, removal of expired-hold index protection and operator-column privacy.
-  Prior owner/identity/recovery-read mutation evidence remains in the verification.
-- Security mutation probes additionally reject removal of browser-delete denial,
-  each owner predicate in both expiry RPCs, the owner budget and DB count/byte limits.
-- Formatting, lint, explicit typecheck and production build passed.
-- No current-head CI result is asserted. Require fresh application and native
-  PostgreSQL checks on the next published head, plus the separate security review.
-- Tests use synthetic provider data and no paid calls. Local PGlite verification
-  does not replace the PR's native PostgreSQL job or hosted acceptance.
-
-Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md),
-[final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md),
-[recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
+Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md), [final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md), [recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
 
 ## Deployment and review requirements
 
-Apply all three ingestion migrations, including
-`20261107020000_enforce_ingestion_safety_limits.sql`, before using the feature.
-INGESTION_ENABLED and provider-review storage approval remain off by default.
-No hosted migration, paid extraction or real provider-review persistence was
-performed in this follow-up. Live use requires recovery configuration and recorded
-provider/source storage approval. Normal code re-review, the additional section 7
-security review, human acceptance and fresh CI are required before merge; hosted
-verification is required before manually closing either issue.
+Apply all **six repository migrations**, including all **four ingestion migrations** through `20261107030000_bound_ingestion_completions.sql`.
+
+`INGESTION_ENABLED` and provider-review storage approval remain off by default. Live use requires configured recovery, recorded provider/source storage approval and a team decision on the global paid-start/spend-control policy. The implemented five-start limit is per account and does not provide a global cap.
+
+No hosted migration, paid extraction or real provider-review persistence was performed during these corrections.
+
+Normal code re-review, the separate §7 security review, human acceptance and fresh CI are required before merge. Both reviewers must approve the final published commit. Hosted verification is required before manually closing either issue.
 
 ## AI usage disclaimer
 
-OpenAI Codex assisted with implementation, tests, integration, review remediation
-and documentation. The author remains responsible for reviewing the code and tests;
-automated checks do not replace human/security approval.
+The retained original dialogue and follow-up execution records have been updated locally. Include the changed continuation transcript in the next commit to meet the Definition of Done.
+
+OpenAI Codex assisted with implementation, tests, integration, review remediation and documentation. The author remains responsible for reviewing the code and tests; automated checks do not replace human or security approval.
 
 - [Original dialogue](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/ai-transcripts/2026-11-06_codex_S1-018-S1-023_original.md)
 - [Review and main-integration continuation](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/ai-transcripts/2026-11-07_codex_S1-018-S1-023_review-integration.md)

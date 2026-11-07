@@ -101,6 +101,13 @@ identity and must not describe URL-query consistency alone as proof of source-UR
 
 ## S1-023 provider-job binding implementation
 
+Re-review follow-up to 40af2a3: the database CI runner now exercises two overlapping
+sessions on distinct targets, and removing the owner advisory lock fails the test.
+010000 is restored exactly to e69f084; forward migration 030000 installs completion
+limits for databases that already ran it. All six migrations are required. The
+five-start limit is per account; a global spend-control decision must be recorded
+by the team before enabling ingestion. No global protection is claimed here.
+
 Security follow-up to e69f084: browser DELETE on analysis_targets is revoked, so
 owners cannot cascade away billing holds or audit records. A server-only database
 budget serializes reservations per owner and permits at most five in a rolling
@@ -112,10 +119,15 @@ Provider result bodies are streamed with a 2 MiB maximum before parsing. Only
 30 reviews may complete an attempt. App and SQL checks independently enforce
 2 MiB completion JSON, 10,000-character text, 200-character reviewer/business names,
 256-character source IDs, 2,048-character review URLs, 64-character dates and
-16 KiB metadata/identity budgets. Whole batches are rejected, never silently
+16 KiB compact metadata/identity budgets in the app. SQL allows 32 KiB of
+jsonb::text per metadata value to accommodate PostgreSQL's added spaces; identity
+retains its separate 16 KiB SQL guard. A dense 16,306-byte compact metadata fixture
+is accepted by both layers and successfully finalized in the SQL suite.
+Whole batches are rejected, never silently
 truncated. Oversized lookups retain the existing job hold. The existing
 manual-review API has separate limits; this does not claim to change its Data API grants.
-Business names are made PostgreSQL-safe using the shared NUL/surrogate cleaner.
+Business names, googleId and locationLink are made PostgreSQL-safe using the shared
+NUL/surrogate cleaner before persistence.
 Both start and refresh honor INGESTION_ENABLED; read-only status remains available.
 
 The current branch includes merged S1-019 commit `0388c43`. It retains its submission

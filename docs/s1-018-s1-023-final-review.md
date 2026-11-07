@@ -1,7 +1,7 @@
 # S1-018 / S1-023 final integration review
 
 Date: 2026-11-07, America/New_York. Branch: s1-018.
-Latest reviewer baseline: e69f084, followed by local security corrections
+Latest reviewer baseline: 40af2a3, followed by local security corrections
 documented at the end of this report. Earlier review targets and
 counts below remain historical checkpoints.
 Earlier integration review target: e5ce0c3, containing implementation 0558509, main merge
@@ -11,6 +11,36 @@ are historical descriptions of the preceding implementation turn. This is an imp
 not independent teammate/security approval or hosted acceptance.
 
 ## Requirement coverage
+
+### Additional normal-review follow-up to 40af2a3
+
+The app's compact-JSON metadata limit remains 16 KiB; migration 030000 allows
+32 KiB of PostgreSQL-rendered metadata to accommodate added spaces. The shared
+dense fixture passes app validation and successful SQL finalization. Independent
+SQL boundary tests and mutations cover URL, source ID and date; app tests/mutations
+cover URL and reviewer name. Cross-user coverage again asserts getExtractedReviews
+is untouched. All 629 unit tests / 47 suites and nine SQL files plus the two-session
+test pass. Retained original dialogue is updated for inclusion in the next commit.
+Both reviewers must approve the final published head; CI and hosted acceptance
+remain required. No push or hosted/provider operation was performed.
+
+### Latest security re-review follow-up to 40af2a3
+
+The owner-budget lock now has a real two-session, distinct-target regression in
+the database CI runner. Baseline passes and removing the advisory lock fails.
+010000 is restored exactly to e69f084; the completion guards are installed by
+new 030000 for already-migrated databases. googleId and locationLink are NUL-cleaned
+alongside businessName, with flat/nested provider and persistence tests. The finite
+2 MiB + 1-byte fixture fails promptly if the streamed byte guard is removed.
+
+Local checks: 625 unit tests / 47 suites, nine SQL files and the two-session test
+across six migrations on PostgreSQL 18, lint, typecheck, formatting and production
+build passed. Browser evidence below belongs to the preceding implementation pass.
+No UI changes were needed. No remote PR edits, commit, push, hosted migration or
+paid job. Fresh PostgreSQL 16 CI and independent security re-review remain required.
+A global paid-start/spend policy remains a documented team decision before live
+enablement; the implemented limit is per account. The local PR comment is in
+docs/pr-48-security-review-response.md. Historical checkpoints follow.
 
 ### Security-review follow-up to e69f084
 

@@ -159,12 +159,18 @@ browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they 
 `npm run test:db` checks the real schema and Row Level Security policies, not a mock. It creates a
 throwaway PostgreSQL database, applies a small test-only stand-in for Supabase Auth
 (`tests/db/supabase-auth-shim.sql`), applies every migration in `supabase/migrations/`, runs each
-`tests/db/*.test.sql` file, and drops the database. The tests use two
+`tests/db/*.test.sql` file and the two-session owner-budget regression, and drops the database. The tests use two
 users, A and B, to prove cross-user access and direct source changes are denied at the database.
 
 It needs PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
 `brew services start postgresql@16`). Connection settings come from the standard `PG*` variables.
 CI runs them in the "Database tests" job against a PostgreSQL 16 container.
+
+The concurrency test holds the fifth owner reservation uncommitted on one target,
+starts the sixth on a different target in another session, observes its advisory
+lock wait, then commits the fifth and requires INGESTION_START_LIMIT. Its explicit
+handshake avoids relying on simultaneous scheduling or an arbitrary sleep. Removing
+the reservation's owner advisory lock causes failure.
 
 ### Run a production build locally
 

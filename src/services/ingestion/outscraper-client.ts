@@ -363,7 +363,9 @@ export async function getOutscraperResult(
       );
     }
 
-    const googleIds = uniqueNonEmptyStrings(reviews.map((review) => review.google_id));
+    const googleIds = uniqueNonEmptyStrings(
+      reviews.map((review) => getOptionalIdentityField(review.google_id, "Google ID")),
+    );
     if (googleIds.length > 1) {
       throw new OutscraperError(
         "IDENTITY_AMBIGUOUS",
@@ -371,7 +373,9 @@ export async function getOutscraperResult(
       );
     }
 
-    const locationLinks = uniqueNonEmptyStrings(reviews.map((review) => review.location_link));
+    const locationLinks = uniqueNonEmptyStrings(
+      reviews.map((review) => getOptionalIdentityField(review.location_link, "location link")),
+    );
     if (locationLinks.length > 1) {
       throw new OutscraperError(
         "IDENTITY_AMBIGUOUS",
@@ -531,6 +535,6 @@ function getOptionalIdentityField(value: unknown, label: string): string | undef
     );
   }
 
-  const normalized = (label === "business name" ? toStorableText(value) : value).trim();
+  const normalized = toStorableText(value).trim();
   return normalized || undefined;
 }

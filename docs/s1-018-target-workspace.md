@@ -10,12 +10,17 @@ Main through S1-015 commit `e8839ef` was merged in `366dc01`. Successful creatio
 now opens the owned workspace with `?created=1` and an availability-aware success
 notice. The marker is consumed after display; reload does not replay it.
 
-The latest review baseline is `e69f084`, which includes the normal-review privacy,
+The latest review baseline is `40af2a3`, which includes the normal-review privacy,
 copy, badge, polling and transcript corrections. Subsequent local security fixes
 revoke browser target deletion, test both expiry owner guards, cap owner reservations
 and provider results, gate refresh, and clean business-name NULs. Current PR text
 and security response are prepared locally only; no GitHub operation was performed
 in this follow-up.
+
+The latest re-review adds a two-session budget regression and forward completion
+limits migration 030000, restores 010000 to e69f084, and cleans the remaining
+identity fields. The global cap remains a documented team decision before enabling
+ingestion. See the current verification and PR security response for fresh results.
 
 ## Workspace and shared UI
 

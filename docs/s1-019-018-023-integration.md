@@ -10,13 +10,18 @@ Main through S1-015 commit `e8839ef` was subsequently merged into this branch in
 
 ## Submission
 
-The latest reviewed baseline is `e69f084`. Its local security follow-up prevents
+Security follow-up to `e69f084` (now in `40af2a3`) prevents
 browser deletion from erasing billing holds/audit, tests both expiry ownership
 predicates, caps reservations at five per owner per rolling 24 hours, bounds result
 transport/completion, gates refresh on INGESTION_ENABLED and cleans business-name
 NULs. See the recovery runbook and local PR security-review response. These changes
 have not been committed or pushed by this follow-up; fresh CI and §7 re-review remain
 required.
+
+The current re-review of 40af2a3 adds a real two-session owner-budget test to CI,
+forward migration 030000 for completion limits, and NUL cleaning for googleId and
+locationLink. 010000 is restored exactly to e69f084. All six migrations must run;
+the global paid-start budget/control policy is a team decision before live use.
 
 One POST route owns submission. It authenticates, applies the existing live/storage/
 recovery gates, and invokes S1-023 beginIngestion. Ownership and stored source input
