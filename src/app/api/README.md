@@ -14,20 +14,25 @@ Route Handlers stay thin (see `docs/engineering-standards.md`, sections 3 and 7)
 
 Current endpoints:
 
-| Method | Path                                         | Purpose                                                                                                   | Added by   |
-| ------ | -------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------- |
-| GET    | `/api/health`                                | Confirms the server is running. No auth, no database.                                                     | S1-005     |
-| GET    | `/api/auth/session`                          | Returns verified identity; rejects missing/invalid sessions.                                              | S1-009/010 |
-| POST   | `/api/analysis-targets`                      | Creates a target owned by the verified session user.                                                      | S1-011     |
-| GET    | `/api/analysis-targets`                      | Lists only the verified session user's targets, across pages.                                             | S1-017     |
-| GET    | `/api/analysis-targets/[targetId]/reviews`   | Lists the reviews of a target the user owns.                                                              | S1-013     |
-| POST   | `/api/analysis-targets/[targetId]/reviews`   | Saves 1–100 reviews under a target the user owns.                                                         | S1-013     |
-| POST   | `/api/analysis-targets/[targetId]/ingestion` | Starts asynchronous ingestion for an owned target using its stored Place ID or validated Google Maps URL. | S1-019     |
+| Method | Path                                                 | Purpose                                                                                                   | Added by   |
+| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------- |
+| GET    | `/api/health`                                        | Confirms the server is running. No auth, no database.                                                     | S1-005     |
+| GET    | `/api/auth/session`                                  | Returns verified identity; rejects missing/invalid sessions.                                              | S1-009/010 |
+| POST   | `/api/analysis-targets`                              | Creates a target owned by the verified session user.                                                      | S1-011     |
+| GET    | `/api/analysis-targets`                              | Lists up to 200 owned targets with authoritative ingestion status.                                        | S1-017/023 |
+| GET    | `/api/analysis-targets/[targetId]/reviews`           | Lists the reviews of a target the user owns.                                                              | S1-013     |
+| POST   | `/api/analysis-targets/[targetId]/reviews`           | Saves 1–100 reviews under a target the user owns.                                                         | S1-013     |
+| POST   | `/api/analysis-targets/[targetId]/ingestion`         | Starts asynchronous ingestion for an owned target using its stored Place ID or validated Google Maps URL. | S1-019     |
+| GET    | `/api/analysis-targets/[targetId]/ingestion`         | Reads the owned target's durable ingestion status without provider calls.                                 | S1-023     |
+| POST   | `/api/analysis-targets/[targetId]/ingestion/refresh` | Reconciles the stored owner/target/job binding and atomically saves verified results.                     | S1-023     |
+| POST   | `/api/ingestion/provider-callback/[attemptId]`       | Recovers a binding after verifying provider-body and per-attempt signatures; no review persistence.       | S1-023     |
 
 `POST /api/analysis-targets/[targetId]/ingestion` is disabled by default. It returns HTTP `503`
 with error code `INGESTION_DISABLED` unless the server-side `INGESTION_ENABLED` environment
-variable is exactly `"true"`. This gate must remain closed until S1-023 persists provider-job
-ownership, lifecycle, and repeat-submission safeguards.
+variable is exactly `"true"`. The integrated S1-023 lifecycle reserves before calling
+S1-019's submission service, registers recovery, and saves the job binding before
+returning its public status summary. Storage approval and recovery configuration
+are separately required; all live gates remain off by default.
 
 ### Target child routes (S1-013)
 
@@ -60,6 +65,10 @@ Reviews cannot be updated or deleted: these routes export no `PUT`, `PATCH`, or 
 answers `405`), and the `reviews` table grants clients no `UPDATE` or `DELETE`. The ingestion route
 validates the stored Google Maps source and returns `422 SOURCE_NOT_CONFIGURED` for invalid or
 unsupported source information; a nullable Place ID is resolved by the provider job.
+Provider-resolved URL identities are retained as provenance, not promoted to configured
+Place IDs or described as an independently verified match to the original URL. The
+workspace displays that distinction. Provider callbacks ignore any claimed owner,
+review data, result URL or success status; they only bind authenticated metadata.
 
 Other target, ingestion, and review endpoints arrive with their respective stories. Every protected
 handler must independently use `requireApiUser()` from `@/services/auth/access-control` and return

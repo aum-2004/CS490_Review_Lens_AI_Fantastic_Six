@@ -53,6 +53,7 @@ function providerFetchError(error: unknown): OutscraperError {
 export async function startOutscraperExtraction(
   query: OutscraperQuery | string,
   fetcher?: typeof fetch,
+  recoveryUrl?: string,
 ): Promise<OutscraperJob> {
   const apiKey = process.env.OUTSCRAPER_API_KEY;
   const normalizedQuery: OutscraperQuery =
@@ -84,6 +85,7 @@ export async function startOutscraperExtraction(
   url.searchParams.set("sort", "most_relevant");
   url.searchParams.set("ignoreEmpty", "true");
   url.searchParams.set("async", "true");
+  if (recoveryUrl) url.searchParams.set("webhook", recoveryUrl);
 
   let response: Response;
 
@@ -229,7 +231,7 @@ export async function getOutscraperResult(
 
   if (!response.ok) {
     throw new OutscraperError(
-      "PROVIDER_FAILED",
+      "PROVIDER_UNAVAILABLE",
       "The review service could not retrieve the results.",
     );
   }

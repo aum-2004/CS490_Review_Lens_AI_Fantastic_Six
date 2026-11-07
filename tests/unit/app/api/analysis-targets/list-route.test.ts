@@ -14,7 +14,7 @@ const A = { id: "11111111-1111-4111-8111-111111111111", email: null };
 const B = { id: "22222222-2222-4222-8222-222222222222", email: null };
 function database(fail = false) {
   const owners: string[] = [];
-  const from = jest.fn(() => {
+  const from = jest.fn((table: string) => {
     let owner = "";
     const builder = {
       select: () => builder,
@@ -24,19 +24,23 @@ function database(fail = false) {
         return builder;
       },
       order: () => builder,
+      in: () => builder,
       limit: async () =>
         fail
           ? { data: null, error: { message: "private SQL and credentials" } }
           : {
-              data: [
-                {
-                  id: owner === A.id ? "a" : "b",
-                  name: owner === A.id ? "A target" : "B target",
-                  platform: "google_maps",
-                  source_url: "https://www.google.com/maps/place/Fixture",
-                  created_at: "2026-11-01",
-                },
-              ],
+              data:
+                table === "analysis_target_ingestion_status"
+                  ? []
+                  : [
+                      {
+                        id: owner === A.id ? "a" : "b",
+                        name: owner === A.id ? "A target" : "B target",
+                        platform: "google_maps",
+                        source_url: "https://www.google.com/maps/place/Fixture",
+                        created_at: "2026-11-01",
+                      },
+                    ],
               error: null,
             },
     };
@@ -67,7 +71,7 @@ it("uses each call's server-verified identity and never returns the other owner'
       user === A ? "b" : "a",
     );
   }
-  expect(db.owners).toEqual([A.id, B.id]);
+  expect(db.owners).toEqual([A.id, A.id, B.id, B.id]);
   expect(createSupabaseServerClient).toHaveBeenCalledWith(true);
 });
 

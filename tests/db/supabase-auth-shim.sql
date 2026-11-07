@@ -10,10 +10,14 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then
     create role authenticated nologin;
   end if;
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then
+    create role service_role nologin;
+  end if;
 end
 $$;
 
 grant anon, authenticated to current_user;
+grant service_role to current_user;
 
 create schema auth;
 create table auth.users (id uuid primary key);

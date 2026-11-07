@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     // Auth actions receive credentials; confirmation URLs contain one-time tokens.
     serverFunctions: false,
     incomingRequests: {
-      ignore: [/^\/auth\/confirm(?:[/?]|$)/],
+      ignore: [/^\/auth\/confirm(?:[/?]|$)/, /^\/api\/ingestion\/provider-callback(?:[/?]|$)/],
     },
   },
   cacheComponents: true,
