@@ -12,6 +12,12 @@ async function login(page: Page, email: string) {
   await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
 }
 
+async function fillTargetForm(page: Page, name: string, sourceUrl: string) {
+  await page.getByLabel("Target name *").fill(name);
+  await page.getByLabel("Google Maps URL *").fill(sourceUrl);
+  await page.getByRole("button", { name: "Create target" }).click();
+}
+
 test("lists owned targets through the bounded real SDK query and preserves the list after navigation and refresh", async ({
   page,
   context,
@@ -87,6 +93,89 @@ test("shows a real empty state with the creation handoff link", async ({ page, c
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL("/analysis-targets");
   await expect(page.getByRole("heading", { name: "No targets yet" })).toBeVisible();
+});
+
+test("creates two targets without a reload and resets success, draft, and errors on fresh navigation", async ({
+  page,
+  context,
+}) => {
+  const firstName = "First fixture target";
+  const secondName = "Second fixture target";
+  await login(page, "creation-fixture@example.com");
+  await page.getByRole("link", { name: "Create your first target" }).click();
+
+  await fillTargetForm(page, firstName, "https://www.google.com/maps/place/First+Fixture+Target");
+  let confirmation = page.getByRole("status");
+  await expect(confirmation).toContainText("Target created");
+  await expect(confirmation).toContainText(firstName);
+  await confirmation.getByRole("link", { name: "Back to My Targets" }).click();
+  await expect(page.getByRole("heading", { name: firstName })).toBeVisible();
+
+  await page.getByRole("link", { name: "New Target", exact: true }).click();
+  await expect(page.getByLabel("Target name *")).toHaveValue("");
+  await expect(page.getByLabel("Google Maps URL *")).toHaveValue("");
+  await expect(page.getByRole("status")).toHaveCount(0);
+
+  await fillTargetForm(page, secondName, "https://www.google.com/maps/place/Second+Fixture+Target");
+  confirmation = page.getByRole("status");
+  await expect(confirmation).toContainText("Target created");
+  await expect(confirmation).toContainText(secondName);
+  await confirmation.getByRole("link", { name: "Back to My Targets" }).click();
+  await expect(page.getByRole("heading", { name: firstName })).toBeVisible();
+  await expect(page.getByRole("heading", { name: secondName })).toBeVisible();
+
+  await page.getByRole("link", { name: "New Target", exact: true }).click();
+  await page.getByLabel("Target name *").fill("Unsubmitted draft");
+  await page.getByRole("button", { name: "Create target" }).click();
+  await expect(page.getByText("Enter the Google Maps link for this target.")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page).toHaveURL("/analysis-targets");
+  await page.getByRole("link", { name: "New Target", exact: true }).click();
+  await expect(page.getByLabel("Target name *")).toHaveValue("");
+  await expect(page.getByLabel("Google Maps URL *")).toHaveValue("");
+  await expect(page.getByText("Enter the Google Maps link for this target.")).toHaveCount(0);
+
+  const response = await context.request.get("/api/analysis-targets");
+  expect(response.status()).toBe(200);
+  expect((await response.json()).data.map((target: { name: string }) => target.name)).toEqual([
+    secondName,
+    firstName,
+  ]);
+});
+
+test("wraps a 120-character success name without mobile document overflow", async ({ page }) => {
+  const longName = "L".repeat(120);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page, "mobile-fixture@example.com");
+  await page.getByRole("link", { name: "Create your first target" }).click();
+  await fillTargetForm(page, longName, "https://www.google.com/maps/place/Mobile+Fixture+Target");
+
+  const confirmation = page.getByRole("status");
+  const renderedName = confirmation.getByText(longName);
+  await expect(confirmation).toBeVisible();
+  await expect(renderedName).toBeVisible();
+  expect(await renderedName.evaluate((element) => getComputedStyle(element).overflowWrap)).toBe(
+    "break-word",
+  );
+  const mobileLayout = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+    overflowingElements: [...document.querySelectorAll<HTMLElement>("*")]
+      .filter((element) => {
+        const bounds = element.getBoundingClientRect();
+        return bounds.right > window.innerWidth + 0.5 || bounds.left < -0.5;
+      })
+      .map((element) => ({
+        className: element.className,
+        right: element.getBoundingClientRect().right,
+        tagName: element.tagName,
+        text: element.textContent?.trim().slice(0, 80),
+      })),
+  }));
+  expect(
+    mobileLayout.documentWidth,
+    `Elements outside the mobile viewport: ${JSON.stringify(mobileLayout.overflowingElements)}`,
+  ).toBeLessThanOrEqual(mobileLayout.viewportWidth);
 });
 
 test("shows a retryable safe failure rather than an empty or partial list", async ({

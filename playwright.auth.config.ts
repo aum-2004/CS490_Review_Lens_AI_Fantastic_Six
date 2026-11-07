@@ -1,6 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Deterministic integration test: the real app + SDK talk only to a local fixture.
+const appCommand =
+  process.env.PLAYWRIGHT_AUTH_SERVER === "production"
+    ? "node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3100"
+    : "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3100";
+
 export default defineConfig({
   testDir: "./tests/e2e/auth",
   workers: 1,
@@ -17,7 +22,7 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      command: "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 3100",
+      command: appCommand,
       url: "http://127.0.0.1:3100",
       reuseExistingServer: false,
       timeout: 120_000,

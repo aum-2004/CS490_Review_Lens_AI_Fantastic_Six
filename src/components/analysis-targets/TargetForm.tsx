@@ -77,7 +77,8 @@ function TargetCreationConfirmation({ target }: { target: AnalysisTarget }) {
       <AlertTitle>Target created</AlertTitle>
       <AlertDescription>
         <p>
-          <span className="font-medium text-foreground">{target.name}</span> was saved successfully.
+          <span className="break-words font-medium text-foreground">{target.name}</span> was saved
+          successfully.
         </p>
         <dl className="mt-3 space-y-2">
           <div>
@@ -101,6 +102,12 @@ function TargetCreationConfirmation({ target }: { target: AnalysisTarget }) {
 }
 
 export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormProps) {
+  const { bfcacheId } = useRouter();
+
+  return <TargetFormState key={bfcacheId} createTarget={createTarget} />;
+}
+
+function TargetFormState({ createTarget }: Required<TargetFormProps>) {
   const router = useRouter();
   const nameRef = useRef<HTMLInputElement>(null);
   const sourceUrlRef = useRef<HTMLInputElement>(null);
@@ -314,7 +321,7 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         ) : null}
       </div>
 
-      <div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
+      <div className="flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end">
         <Button
           type="button"
           variant="outline"
@@ -323,11 +330,11 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
         >
           Cancel
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" disabled={isSubmitting} className="sm:w-36">
           {isSubmitting ? (
             <>
               <Spinner />
-              Creating target...
+              Creating…
             </>
           ) : (
             "Create target"

@@ -19,6 +19,8 @@ const users = [
   { ...user, id: "00000000-0000-4000-8000-000000000010", email: "fixture-b@example.com" },
   { ...user, id: "00000000-0000-4000-8000-000000000011", email: "empty-fixture@example.com" },
   { ...user, id: "00000000-0000-4000-8000-000000000012", email: "unavailable-fixture@example.com" },
+  { ...user, id: "00000000-0000-4000-8000-000000000013", email: "creation-fixture@example.com" },
+  { ...user, id: "00000000-0000-4000-8000-000000000014", email: "mobile-fixture@example.com" },
 ];
 const targetRows = [
   {
@@ -56,6 +58,7 @@ const targetRows = [
 ];
 let refreshed = 0;
 let sequence = 0;
+let createdTargetSequence = 0;
 let failNextLogout = false;
 
 function session(lifetime = 3600, sessionUser = user) {
@@ -116,6 +119,39 @@ createServer(async (request, response) => {
   }
 
   const token = (request.headers.authorization || "").replace(/^Bearer /i, "");
+  if (url.pathname === "/rest/v1/analysis_targets" && request.method === "POST") {
+    const identity = tokens.get(token);
+    if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) {
+      return send(401, { message: "Fixture database requires identity" });
+    }
+
+    const expectedKeys = ["name", "owner_id", "platform", "source_url"];
+    if (
+      !body ||
+      Array.isArray(body) ||
+      typeof body !== "object" ||
+      Object.keys(body).sort().join(",") !== expectedKeys.join(",") ||
+      body.owner_id !== identity.user.id ||
+      typeof body.name !== "string" ||
+      body.platform !== "google_maps" ||
+      typeof body.source_url !== "string"
+    ) {
+      return send(400, { message: "Fixture requires a constrained owner-scoped target insert" });
+    }
+
+    const createdIndex = ++createdTargetSequence;
+    const row = {
+      id: `cccccccc-cccc-4ccc-8ccc-${String(createdIndex).padStart(12, "0")}`,
+      owner_id: identity.user.id,
+      name: body.name,
+      platform: body.platform,
+      source_url: body.source_url,
+      google_place_id: null,
+      created_at: new Date(Date.UTC(2026, 10, 7, 12, 0, createdIndex)).toISOString(),
+    };
+    targetRows.push(row);
+    return send(201, row);
+  }
   if (url.pathname === "/rest/v1/analysis_targets" && request.method === "GET") {
     const identity = tokens.get(token);
     if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) {

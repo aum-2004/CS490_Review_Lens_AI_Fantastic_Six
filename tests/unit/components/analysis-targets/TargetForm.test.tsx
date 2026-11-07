@@ -1,13 +1,14 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { TargetForm } from "@/components/analysis-targets/TargetForm";
 import { AnalysisTargetCreationError } from "@/lib/api/analysis-targets";
 import type { CreateAnalysisTarget } from "@/types/analysis-target";
 
 const mockPush = jest.fn();
+let mockBfcacheId = "route-1";
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ bfcacheId: mockBfcacheId, push: mockPush }),
 }));
 
 const validSourceUrl = "https://www.google.com/maps/place/NJIT/@40.742,-74.179,17z";
@@ -28,6 +29,7 @@ function submitForm() {
 describe("TargetForm", () => {
   beforeEach(() => {
     mockPush.mockReset();
+    mockBfcacheId = "route-1";
   });
 
   it("renders the required fields, fixed platform, help, and actions", () => {
@@ -43,6 +45,10 @@ describe("TargetForm", () => {
       ),
     ).toHaveAttribute("id", "target-name-help");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create target" })).toHaveClass("sm:w-36");
+    expect(screen.getByRole("button", { name: "Cancel" }).parentElement).toHaveClass(
+      "border-border",
+    );
     expect(
       screen.getByText(
         (_, element) => element?.tagName === "P" && element.textContent === "* Required",
@@ -375,6 +381,9 @@ describe("TargetForm", () => {
       }),
     );
     const confirmation = await screen.findByRole("status");
+    expect(confirmation).toHaveClass("border-border");
+    expect(confirmation.querySelector('[data-slot="alert-title"]')).toHaveClass("min-w-0");
+    expect(confirmation.querySelector('[data-slot="alert-description"]')).toHaveClass("min-w-0");
     expect(within(confirmation).getByText("Target created")).toBeInTheDocument();
     expect(within(confirmation).getByText("NJIT, Newark")).toBeInTheDocument();
     expect(within(confirmation).getByText("target/with spaces")).toBeInTheDocument();
@@ -407,8 +416,9 @@ describe("TargetForm", () => {
     fireEvent.submit(form!);
 
     expect(createTarget).toHaveBeenCalledTimes(1);
-    const loadingButton = screen.getByRole("button", { name: /creating target/i });
+    const loadingButton = screen.getByRole("button", { name: "Creating…" });
     expect(loadingButton).toBeDisabled();
+    expect(loadingButton).toHaveClass("sm:w-36");
     const cancelButton = screen.getByRole("button", { name: "Cancel" });
     expect(cancelButton).toBeDisabled();
     fireEvent.click(cancelButton);
@@ -427,6 +437,41 @@ describe("TargetForm", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Target created");
     expect(createTarget).toHaveBeenCalledTimes(1);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it("resets the complete form and ignores a stale request result on a fresh navigation", async () => {
+    let resolveCreation: ((value: Awaited<ReturnType<CreateAnalysisTarget>>) => void) | undefined;
+    const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn((input) => {
+      void input;
+      return new Promise((resolve) => {
+        resolveCreation = resolve;
+      });
+    });
+    const { rerender } = render(<TargetForm createTarget={createTarget} />);
+    fillValidForm();
+    submitForm();
+    expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+
+    mockBfcacheId = "route-2";
+    rerender(<TargetForm createTarget={createTarget} />);
+
+    expect(screen.getByLabelText(/target name/i)).toHaveValue("");
+    expect(screen.getByLabelText("Google Maps URL *")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Create target" })).toBeEnabled();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveCreation?.({
+        id: "stale-target",
+        name: "NJIT, Newark",
+        sourceUrl: validSourceUrl,
+        platform: "google_maps",
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("stale-target")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/target name/i)).toHaveValue("");
   });
 
   it("preserves input and shows an understandable request failure", async () => {

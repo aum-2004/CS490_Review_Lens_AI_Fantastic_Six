@@ -36,8 +36,14 @@ Use these exact imports and extend the existing shared files when a later story 
 
 `CardFooter`, `FormDescription`, and the full shadcn variant/size APIs are not currently exported.
 Do not assume they exist or create a second Card/Form file; add needed parts to the shared
-primitive through the story that uses them. Field controls must be nested inside `Form`,
-`FormField`, and `FormItem` so IDs, labels, and errors stay linked.
+primitive through the story that uses them. Forms built with React Hook Form must nest field
+controls inside `Form`, `FormField`, and `FormItem` so IDs, labels, and errors stay linked.
+
+S1-015's existing `TargetForm` is a documented exception: it uses controlled React state with the
+shared Input, Label, and Button primitives while the shared S1-016 validator remains authoritative.
+Reviewer corrections intentionally preserve that implementation instead of adding a React Hook
+Form migration to the S1-015 scope. New forms should use the shared Form primitive unless their
+story documents and reviews a similar exception.
 
 ## S1-015 icon dependency
 

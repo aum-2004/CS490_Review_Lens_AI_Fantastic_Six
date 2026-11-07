@@ -1,6 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 
-import { ProtectedNewAnalysisTargetPage } from "@/app/analysis-targets/new/page";
+import {
+  NewAnalysisTargetLoading,
+  ProtectedNewAnalysisTargetPage,
+} from "@/app/analysis-targets/new/page";
 import { requirePageUser } from "@/services/auth/access-control";
 
 jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() }));
@@ -48,5 +51,16 @@ describe("NewAnalysisTargetPage", () => {
 
     await expect(ProtectedNewAnalysisTargetPage()).rejects.toThrow("NEXT_REDIRECT");
     expect(requirePageUser).toHaveBeenCalledWith("/analysis-targets/new");
+  });
+
+  it("uses the shared Skeleton primitive for the accessible loading fallback", () => {
+    render(<NewAnalysisTargetLoading />);
+
+    expect(screen.getByRole("main", { name: "Loading target form" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading target form…");
+    expect(document.querySelectorAll('[aria-hidden="true"]')).toHaveLength(3);
   });
 });

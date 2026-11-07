@@ -5,6 +5,7 @@ import { TargetForm } from "@/components/analysis-targets/TargetForm";
 import { AppShell } from "@/components/shared/AppShell";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { requirePageUser } from "@/services/auth/access-control";
 
 export const metadata: Metadata = {
@@ -53,12 +54,21 @@ export async function ProtectedNewAnalysisTargetPage() {
   );
 }
 
-function NewAnalysisTargetLoading() {
+export function NewAnalysisTargetLoading() {
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-16">
-      <p className="text-sm text-muted-foreground" role="status">
-        Loading target form…
-      </p>
+    <main
+      className="flex flex-1 items-center justify-center px-4 py-16"
+      aria-busy="true"
+      aria-label="Loading target form"
+    >
+      <div className="w-full max-w-xl space-y-4">
+        <p className="sr-only" role="status">
+          Loading target form…
+        </p>
+        <Skeleton aria-hidden="true" className="h-4 w-32" />
+        <Skeleton aria-hidden="true" className="h-10 w-72 max-w-full" />
+        <Skeleton aria-hidden="true" className="h-80 w-full" />
+      </div>
     </main>
   );
 }
