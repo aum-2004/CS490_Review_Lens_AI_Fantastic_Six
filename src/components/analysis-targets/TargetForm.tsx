@@ -212,7 +212,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
   }
 
   return (
-    <form className="space-y-6" noValidate onSubmit={submit} aria-busy={isSubmitting}>
+    <form className="space-y-4" noValidate onSubmit={submit} aria-busy={isSubmitting}>
       <p className="text-sm text-muted-foreground">
         <span aria-hidden="true">*</span> Required
       </p>
@@ -231,7 +231,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         </Alert>
       ) : null}
 
-      <div className="space-y-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="target-name">
           Target name <span aria-hidden="true">*</span>
         </Label>
@@ -269,7 +269,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         {fieldErrors.name ? <FieldError id="target-name-error" message={fieldErrors.name} /> : null}
       </div>
 
-      <div className="space-y-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="review-platform">Review platform</Label>
         <Input
           id="review-platform"
@@ -284,7 +284,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="source-url">
           Google Maps URL <span aria-hidden="true">*</span>
         </Label>

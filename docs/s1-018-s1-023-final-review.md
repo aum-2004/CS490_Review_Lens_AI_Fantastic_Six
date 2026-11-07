@@ -1,8 +1,10 @@
 # S1-018 / S1-023 final integration review
 
 Date: 2026-11-07, America/New_York. Branch: s1-018.
-Reviewed implementation: 0558509 plus main merge 366dc01 and the local PR #48
-review corrections. Main includes S1-015 e8839ef. This is an implementation review,
+Current review target: e5ce0c3, containing implementation 0558509, main merge
+366dc01 and the PR #48 review corrections. Main includes S1-015 e8839ef.
+The fixes are now committed; earlier references to uncommitted corrections below
+are historical descriptions of the preceding implementation turn. This is an implementation review,
 not independent teammate/security approval or hosted acceptance.
 
 ## Requirement coverage
@@ -59,8 +61,9 @@ scope; preventing post-success ingestion does not alter the merged storage API.
 
 Local checks: 600 tests / 45 Jest suites, 22 browser tests, seven SQL files across
 four migrations, lint, formatting, typecheck and production build passed. Native
-PostgreSQL CI for 0558509 was independently read as green; the corrected head needs
-fresh CI after publication. Screenshots cover desktop/mobile/provenance layouts.
+PostgreSQL CI for 0558509 was independently read as green in the preceding turn;
+passing checks are required on the actual PR head. Remote publication and current
+CI were not inspected during this review. Screenshots cover desktop/mobile/provenance layouts.
 
 No further functional blocker was found in this review of the stated scope. This
 does not declare the sprint or stories Done: human acceptance, normal and section 7
@@ -68,3 +71,30 @@ security re-review, hosted migrations/configuration, storage permission and host
 two-user verification remain outstanding. Keep ingestion disabled. Use Refs until
 hosted verification supports manual closure. No push, deployment or live provider
 operation was performed; the main merge is the only new commit made by this agent.
+
+## Read-only code review and local PR guidance update
+
+The e5ce0c3 source was rechecked against S1-018, S1-023, the S1-015 creation
+handoff, the S1-017 status-badge contract, and applicable docs standards. No new
+implementation blocker was found in those paths. This is not independent normal
+or section 7 security approval, nor hosted acceptance.
+
+The minor inherited form-spacing discrepancy identified in this review was
+subsequently corrected at the user's request. TargetForm now uses space-y-4
+between fields and grid gap-1.5 within all three field groups, matching UI/UX
+sections 3.2 and 7.3. No exception is needed. The preceding read-only review left
+application code unchanged; this subsequent follow-up changes spacing only.
+
+The original available dialogue was compared with the task's local session log.
+Every previously retained message matched its original text after the documented
+redaction/line-ending normalization. The preceding final response and this review's
+new messages were appended; historical dialogue was not rewritten. A current
+status annotation explains the later commit instead of misrepresenting old
+uncommitted-state statements as current facts.
+
+The local PR description now identifies e5ce0c3, retains Refs #18 / Refs #23,
+removes the obsolete remote-head assertion and includes specific reviewer paths,
+expected behavior and test entry points for both deferred integrations in addition
+to the two stories and the additional security review. No GitHub operation was
+performed. Only local documentation/transcript changes were made; the previously
+passing application suites were not repeated for this documentation-only update.

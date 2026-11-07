@@ -6,6 +6,11 @@ verified green through GitHub's check-runs API, including PostgreSQL. Main throu
 in merge commit `366dc01`. Follow-up results are recorded below; historical counts
 are retained as checkpoints rather than claims about the corrected head's remote CI.
 
+Current local review target: `e5ce0c3`, which commits the review corrections and
+creation/workspace integration. References below to uncommitted fixes describe the
+earlier implementation checkpoint. Current-head remote CI and publication were
+not inspected in this latest review, and no GitHub operations were performed.
+
 ## Checks
 
 - Jest: 42 suites, 541 tests passed after integrating merged S1-019 commit `0388c43`.
@@ -115,3 +120,17 @@ transcript in the PR; author review of its contents remains required.
 See [final scope review](../../s1-018-s1-023-final-review.md),
 [replacement PR text](../../pr-48-description.md), and the
 [original-message review continuation](../../../ai-transcripts/2026-11-07_codex_S1-018-S1-023_review-integration.md).
+
+## Final form-spacing alignment
+
+At the user's request, the remaining S1-015 form-spacing discrepancy is resolved.
+TargetForm uses space-y-4 between fields and grid gap-1.5 within all three field
+groups, matching UI/UX sections 3.2 and 7.3. The PR description and final review
+mark the finding resolved, without changing historical original dialogue.
+
+Verification after the spacing change: all 28 TargetForm unit tests passed;
+the existing Edge mobile creation test with a 120-character title passed and
+confirmed no document overflow; focused ESLint and formatting passed. The earlier
+full 600-unit / 22-browser / seven-SQL results remain the integration baseline.
+No GitHub access, edit, push, commit, hosted migration or provider operation was
+performed. The final spacing correction and documentation updates remain local.

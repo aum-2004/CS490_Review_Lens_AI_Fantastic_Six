@@ -2,10 +2,11 @@
 
 The `s1-018` branch includes merged S1-019 commit `0388c43` and implementation
 commit `0558509`, published as PR #48. The obsolete startTargetIngestion helper
-stays deleted. The PR #48 review corrections are subsequent local working changes;
-they require a new commit, publication, CI and normal/security re-review.
+stays deleted. The PR #48 review corrections are committed in `e5ce0c3`; passing
+CI on the actual PR head and normal/security re-review remain required. Current
+remote publication and CI were not inspected during this local review.
 Main through S1-015 commit `e8839ef` was subsequently merged into this branch in
-`366dc01`; the creation/workspace handoff is now integrated in the working changes.
+`366dc01`; the creation/workspace handoff is integrated in `e5ce0c3`.
 
 ## Submission
 

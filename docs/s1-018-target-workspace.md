@@ -1,8 +1,9 @@
 # S1-018 and S1-023 implementation
 
 Implemented locally on `s1-018`, fast-forwarded to merged S1-019 commit `0388c43`.
-Implementation commit `0558509` is published in PR #48. Review corrections are
-subsequent local working changes; issue closure awaits hosted verification.
+Implementation commit `0558509` is the original PR #48 baseline. Review corrections
+and the creation handoff are now committed as `e5ce0c3`; issue closure still awaits
+hosted verification. Current remote publication/CI was not inspected in this review.
 The user extended this branch to S1-023 and assigned the
 S1-017 card-badge integration to it. Merged S1-019 is now included and integrated.
 Main through S1-015 commit `e8839ef` was merged in `366dc01`. Successful creation
