@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ErrorState } from "@/components/shared/ErrorState";
 
@@ -8,7 +9,7 @@ it("renders a reusable page heading, breadcrumb navigation and a supplied action
       title="Target workspace"
       description="Reviews for this target."
       breadcrumbs={[{ label: "My Targets", href: "/analysis-targets" }, { label: "Coffee shop" }]}
-      action={<a href="/analysis-targets/new">Create target</a>}
+      action={<Link href="/analysis-targets/new">Create target</Link>}
     />,
   );
   expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);

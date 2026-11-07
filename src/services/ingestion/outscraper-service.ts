@@ -16,6 +16,7 @@ export type VerifiedExtractedReviews =
       businessName: string;
       placeId: string;
       reviews: ReturnType<typeof mapOutscraperReviews>;
+      skippedCount?: number;
     };
 
 /**
@@ -84,5 +85,6 @@ export async function getExtractedReviews(
     placeId: result.placeId,
     identity: result.identity,
     reviews: usableReviews,
+    skippedCount: mappedReviews.length - usableReviews.length,
   };
 }

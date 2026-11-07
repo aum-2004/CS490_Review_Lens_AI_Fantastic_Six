@@ -6,6 +6,7 @@
 import { NextRequest } from "next/server";
 
 import * as ingestionRoute from "@/app/api/analysis-targets/[targetId]/ingestion/route";
+import * as ingestionRefreshRoute from "@/app/api/analysis-targets/[targetId]/ingestion/refresh/route";
 import {
   MAX_REQUEST_BODY_BYTES,
   MAX_REVIEW_DATE_CHARS,
@@ -17,6 +18,8 @@ import {
 } from "@/app/api/analysis-targets/[targetId]/reviews/review-input";
 import * as reviewsRoute from "@/app/api/analysis-targets/[targetId]/reviews/route";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createIngestionAdminClient } from "@/lib/supabase/ingestion-admin";
+import { ingestionRecoveryUrl } from "@/services/ingestion/ingestion-recovery";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import {
   getOutscraperResult,
@@ -27,6 +30,7 @@ import { normalizeBatch } from "@/services/reviews/normalize";
 
 jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock("@/lib/supabase/ingestion-admin", () => ({ createIngestionAdminClient: jest.fn() }));
 jest.mock("next/server", () => ({
   ...jest.requireActual("next/server"),
   connection: jest.fn().mockResolvedValue(undefined),
@@ -92,6 +96,7 @@ function useDatabase() {
       targetRow(TARGET_B, USER_B.id, null),
     ],
     reviews: [reviewRow("r-a1", TARGET_A, "User A's existing review")],
+    ingestion_attempts: [],
   };
   let nextId = 1;
 
@@ -110,7 +115,10 @@ function useDatabase() {
         tables[table].push(...created);
         return { data: created, error: null };
       }
-      let rows = tables[table].filter((row) => filters.every(([col, val]) => row[col] === val));
+      let rows = tables[
+        table === "latest_ingestion_attempts" ? "ingestion_attempts" : table
+      ].filter((row) => filters.every(([col, val]) => row[col] === val));
+      if (table === "latest_ingestion_attempts") rows = rows.slice(-1);
       if (window) rows = rows.slice(window[0], window[1] + 1);
       return { data: rows, error: null };
     };
@@ -138,6 +146,67 @@ function useDatabase() {
   });
 
   jest.mocked(createSupabaseServerClient).mockResolvedValue({ from } as never);
+  jest.mocked(createIngestionAdminClient).mockReturnValue({
+    rpc: jest.fn(async (name, args) => {
+      if (name === "reserve_ingestion_attempt") {
+        const existing = tables.ingestion_attempts.find(
+          (row) =>
+            row.analysis_target_id === args.p_target_id &&
+            (row.status === "processing" || row.error_code === "SUBMISSION_UNCERTAIN"),
+        );
+        if (existing) return { data: { attempt: existing, created: false }, error: null };
+        const target = tables.analysis_targets.find(
+          (row) => row.id === args.p_target_id && row.owner_id === args.p_owner_id,
+        )!;
+        const attempt = {
+          id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+          analysis_target_id: target.id,
+          owner_id: target.owner_id,
+          source_url: target.source_url,
+          submitted_query: target.google_place_id ?? target.source_url,
+          query_kind: target.google_place_id ? "place_id" : "source_url",
+          expected_place_id: target.google_place_id,
+          provider_request_id: null,
+          status: "processing",
+          started_at: "2026-11-06T12:00:00Z",
+          finished_at: null,
+          saved_count: 0,
+          skipped_count: 0,
+          error_code: null,
+          identity_basis: null,
+          verified_identity: null,
+        };
+        tables.ingestion_attempts.push(attempt);
+        return { data: { attempt, created: true }, error: null };
+      }
+      const attempt = tables.ingestion_attempts.find((row) => row.id === args.p_attempt_id)!;
+      if (name === "bind_ingestion_job") attempt.provider_request_id = args.p_request_id;
+      if (name === "finish_ingestion_attempt" && attempt.status === "processing") {
+        const reviews = args.p_reviews as Row[];
+        tables.reviews.push(
+          ...reviews.map((review, index) => ({
+            ...review,
+            id: "ingested-" + index,
+            analysis_target_id: attempt.analysis_target_id,
+          })),
+        );
+        Object.assign(attempt, {
+          status: args.p_error_code ? "failed" : "succeeded",
+          error_code: args.p_error_code,
+          saved_count: reviews.length,
+          skipped_count: args.p_skipped_count,
+          finished_at: "2026-11-06T12:01:00Z",
+          identity_basis: args.p_error_code
+            ? null
+            : attempt.query_kind === "source_url"
+              ? "provider_resolved"
+              : "expected_place_id",
+          verified_identity: args.p_identity,
+        });
+      }
+      return { data: attempt, error: null };
+    }),
+  } as never);
   const tablesTouched = () => from.mock.calls.map(([table]) => table);
   return { tables, tablesTouched };
 }
@@ -194,18 +263,16 @@ const SPOOFED_OWNER = {
   user_id: USER_A.id,
 };
 const validReview = { text: "Lovely place", rating: 5 };
-const originalIngestionEnabled = process.env.INGESTION_ENABLED;
 
 beforeEach(() => {
+  process.env.INGESTION_CALLBACK_ORIGIN = "https://app.example.com";
+  process.env.INGESTION_CALLBACK_SECRET = "synthetic-test-secret-that-is-not-a-real-key";
   process.env.INGESTION_ENABLED = "true";
+  process.env.PROVIDER_REVIEW_STORAGE_APPROVED = "true";
+  process.env.PROVIDER_REVIEW_STORAGE_APPROVAL_REFERENCE = "synthetic-test-only";
   jest.clearAllMocks();
   jest.spyOn(console, "error").mockImplementation(() => {});
   jest.mocked(startOutscraperExtraction).mockResolvedValue({ id: "job-1", status: "Pending" });
-});
-
-afterAll(() => {
-  if (originalIngestionEnabled === undefined) delete process.env.INGESTION_ENABLED;
-  else process.env.INGESTION_ENABLED = originalIngestionEnabled;
 });
 
 async function expectNotFound(response: Response) {
@@ -467,33 +534,37 @@ describe("POST /api/analysis-targets/[targetId]/ingestion", () => {
     await expect(response.json()).resolves.toEqual({
       success: true,
       data: {
-        status: "accepted",
-        targetId: TARGET_A,
-        requestId: "job-1",
-        providerStatus: "Pending",
+        state: "processing",
+        startedAt: "2026-11-06T12:00:00Z",
+        finishedAt: null,
+        savedCount: 0,
+        skippedCount: 0,
+        errorCode: null,
+        identityBasis: null,
+        providerBusinessName: null,
       },
     });
     expect(startOutscraperExtraction).toHaveBeenCalledTimes(1);
-    expect(startOutscraperExtraction).toHaveBeenCalledWith({
-      kind: "place_id",
-      value: PLACE_ID_A,
-    });
+    expect(startOutscraperExtraction).toHaveBeenCalledWith(
+      { kind: "place_id", value: PLACE_ID_A },
+      undefined,
+      ingestionRecoveryUrl("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+    );
   });
 
-  it("uses the stored Google Maps URL when an owned target has no resolved Place ID", async () => {
+  it("submits an owned source URL without requiring a Place ID", async () => {
     signInAs(USER_A);
     useDatabase();
 
     const response = await postIngestion(TARGET_A_NO_SOURCE);
 
     expect(response.status).toBe(202);
-    await expect(response.json()).resolves.toMatchObject({
-      data: { status: "accepted" },
-    });
-    expect(startOutscraperExtraction).toHaveBeenCalledWith({
-      kind: "source_url",
-      value: "https://www.google.com/maps/place/Example",
-    });
+    await expect(response.json()).resolves.toMatchObject({ data: { state: "processing" } });
+    expect(startOutscraperExtraction).toHaveBeenCalledWith(
+      { kind: "source_url", value: "https://www.google.com/maps/place/Example" },
+      undefined,
+      expect.stringContaining("/api/ingestion/provider-callback/"),
+    );
   });
 
   it("denies User B ingesting against User A's target, and no review processing runs", async () => {
@@ -530,17 +601,182 @@ describe("POST /api/analysis-targets/[targetId]/ingestion", () => {
     expect(startOutscraperExtraction).not.toHaveBeenCalled();
   });
 
-  it("returns a generic 500 without provider details when the provider fails", async () => {
+  it("records a failed attempt without exposing provider details", async () => {
     signInAs(USER_A);
     useDatabase();
     jest.mocked(startOutscraperExtraction).mockRejectedValue(new Error("secret provider detail"));
 
     const response = await postIngestion(TARGET_A);
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
     const text = await response.text();
-    expect(text).toContain("INGESTION_START_FAILED");
+    expect(text).toContain("SUBMISSION_UNCERTAIN");
     expect(text).not.toContain("secret provider detail");
+  });
+});
+
+describe("durable ingestion status and result reconciliation", () => {
+  const status = (targetId: string) =>
+    ingestionRoute.GET(
+      request(`/api/analysis-targets/${targetId}/ingestion`, "GET"),
+      ctx(targetId) as never,
+    );
+  const refresh = (targetId: string, body?: unknown) =>
+    ingestionRefreshRoute.POST(
+      request(`/api/analysis-targets/${targetId}/ingestion/refresh`, "POST", body),
+      ctx(targetId) as never,
+    );
+
+  it("confirms no attempt through an owner-scoped backend read", async () => {
+    signInAs(USER_A);
+    useDatabase();
+    const result = await status(TARGET_A);
+    expect(result.status).toBe(200);
+    expect((await result.json()).data.state).toBe("not_ingested");
+    expect(startOutscraperExtraction).not.toHaveBeenCalled();
+  });
+  it("reuses a processing attempt and starts only one paid job", async () => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    await Promise.all([postIngestion(TARGET_A), postIngestion(TARGET_A)]);
+    expect(startOutscraperExtraction).toHaveBeenCalledTimes(1);
+    expect(db.tables.ingestion_attempts).toHaveLength(1);
+    expect((await (await status(TARGET_A)).json()).data.state).toBe("processing");
+  });
+  it("ignores browser job IDs and completes only a server-bound verified result", async () => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    await postIngestion(TARGET_A);
+    jest.mocked(getExtractedReviews).mockResolvedValue({
+      status: "completed",
+      placeId: PLACE_ID_A,
+      businessName: "Synthetic",
+      identity: { placeId: PLACE_ID_A, businessName: "Synthetic" },
+      reviews: [
+        {
+          text: "New synthetic review",
+          rating: 5,
+          sourceReviewId: undefined,
+          reviewerName: undefined,
+          reviewDate: undefined,
+          reviewUrl: undefined,
+          metadata: {
+            platform: "google_maps",
+            provider: "outscraper",
+            placeId: PLACE_ID_A,
+            googleId: undefined,
+          },
+        },
+      ],
+    });
+    const result = await refresh(TARGET_A, {
+      requestId: "stolen-job",
+      ownerId: USER_B.id,
+      reviews: [{ text: "fabricated" }],
+    });
+    expect(result.status).toBe(200);
+    expect((await result.json()).data).toMatchObject({ state: "succeeded", savedCount: 1 });
+    expect(getExtractedReviews).toHaveBeenCalledWith("job-1", {
+      sourceUrl: "https://www.google.com/maps/place/Example",
+      googlePlaceId: PLACE_ID_A,
+    });
+    await refresh(TARGET_A);
+    expect(getExtractedReviews).toHaveBeenCalledTimes(1);
+    expect(db.tables.reviews).toHaveLength(2);
+  });
+  it("completes a source-only target and reports provider identity without promoting its Place ID", async () => {
+    signInAs(USER_A);
+    const db = useDatabase();
+    await postIngestion(TARGET_A_NO_SOURCE);
+    jest.mocked(getExtractedReviews).mockResolvedValue({
+      status: "completed",
+      placeId: PLACE_ID_A,
+      businessName: "Provider business",
+      identity: { placeId: PLACE_ID_A, businessName: "Provider business" },
+      reviews: [
+        {
+          text: "Synthetic URL review",
+          rating: 4,
+          sourceReviewId: undefined,
+          reviewerName: undefined,
+          reviewDate: undefined,
+          reviewUrl: undefined,
+          metadata: {
+            platform: "google_maps",
+            provider: "outscraper",
+            placeId: PLACE_ID_A,
+            googleId: undefined,
+          },
+        },
+      ],
+    });
+    const result = await refresh(TARGET_A_NO_SOURCE, { requestId: "forged" });
+    expect((await result.json()).data).toMatchObject({
+      state: "succeeded",
+      savedCount: 1,
+      identityBasis: "provider_resolved",
+      providerBusinessName: "Provider business",
+    });
+    expect(
+      db.tables.analysis_targets.find((row) => row.id === TARGET_A_NO_SOURCE)?.google_place_id,
+    ).toBeNull();
+    expect(getExtractedReviews).toHaveBeenCalledWith("job-1", {
+      sourceUrl: "https://www.google.com/maps/place/Example",
+      googlePlaceId: null,
+    });
+  });
+  it.each(["status", "refresh"])(
+    "denies User B at the backend %s boundary without reading jobs",
+    async (operation) => {
+      signInAs(USER_B);
+      const db = useDatabase();
+      await expectNotFound(
+        await (operation === "status"
+          ? status(TARGET_A)
+          : refresh(TARGET_A, { requestId: "job-1", ownerId: USER_A.id })),
+      );
+      expect(db.tablesTouched()).not.toContain("ingestion_attempts");
+      expect(db.tablesTouched()).not.toContain("latest_ingestion_attempts");
+      expect(getExtractedReviews).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["status", "refresh"])(
+    "rejects anonymous %s requests before creating a client",
+    async (operation) => {
+      signInAs(null);
+      useDatabase();
+      expect((await (operation === "status" ? status(TARGET_A) : refresh(TARGET_A))).status).toBe(
+        401,
+      );
+      expect(createSupabaseServerClient).not.toHaveBeenCalled();
+    },
+  );
+  it("keeps paid ingestion off unless explicitly enabled", async () => {
+    signInAs(USER_A);
+    useDatabase();
+    delete process.env.INGESTION_ENABLED;
+    const result = await postIngestion(TARGET_A);
+    expect(result.status).toBe(503);
+    expect(startOutscraperExtraction).not.toHaveBeenCalled();
+    expect(createIngestionAdminClient).not.toHaveBeenCalled();
+  });
+  it("requires both storage approval and its evidence reference", async () => {
+    signInAs(USER_A);
+    useDatabase();
+    delete process.env.PROVIDER_REVIEW_STORAGE_APPROVAL_REFERENCE;
+    const result = await postIngestion(TARGET_A);
+    expect(result.status).toBe(503);
+    expect((await result.json()).error.code).toBe("STORAGE_NOT_APPROVED");
+    expect(startOutscraperExtraction).not.toHaveBeenCalled();
+  });
+  it("requires recovery configuration before any paid provider request", async () => {
+    signInAs(USER_A);
+    useDatabase();
+    delete process.env.INGESTION_CALLBACK_SECRET;
+    const result = await postIngestion(TARGET_A);
+    expect(result.status).toBe(503);
+    expect((await result.json()).error.code).toBe("RECOVERY_NOT_CONFIGURED");
+    expect(startOutscraperExtraction).not.toHaveBeenCalled();
   });
 });
 

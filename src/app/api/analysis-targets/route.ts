@@ -6,7 +6,7 @@ import {
   createAnalysisTarget,
 } from "@/services/analysis-targets/analysis-target-repository";
 import { requireApiUser } from "@/services/auth/access-control";
-import { listAnalysisTargets } from "@/services/analysis-targets/list-analysis-targets";
+import { listTargetsWithIngestion } from "@/services/analysis-targets/list-targets-with-ingestion";
 
 const PRIVATE_HEADERS = { "Cache-Control": "private, no-store" };
 
@@ -16,7 +16,7 @@ export async function GET() {
 
   try {
     const client = await createSupabaseServerClient(true);
-    const targets = await listAnalysisTargets(client, auth.user.id);
+    const targets = await listTargetsWithIngestion(client, auth.user.id);
     return NextResponse.json({ success: true, data: targets }, { headers: PRIVATE_HEADERS });
   } catch (error) {
     console.error("Analysis target operation failed", {

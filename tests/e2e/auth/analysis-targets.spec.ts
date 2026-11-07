@@ -49,6 +49,7 @@ test("lists owned targets through the bounded real SDK query and preserves the l
   expect(Object.keys(body.data[0]).sort()).toEqual([
     "createdAt",
     "id",
+    "ingestion",
     "name",
     "platform",
     "sourceUrl",
