@@ -70,6 +70,17 @@ Place IDs or described as an independently verified match to the original URL. T
 workspace displays that distinction. Provider callbacks ignore any claimed owner,
 review data, result URL or success status; they only bind authenticated metadata.
 
+Ingestion summaries omit provider job IDs; authenticated owners may still read
+their own stored bindings through RLS-protected table access. Browser-supplied
+job IDs never select or authorize a provider lookup. Callback recovery has an
+explicit service_role SELECT grant.
+
+A successful target cannot submit another run in Sprint 1. Lookup errors without
+definitive provider/identity/no-review failure evidence return retryable feedback
+and preserve the accepted job. Bound attempts have a four-hour database deadline;
+expired attempts become Failed but remain blocked against new paid submissions
+until operator reconciliation. The expiry/release RPCs are not browser-accessible.
+
 Other target, ingestion, and review endpoints arrive with their respective stories. Every protected
 handler must independently use `requireApiUser()` from `@/services/auth/access-control` and return
 its failure `response` before invoking services. Proxy refreshes cookies but does not guard APIs.

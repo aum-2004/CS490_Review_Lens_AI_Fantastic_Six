@@ -149,6 +149,8 @@ export function IngestionPanel({
         onClick={performAction}
         disabled={
           pending ||
+          summary?.state === "succeeded" ||
+          summary?.errorCode === "RESULT_WINDOW_EXPIRED" ||
           summary?.errorCode === "SUBMISSION_UNCERTAIN" ||
           (!recovering && (processing || !!unavailableReason))
         }
@@ -159,10 +161,17 @@ export function IngestionPanel({
           ? recovering
             ? "Loading…"
             : "Starting ingestion..."
-          : recovering || summary?.state === "failed"
-            ? "Try again"
-            : "Start ingestion"}
+          : summary?.state === "succeeded"
+            ? "Ingestion complete"
+            : recovering || summary?.state === "failed"
+              ? "Try again"
+              : "Start ingestion"}
       </Button>
+      {summary?.state === "succeeded" && (
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Reviews have already been ingested for this target. Further collection is unavailable.
+        </p>
+      )}
       {unavailableReason && (
         <p className="max-w-prose text-sm text-muted-foreground">{unavailableReason}</p>
       )}
@@ -202,7 +211,11 @@ function isSummary(value: unknown): value is IngestionSummary {
   );
 }
 const responseErrorMessages = new Set(
-  ["PROVIDER_TIMEOUT", "PROVIDER_QUOTA", "PROVIDER_UNAVAILABLE", "INGESTION_FAILED"].map(
-    ingestionErrorMessage,
-  ),
+  [
+    "PROVIDER_TIMEOUT",
+    "PROVIDER_QUOTA",
+    "PROVIDER_UNAVAILABLE",
+    "INGESTION_FAILED",
+    "RESULT_LOOKUP_UNAVAILABLE",
+  ].map(ingestionErrorMessage),
 );

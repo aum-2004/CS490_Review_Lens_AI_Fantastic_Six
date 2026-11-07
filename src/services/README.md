@@ -88,7 +88,9 @@ identity and must not describe URL-query consistency alone as proof of source-UR
   - A missing provider ID is stored as `source_review_id = null`; the review is still saved.
   - Repeated or non-unique provider IDs, within one batch or across batches, are stored as separate
     rows.
-  - Ingesting the same target again stores its reviews again, creating duplicate rows.
+  - The storage layer would store repeated batches as separate rows. S1-023 now
+    prevents another ingestion run after a target succeeds, in its RPC and UI;
+    it does not introduce review-record deduplication.
   - A non-unique `(analysis_target_id, source_review_id)` index lets a later sprint find and resolve
     duplicates. Deduplication and re-ingestion handling are deferred beyond Sprint 1.
 
@@ -108,7 +110,8 @@ configured Place ID exists. The obsolete `startTargetIngestion` helper stays del
   submitted query, query kind, and expected Place ID before a paid request. Target
   row locking and a unique active-attempt index prevent concurrent paid submissions.
 - The accepted provider job ID is attached server-side before returning a public
-  summary. The browser receives no provider job ID. Result reconciliation queries
+  summary. UI/API summaries omit provider job IDs, but authenticated owners may
+  read their own bindings through RLS-protected SELECT. Result reconciliation queries
   the stored record using verified owner, target, and stored job ID; request bodies
   and query-string job IDs are ignored.
 - Browser sessions can only read attempts under RLS. Binding/finalization RPCs are
@@ -142,6 +145,15 @@ configured Place ID exists. The obsolete `startTargetIngestion` helper stays del
   the attempt processing and offers status retry, rather than permitting a new paid
   submission. Definitive extraction failures record failed results without changing
   prior saved reviews.
+
+PR #48 corrections extend retryable lookup handling to auth, billing, missing
+configuration, malformed responses and all other errors without definitive failure
+evidence. The four-hour database deadline changes overdue jobs to Failed while
+retaining a billing hold; only an operator with verified provider evidence can
+release that hold. Successful targets are not eligible for another run in Sprint 1.
+Clear submission 4xx rejections (except 408) are safe failures, while timeouts,
+5xx and malformed acceptance responses remain uncertain. The follow-up migration
+explicitly grants service-role recovery reads. See the recovery runbook for details.
 
 `INGESTION_ENABLED` remains false by default. Starting a paid request also requires
 `PROVIDER_REVIEW_STORAGE_APPROVED=true` and a non-empty

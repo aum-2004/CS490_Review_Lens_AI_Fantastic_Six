@@ -29,6 +29,7 @@ export class OutscraperError extends Error {
   constructor(
     public readonly code: string,
     message: string,
+    public readonly submissionRejected = false,
   ) {
     super(message);
     this.name = "OutscraperError";
@@ -104,18 +105,37 @@ export async function startOutscraperExtraction(
   }
 
   if (response.status === 429) {
-    throw new OutscraperError("PROVIDER_QUOTA", "The review service usage limit was reached.");
+    throw new OutscraperError(
+      "PROVIDER_QUOTA",
+      "The review service usage limit was reached.",
+      true,
+    );
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new OutscraperError("PROVIDER_AUTH", "The review service rejected its credentials.");
+    throw new OutscraperError(
+      "PROVIDER_AUTH",
+      "The review service rejected its credentials.",
+      true,
+    );
   }
 
   if (response.status === 402) {
-    throw new OutscraperError("PROVIDER_BILLING", "The review service account requires attention.");
+    throw new OutscraperError(
+      "PROVIDER_BILLING",
+      "The review service account requires attention.",
+      true,
+    );
   }
 
   if (!response.ok) {
+    if (response.status >= 400 && response.status < 500 && response.status !== 408) {
+      throw new OutscraperError(
+        "PROVIDER_REJECTED",
+        "The review service rejected this request.",
+        true,
+      );
+    }
     throw new OutscraperError("PROVIDER_FAILED", "The review service could not start extraction.");
   }
 

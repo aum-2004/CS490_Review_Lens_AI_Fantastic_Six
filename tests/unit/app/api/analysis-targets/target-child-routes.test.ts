@@ -152,7 +152,8 @@ function useDatabase() {
         const existing = tables.ingestion_attempts.find(
           (row) =>
             row.analysis_target_id === args.p_target_id &&
-            (row.status === "processing" || row.error_code === "SUBMISSION_UNCERTAIN"),
+            (["processing", "succeeded"].includes(String(row.status)) ||
+              ["SUBMISSION_UNCERTAIN", "RESULT_WINDOW_EXPIRED"].includes(String(row.error_code))),
         );
         if (existing) return { data: { attempt: existing, created: false }, error: null };
         const target = tables.analysis_targets.find(

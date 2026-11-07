@@ -1,10 +1,11 @@
 # S1-019 integration with S1-018 / S1-023
 
-The local `s1-018` branch now includes merged S1-019 commit `0388c43`. The previous
-working changes were saved to the retained safety stash named
-`s1-018-s1-023-before-s1-019-integration`, then restored over that commit. Conflicts
-were resolved, the obsolete startTargetIngestion helper stayed deleted, and the
-index was cleared while preserving working files. No new commit or push was made.
+The `s1-018` branch includes merged S1-019 commit `0388c43` and implementation
+commit `0558509`, published as PR #48. The obsolete startTargetIngestion helper
+stays deleted. The PR #48 review corrections are subsequent local working changes;
+they require a new commit, publication, CI and normal/security re-review.
+Main through S1-015 commit `e8839ef` was subsequently merged into this branch in
+`366dc01`; the creation/workspace handoff is now integrated in the working changes.
 
 ## Submission
 
@@ -13,7 +14,9 @@ recovery gates, and invokes S1-023 beginIngestion. Ownership and stored source i
 are checked before a database reservation. Only a newly reserved attempt may call
 S1-019 submitReviewSource, using its saved target/source snapshot. The injected
 provider adapter forwards the signed recovery URL. The accepted job is bound before
-the browser receives a public status summary; raw provider job IDs remain server-side.
+the browser receives a public status summary. UI/API summaries omit provider job IDs;
+owners can read their own provider_request_id through authenticated SELECT under RLS.
+This read access never authorizes a browser to select or bind the job for reconciliation.
 
 A valid source URL is sufficient when no configured Place ID exists. A known Place
 ID is preferred and must match returned results. Neither a request body nor browser
@@ -40,7 +43,8 @@ S1-019/S1-023 provenance contract without inventing a new manual identity-input 
 independent resolver requirement for S1-019.
 
 Successful completion still inserts reviews and records counts/state atomically.
-Failures preserve prior reviews; repeated completion is idempotent. Both source URL
+Failures preserve prior reviews; repeated completion is idempotent. A successful
+target cannot start another run in Sprint 1, in either the RPC or UI. Both source URL
 and expected-ID jobs use the same owner-scoped status readers, four-state badge,
 callback authentication, uncertain-job block and recovery procedure.
 
@@ -56,3 +60,36 @@ Storage permission, recovery configuration, security review, PR CI and the exist
 team merge requirements remain prerequisites for live operation/issue closure.
 Local verification results are retained in
 `docs/acceptance/s1-018/s1-018-s1-023-verification.md`.
+
+## PR #48 lifecycle review corrections
+
+Polling ends an accepted job only on explicit provider failure, verified identity
+failure, no usable reviews, or the separate four-hour application deadline. Other
+lookup, configuration, parsing and transport errors preserve its binding and active
+submission lock and return safe retry feedback. Restoring access resumes that job.
+
+Expiry is checked by database time under the attempt row lock, before fetching
+and again when finalizing results. Expired jobs show Failed and retain a billing
+safety hold until an operator records verified provider evidence with the restricted
+resolve_ingestion_no_job RPC. Expiry alone never authorizes another paid request.
+Definitive submission 4xx rejections, except HTTP 408, allow a normal retry;
+timeouts, 5xx and invalid acceptance responses remain uncertain and blocked.
+
+Apply both ingestion migrations, including
+`20261107010000_harden_ingestion_lifecycle.sql`. It also explicitly grants the
+service-role SELECT used by callback recovery. See the operator runbook before
+releasing a hold. PR #48 should use Refs #18 and Refs #23 until hosted acceptance;
+it must not automatically close unverified stories.
+
+## S1-015 and S1-017 deferred integration
+
+Successful creation now navigates to `/analysis-targets/{id}?created=1`. The owned
+workspace displays the standards-required success notice, and the temporary
+workspace-unavailable message is removed. Stale form completions after navigation
+cannot redirect another page. Creation never starts a provider job automatically.
+
+The S1-017 follow-up is implemented by the shared IngestionStatus component on
+every target card. The owner-scoped status view confirms Not ingested only when
+no attempt exists; missing/unavailable/truncated state stays unavailable. Browser
+coverage includes new target creation, card status, refresh, all four badge states,
+status outages and User A/User B isolation.

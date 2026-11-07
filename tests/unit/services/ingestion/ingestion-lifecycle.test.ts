@@ -6,7 +6,8 @@ import {
   getBoundAttempt,
   type IngestionAttemptRow,
 } from "@/services/ingestion/ingestion-attempt-repository";
-import { OutscraperError } from "@/services/ingestion/outscraper-client";
+import { OutscraperError, startOutscraperExtraction } from "@/services/ingestion/outscraper-client";
+import { getExtractedReviews } from "@/services/ingestion/outscraper-service";
 
 jest.mock("@/services/analysis-targets/target-ownership", () => ({
   getOwnedTargetOrThrow: jest.fn(),
@@ -46,6 +47,11 @@ function dependencies() {
     writer: {
       reserve: jest.fn().mockResolvedValue({ attempt, created: true }),
       bind: jest.fn().mockResolvedValue(attempt),
+      expireBound: jest
+        .fn()
+        .mockImplementation(
+          async () => await getBoundAttempt({} as never, "user-a", "target-a", "server-job"),
+        ),
       expireUnbound: jest
         .fn()
         .mockResolvedValue({ ...attempt, status: "failed", error_code: "SUBMISSION_UNCERTAIN" }),
@@ -111,6 +117,140 @@ it("does not pay twice when an attempt is already active", async () => {
   await beginIngestion({} as never, "user-a", "target-a", deps);
   expect(deps.start).not.toHaveBeenCalled();
 });
+it("does not start another run for a successfully ingested target", async () => {
+  const deps = dependencies();
+  deps.writer.reserve.mockResolvedValue({
+    attempt: { ...attempt, status: "succeeded", saved_count: 1 },
+    created: false,
+  });
+  expect((await beginIngestion({} as never, "user-a", "target-a", deps)).state).toBe("succeeded");
+  expect(deps.start).not.toHaveBeenCalled();
+});
+it.each([401, 402, 403, 404, 502, "invalid-json", "missing-key"])(
+  "preserves the paid job across lookup %s, prevents another start, and resumes the same job",
+  async (failure) => {
+    const deps = dependencies();
+    let stored: IngestionAttemptRow | null = null;
+    deps.writer.reserve.mockImplementation(async () => {
+      const blocked =
+        stored &&
+        (stored.status === "processing" ||
+          stored.status === "succeeded" ||
+          stored.error_code === "SUBMISSION_UNCERTAIN");
+      if (blocked) return { attempt: stored!, created: false };
+      stored = { ...attempt };
+      return { attempt: stored, created: true };
+    });
+    deps.writer.finish.mockImplementation(async (_id, _owner, rows, skipped, identity, error) => {
+      stored = {
+        ...attempt,
+        status: error ? "failed" : "succeeded",
+        error_code: error,
+        saved_count: rows.length,
+        skipped_count: skipped,
+        verified_identity: identity,
+      };
+      return stored as never;
+    });
+    jest.mocked(getLatestAttempt).mockImplementation(async () => stored);
+    jest.mocked(getBoundAttempt).mockImplementation(async () => stored!);
+    const previousKey = process.env.OUTSCRAPER_API_KEY;
+    try {
+      process.env.OUTSCRAPER_API_KEY = "synthetic-test-key";
+      const provider = jest.fn().mockResolvedValue({
+        ok: failure === "invalid-json",
+        status: typeof failure === "number" ? failure : 200,
+        json: async () => {
+          throw new SyntaxError("synthetic invalid JSON");
+        },
+      });
+      await beginIngestion({} as never, "user-a", "target-a", deps);
+      if (failure === "missing-key") delete process.env.OUTSCRAPER_API_KEY;
+      deps.extract.mockImplementationOnce(
+        (id, identity) => getExtractedReviews(id, identity, provider as never) as never,
+      );
+      await expect(
+        reconcileIngestion({} as never, "user-a", "target-a", deps),
+      ).rejects.toMatchObject({
+        code:
+          typeof failure === "number" && [404, 502].includes(failure)
+            ? "PROVIDER_UNAVAILABLE"
+            : "RESULT_LOOKUP_UNAVAILABLE",
+      });
+      expect(deps.writer.finish).not.toHaveBeenCalled();
+      expect(stored).toMatchObject({ status: "processing", provider_request_id: "server-job" });
+      await beginIngestion({} as never, "user-a", "target-a", deps);
+      expect(deps.start).toHaveBeenCalledTimes(1);
+      process.env.OUTSCRAPER_API_KEY = "synthetic-test-key";
+      expect((await reconcileIngestion({} as never, "user-a", "target-a", deps)).state).toBe(
+        "succeeded",
+      );
+      expect(deps.extract).toHaveBeenLastCalledWith("server-job", expect.any(Object));
+      await beginIngestion({} as never, "user-a", "target-a", deps);
+      expect(deps.start).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousKey === undefined) delete process.env.OUTSCRAPER_API_KEY;
+      else process.env.OUTSCRAPER_API_KEY = previousKey;
+    }
+  },
+);
+it.each(["pending", "404"])(
+  "expires an overdue %s job without fetching or saving more results",
+  async (result) => {
+    const deps = dependencies();
+    deps.extract.mockImplementationOnce(async () => {
+      if (result === "404") throw new OutscraperError("PROVIDER_UNAVAILABLE", "synthetic 404");
+      return { status: "pending" } as never;
+    });
+    if (result === "404")
+      await expect(reconcileIngestion({} as never, "user-a", "target-a", deps)).rejects.toThrow();
+    else
+      expect((await reconcileIngestion({} as never, "user-a", "target-a", deps)).state).toBe(
+        "processing",
+      );
+    const expired = { ...attempt, status: "failed" as const, error_code: "RESULT_WINDOW_EXPIRED" };
+    deps.writer.expireBound.mockResolvedValue(expired);
+    deps.writer.reserve.mockResolvedValue({ attempt: expired, created: false });
+    expect((await reconcileIngestion({} as never, "user-a", "target-a", deps)).errorCode).toBe(
+      "RESULT_WINDOW_EXPIRED",
+    );
+    await beginIngestion({} as never, "user-a", "target-a", deps);
+    expect(deps.start).not.toHaveBeenCalled();
+    expect(deps.extract).toHaveBeenCalledTimes(1);
+    expect(deps.writer.finish).not.toHaveBeenCalled();
+  },
+);
+it.each([400, 404, 422, 408, 500, "invalid-json"])(
+  "distinguishes submission rejection %s from uncertain acceptance",
+  async (status) => {
+    const deps = dependencies();
+    const previousKey = process.env.OUTSCRAPER_API_KEY;
+    process.env.OUTSCRAPER_API_KEY = "synthetic-test-key";
+    try {
+      const provider = jest.fn().mockResolvedValue({
+        ok: status === "invalid-json",
+        status: typeof status === "number" ? status : 200,
+        json: async () => {
+          throw new SyntaxError("invalid");
+        },
+      });
+      deps.start.mockImplementationOnce(async () => {
+        await startOutscraperExtraction("ChIJSynthetic", provider as never);
+        throw new Error("Unexpected acceptance");
+      });
+      const result = await beginIngestion({} as never, "user-a", "target-a", deps);
+      expect(result.errorCode).toBe(
+        typeof status === "number" && status < 500 && status !== 408
+          ? "PROVIDER_REJECTED"
+          : "SUBMISSION_UNCERTAIN",
+      );
+      expect(provider).toHaveBeenCalledTimes(1);
+    } finally {
+      if (previousKey === undefined) delete process.env.OUTSCRAPER_API_KEY;
+      else process.env.OUTSCRAPER_API_KEY = previousKey;
+    }
+  },
+);
 it("does no provider or mutation work before authorization", async () => {
   const deps = dependencies();
   jest.mocked(getOwnedTargetOrThrow).mockRejectedValue(new Error("denied"));

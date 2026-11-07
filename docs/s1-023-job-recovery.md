@@ -13,7 +13,9 @@ owner, target, source/query snapshot and generated ID. The server derives a sign
 callback URL scoped to that attempt and registers it on the same provider request.
 The accepted job binding is retried at most three times, with 100ms and 200ms delays.
 Those retries do not repeat the provider call. An exhausted binding returns a safe
-503; no provider job ID or signed callback URL is exposed to the browser.
+503; no provider job ID or signed callback URL is included in UI/API summaries.
+Authenticated owners can read their own job IDs through RLS-protected SELECT;
+they cannot bind or override a reconciliation job from browser input.
 
 Outscraper documents the per-request
 [`webhook` parameter](https://docs.outscraper.com/endpoints/google-maps-reviews/)
@@ -74,14 +76,58 @@ its active-submission lock. Restoring approval resumes that same job.
    merely because the application did not receive its original response.
 
 The provider documents a four-hour result availability window after completion;
-recover promptly. No claim is made that external HTTP submission and PostgreSQL
+recover promptly. Separately, the application imposes a conservative four-hour
+deadline from submission, checked using database time under the row lock. This is
+an application limit, not a claim that the provider's window starts at submission.
+Pending and 404 lookups cannot keep an attempt processing forever. Expiry records
+RESULT_WINDOW_EXPIRED, retains the job binding and blocks another paid start.
+The check runs before lookup and again before finalization, including a stale fetch
+that finishes after the deadline. Returning to the workspace triggers the check;
+this implementation does not claim a background worker while no workspace is open.
+
+No claim is made that external HTTP submission and PostgreSQL
 commit form a single transaction. The durable pre-submission correlation, binding
 retries, authenticated callback and operator procedure provide a recovery path;
 an unbound result is never disclosed or saved as a successful ingestion.
 
+## Operator release after confirming that no job exists
+
+1. Keep new submissions blocked while investigating SUBMISSION_UNCERTAIN or
+   RESULT_WINDOW_EXPIRED. Check the exact reserved attempt, owner, target, source,
+   callback correlation and stored provider job ID against the provider's records.
+   HTTP 404, inaccessible results, elapsed time, invalid JSON and an account outage
+   alone do not prove no paid job exists.
+2. Obtain independent provider confirmation that no accepted job exists (for an
+   uncertain start), or that the known expired job is no longer active and cannot
+   produce a recoverable result. Record that evidence and the decision to permit
+   a further charged request in a restricted team incident/ticket. If uncertain,
+   do not release the hold. Recover/reconcile an existing job instead.
+3. An authorized operator may call the following using service_role or the normal
+   database administration workflow. These are placeholders, not client inputs:
+
+   ```sql
+   select public.resolve_ingestion_no_job(
+     'ATTEMPT_UUID'::uuid,
+     'STORED_OWNER_UUID'::uuid,
+     'restricted-team-ticket-reference'
+   );
+   ```
+
+4. The RPC locks and rechecks both attempt and parent ownership, accepts only the
+   two held failure states, requires a nonblank evidence reference, retains the job
+   binding and records resolution_reference/resolved_at. It changes the safe error
+   category to SUBMISSION_NOT_ACCEPTED or EXPIRED_JOB_RECONCILED, releasing the hold.
+   Never delete attempts, clear provider IDs or expose this RPC as a browser action.
+5. Reload the workspace. A further submission is an explicit user action, never
+   an automatic retry. A successful target remains ineligible for another run.
+
+Apply `20261107010000_harden_ingestion_lifecycle.sql` as well as the initial attempt
+migration. Callback recovery explicitly has service-role SELECT permission and an
+RLS read policy; it does not depend on Supabase's default table grants.
+
 ## Regression coverage
 
-Local results after S1-019 integration: 42 Jest suites / 541 tests passed; all 20 auth/browser
+Historical results after S1-019 integration: 42 Jest suites / 541 tests passed; all 20 auth/browser
 tests passed; all six SQL files passed in isolated PGlite PostgreSQL. Formatting,
 lint and explicit typecheck passed. The production build is recorded in the
 acceptance evidence.
@@ -90,6 +136,11 @@ Tests cover approval withdrawal/restoration without another paid start, stale ex
 after binding, binding retry without provider retry, uncertain-attempt recovery,
 duplicate terminal callbacks, conflicting IDs, missing/forged provider signatures,
 body tampering, owner-field spoofing, bounded bodies and safe storage failures.
-UI tests ensure previous success badges/count announcements disappear during a new
-submission. All fixtures are synthetic; no paid extraction or live review data was
+PR #48 review regressions now cover HTTP 401/402/403/404/502, missing configuration
+and invalid JSON without a second paid start, restoration of the same bound job,
+post-success submission blocking, pending/404 expiry, and operator release. Only
+explicit provider failure, identity failure, no usable reviews or the separate
+application deadline can end an accepted job. Clear submission 4xx rejections
+(except 408) fail normally; timeouts, 5xx and malformed acceptance remain uncertain.
+All fixtures are synthetic; no paid extraction or live review data was
 used, and no hosted migration was applied.

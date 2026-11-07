@@ -77,6 +77,27 @@ it("never labels unavailable status as no ingestion", async () => {
   expect(screen.queryByText("Not ingested")).not.toBeInTheDocument();
   expect(screen.getAllByText("Status unavailable")).toHaveLength(2);
 });
+it("shows the creation confirmation only after verifying the owned target", async () => {
+  render(
+    await ProtectedTargetWorkspace({ params, searchParams: Promise.resolve({ created: "1" }) }),
+  );
+  expect(screen.getByText("Target created. You can now start ingestion.")).toHaveAttribute(
+    "class",
+    "max-w-prose",
+  );
+  expect(getOwnedTargetOrThrow).toHaveBeenCalled();
+});
+it("does not let a creation marker disclose an unavailable target", async () => {
+  jest.mocked(getOwnedTargetOrThrow).mockRejectedValue(new TargetNotFoundError());
+  render(
+    await ProtectedTargetWorkspace({ params, searchParams: Promise.resolve({ created: "1" }) }),
+  );
+  expect(
+    screen.queryByText("Target created. You can now start ingestion."),
+  ).not.toBeInTheDocument();
+  expect(listReviews).not.toHaveBeenCalled();
+  expect(getLatestAttempt).not.toHaveBeenCalled();
+});
 
 it("does not query protected data when authentication redirects", async () => {
   jest.mocked(requirePageUser).mockRejectedValue(new Error("NEXT_REDIRECT"));

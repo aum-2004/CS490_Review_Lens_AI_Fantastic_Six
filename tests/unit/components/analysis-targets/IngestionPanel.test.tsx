@@ -44,21 +44,20 @@ it("starts once and shows processing without claiming success", async () => {
   expect(screen.getAllByText("Ingesting")).toHaveLength(2);
   expect(screen.queryByText(/reviews saved/)).not.toBeInTheDocument();
 });
-it("hides previous success badges and announcements while a new request is pending", async () => {
-  let finish!: (value: unknown) => void;
-  fetchMock.mockReturnValue(
-    new Promise((resolve) => {
-      finish = resolve;
-    }),
-  );
+it("blocks another submission after success and explains why", async () => {
   render(workspace(succeeded));
   expect(screen.getAllByText("Ingested")).toHaveLength(2);
-  fireEvent.click(screen.getByRole("button", { name: "Start ingestion" }));
-  expect(screen.queryByText(/3 reviews saved/)).not.toBeInTheDocument();
-  expect(screen.queryByText("Ingested")).not.toBeInTheDocument();
-  expect(screen.getByText("Updating ingestion…")).toBeInTheDocument();
-  finish(response(processing, 202));
-  await screen.findByText("Collecting reviews for Bakery from Google Maps…");
+  const button = screen.getByRole("button", { name: "Ingestion complete" });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(screen.getByText(/Further collection is unavailable/)).toBeInTheDocument();
+});
+it("blocks a new paid start after expiry and explains operator reconciliation", () => {
+  render(workspace({ ...NO_INGESTION, state: "failed", errorCode: "RESULT_WINDOW_EXPIRED" }));
+  expect(screen.getByRole("button", { name: "Try again" })).toBeDisabled();
+  expect(screen.getByRole("alert")).toHaveTextContent("four hours");
+  expect(screen.getByRole("alert")).toHaveTextContent("Contact the project team");
 });
 it("polls a restored active run and refreshes persisted reviews on completion", async () => {
   jest.useFakeTimers();
@@ -82,6 +81,29 @@ it("stops polling when leaving without cancelling the server job", async () => {
     jest.advanceTimersByTime(5000);
   });
   expect(fetchMock).not.toHaveBeenCalled();
+});
+it("retries a lookup outage on the existing job without submitting another job", async () => {
+  jest.useFakeTimers();
+  fetchMock
+    .mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      json: async () => ({ success: false, error: { code: "RESULT_LOOKUP_UNAVAILABLE" } }),
+    })
+    .mockResolvedValue(response(processing));
+  render(workspace(processing));
+  await act(async () => {
+    jest.advanceTimersByTime(2000);
+  });
+  expect(screen.getByRole("alert")).toHaveTextContent("Your existing request is saved");
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await act(async () => {});
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  for (const [endpoint, options] of fetchMock.mock.calls) {
+    expect(endpoint).toBe("/api/analysis-targets/target-a/ingestion/refresh");
+    expect(options).toEqual({ method: "POST" });
+  }
+  expect(screen.getAllByText("Ingesting")).toHaveLength(2);
 });
 it("does not mistake unknown status for no ingestion, and retries a read before enabling start", async () => {
   fetchMock.mockResolvedValue(response(NO_INGESTION));

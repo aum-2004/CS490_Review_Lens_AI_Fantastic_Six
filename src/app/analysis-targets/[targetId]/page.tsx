@@ -5,10 +5,13 @@ import WorkspaceLoading from "./loading";
 
 export const metadata: Metadata = { title: "Target workspace | ReviewLens AI" };
 
-export default function TargetWorkspacePage({ params }: PageProps<"/analysis-targets/[targetId]">) {
+export default function TargetWorkspacePage({
+  params,
+  searchParams,
+}: PageProps<"/analysis-targets/[targetId]">) {
   return (
     <Suspense fallback={<WorkspaceLoading />}>
-      <ProtectedTargetWorkspace params={params} />
+      <ProtectedTargetWorkspace params={params} searchParams={searchParams} />
     </Suspense>
   );
 }

@@ -26,7 +26,7 @@ test("opens from My Targets, survives refresh, switches context and explains dis
   );
   await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
-  await expect(page.getByRole("button", { name: "Start ingestion" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
   await expect(
     page.getByText("Review collection is currently unavailable. Please try again later."),
   ).toBeVisible();
@@ -92,6 +92,8 @@ test("shows provider-resolved URL identity without claiming an independent match
       page.getByText(/The review service identified this business as Provider coffee shop/),
     ).toContainText("has not been independently matched to the saved link");
     await expect(page.getByText("Ingested", { exact: true })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
+    await expect(page.getByText(/Further collection is unavailable/)).toBeVisible();
     await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
       "Saved review for A coffee shop",
     );

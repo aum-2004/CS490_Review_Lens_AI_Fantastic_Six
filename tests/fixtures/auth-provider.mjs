@@ -292,6 +292,8 @@ createServer(async (request, response) => {
         row.owner_id === identity.user.id,
     );
     if (!target) return send(200, []);
+    // Newly created targets have no reviews until an ingestion actually persists them.
+    if (target.id.startsWith("cccccccc-")) return send(200, []);
     if (url.searchParams.get("offset") !== "0") return send(200, []);
     return send(200, [
       {

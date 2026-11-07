@@ -6,6 +6,9 @@ insert into public.analysis_targets(id, owner_id, name, platform, source_url, go
 values ('99999999-9999-4999-8999-999999999993', '99999999-9999-4999-8999-999999999991',
   'Synthetic ingestion target', 'google_maps', 'https://www.google.com/maps/place/Synthetic', 'ChIJSyntheticPlace');
 
+insert into public.analysis_targets(id, owner_id, name, platform, source_url, google_place_id)
+values ('99999999-9999-4999-8999-999999999995', '99999999-9999-4999-8999-999999999991',
+  'Separate failed target', 'google_maps', 'https://www.google.com/maps/place/Failed', 'ChIJSyntheticPlace');
 set role authenticated;
 set request.jwt.claims to '{"sub":"99999999-9999-4999-8999-999999999991"}';
 do $$ begin
@@ -91,20 +94,20 @@ do $$ begin
 end $$;
 set role service_role;
 do $$ declare reserved jsonb; failed public.ingestion_attempts; begin
-  reserved := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999993', '99999999-9999-4999-8999-999999999991');
+  reserved := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999995', '99999999-9999-4999-8999-999999999991');
   failed := public.finish_ingestion_attempt((reserved->'attempt'->>'id')::uuid,
     '99999999-9999-4999-8999-999999999991', '[]', 0, null, 'PROVIDER_QUOTA');
   assert failed.status = 'failed' and failed.saved_count = 0 and failed.finished_at is not null;
 end $$;
 do $$ declare reserved jsonb; repeated jsonb; begin
-  reserved := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999993', '99999999-9999-4999-8999-999999999991');
+  reserved := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999995', '99999999-9999-4999-8999-999999999991');
   perform public.finish_ingestion_attempt((reserved->'attempt'->>'id')::uuid,
     '99999999-9999-4999-8999-999999999991', '[]', 0, null, 'SUBMISSION_UNCERTAIN');
-  repeated := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999993', '99999999-9999-4999-8999-999999999991');
+  repeated := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999995', '99999999-9999-4999-8999-999999999991');
   assert not (repeated->>'created')::boolean, 'ambiguous paid job was submitted twice';
   assert repeated->'attempt'->>'id' = reserved->'attempt'->>'id';
   perform public.bind_ingestion_job((reserved->'attempt'->>'id')::uuid, '99999999-9999-4999-8999-999999999991', 'recovered-synthetic-job');
-  repeated := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999993', '99999999-9999-4999-8999-999999999991');
+  repeated := public.reserve_ingestion_attempt('99999999-9999-4999-8999-999999999995', '99999999-9999-4999-8999-999999999991');
   assert not (repeated->>'created')::boolean;
   assert repeated->'attempt'->>'status' = 'processing', 'callback did not recover the uncertain attempt';
   assert repeated->'attempt'->>'provider_request_id' = 'recovered-synthetic-job';

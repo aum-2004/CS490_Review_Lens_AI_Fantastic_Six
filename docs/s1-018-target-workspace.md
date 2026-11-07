@@ -1,9 +1,12 @@
 # S1-018 and S1-023 implementation
 
 Implemented locally on `s1-018`, fast-forwarded to merged S1-019 commit `0388c43`.
-Implementation changes remain uncommitted, with no push or remote issue closure.
+Implementation commit `0558509` is published in PR #48. Review corrections are
+subsequent local working changes; issue closure awaits hosted verification.
 The user extended this branch to S1-023 and assigned the
 S1-017 card-badge integration to it. Merged S1-019 is now included and integrated.
+Main through S1-015 commit `e8839ef` was merged in `366dc01`. Successful creation
+now opens the owned workspace with `?created=1` and its required success notice.
 
 ## Workspace and shared UI
 
@@ -98,9 +101,11 @@ evidence under `docs/acceptance/s1-018/`. Required checks are formatting, lint,
 typecheck, Jest, build, database tests and relevant browser tests. The production
 build needs network access for the Inter font download.
 
-Before merge/issue closure: teammate review, the additional authorization/RLS/secret
-review required by the engineering standards, passing PR CI, and the complete
-available original AI-session export are still required. The conversation record
-under `ai-transcripts/` is not represented as a raw complete tool-event export.
+Before merge: teammate review, the additional authorization/RLS/secret review
+required by the engineering standards, passing CI for the corrected head and human
+acceptance are required. Hosted verification is required before issue closure;
+use Refs #18 and Refs #23. The original available dialogue is retained in
+`ai-transcripts/2026-11-06_codex_S1-018-S1-023_original.md`; the review-fix
+continuation must also be linked. These are user/assistant dialogue, not raw tool traces.
 
 AI assistance: OpenAI Codex. No sub-agents were used.

@@ -1,4 +1,4 @@
-/** Browser-safe result contract. Provider job IDs and source identity evidence remain server-side. */
+/** UI/API summary omits job IDs. Owners can read their bindings through RLS-protected SELECT. */
 export type IngestionState = "not_ingested" | "processing" | "succeeded" | "failed";
 export type IdentityBasis = "expected_place_id" | "provider_resolved";
 export interface IngestionSummary {
@@ -23,6 +23,16 @@ export const NO_INGESTION: IngestionSummary = {
 };
 
 const ERRORS: Record<string, string> = {
+  RESULT_LOOKUP_UNAVAILABLE:
+    "We couldn't check this collection right now. Your existing request is saved. Try checking its status again later.",
+  RESULT_WINDOW_EXPIRED:
+    "We couldn't complete this collection within four hours. Nothing new was saved. Contact the project team to reconcile it before another request.",
+  PROVIDER_REJECTED:
+    "The review service rejected this request before collection started. Check the source and try again.",
+  SUBMISSION_NOT_ACCEPTED:
+    "The project team confirmed that this request was not accepted. You can try collection again.",
+  EXPIRED_JOB_RECONCILED:
+    "The project team reconciled the expired request. You can try collection again.",
   JOB_BINDING_PENDING: "Review collection may have started. Check its status before trying again.",
   RECOVERY_NOT_CONFIGURED:
     "Review collection is unavailable while request recovery is being configured. Please try again later.",

@@ -51,6 +51,13 @@ function failureCode(error: unknown): string {
     if (["PROVIDER_TIMEOUT", "PROVIDER_QUOTA", "PROVIDER_UNAVAILABLE"].includes(error.code))
       return error.code;
     if (["NO_REVIEWS", "INSUFFICIENT_REVIEWS"].includes(error.code)) return "NO_REVIEWS";
+    if (
+      ["PROVIDER_AUTH", "PROVIDER_BILLING", "MISSING_API_KEY", "INVALID_RESPONSE"].includes(
+        error.code,
+      )
+    )
+      return "RESULT_LOOKUP_UNAVAILABLE";
+    if (error.code === "PROVIDER_REJECTED") return "PROVIDER_REJECTED";
     if (["BUSINESS_MISMATCH", "IDENTITY_MISSING", "IDENTITY_AMBIGUOUS"].includes(error.code))
       return "SOURCE_IDENTITY_UNVERIFIED";
   }
@@ -98,14 +105,18 @@ export async function beginIngestion(
   } catch (error) {
     const code =
       error instanceof OutscraperError &&
-      [
-        "PROVIDER_QUOTA",
-        "PROVIDER_AUTH",
-        "PROVIDER_BILLING",
-        "MISSING_API_KEY",
-        "INVALID_PLACE_ID",
-      ].includes(error.code)
-        ? failureCode(error)
+      (error.submissionRejected ||
+        [
+          "PROVIDER_QUOTA",
+          "PROVIDER_AUTH",
+          "PROVIDER_BILLING",
+          "MISSING_API_KEY",
+          "INVALID_PLACE_ID",
+          "INVALID_SOURCE_URL",
+        ].includes(error.code))
+        ? error.code === "PROVIDER_QUOTA"
+          ? "PROVIDER_QUOTA"
+          : "PROVIDER_REJECTED"
         : "SUBMISSION_UNCERTAIN";
     const failed = await deps.writer.finish(reserved.attempt.id, ownerId, [], 0, null, code);
     log("start-failed", code);
@@ -138,7 +149,6 @@ export async function reconcileIngestion(
   await getOwnedTargetOrThrow(client, targetId, ownerId);
   const latest = await getLatestAttempt(client, ownerId, targetId);
   if (!latest || latest.status !== "processing") return summarizeAttempt(latest);
-  if (!deps.storageApproved) throw new IngestionRefreshError("STORAGE_NOT_APPROVED");
   if (!latest.provider_request_id) {
     if (Date.now() - Date.parse(latest.started_at) > 60_000) {
       return summarizeAttempt(await deps.writer.expireUnbound(latest.id, ownerId));
@@ -146,7 +156,9 @@ export async function reconcileIngestion(
     return summarizeAttempt(latest);
   }
   const bound = await getBoundAttempt(client, ownerId, targetId, latest.provider_request_id);
-  if (bound.status !== "processing") return summarizeAttempt(bound);
+  const current = await deps.writer.expireBound(bound.id, ownerId);
+  if (current.status !== "processing") return summarizeAttempt(current);
+  if (!deps.storageApproved) throw new IngestionRefreshError("STORAGE_NOT_APPROVED");
   let extracted: VerifiedExtractedReviews;
   try {
     extracted = await (deps.extract ?? getExtractedReviews)(bound.provider_request_id!, {
@@ -154,12 +166,21 @@ export async function reconcileIngestion(
       googlePlaceId: bound.expected_place_id,
     });
   } catch (error) {
-    const code = failureCode(error);
-    log("result-failed", code);
-    if (
-      !(error instanceof OutscraperError) ||
-      ["PROVIDER_TIMEOUT", "PROVIDER_QUOTA", "PROVIDER_UNAVAILABLE"].includes(error.code)
-    ) {
+    const terminal =
+      error instanceof OutscraperError &&
+      [
+        "PROVIDER_FAILED",
+        "BUSINESS_MISMATCH",
+        "IDENTITY_MISSING",
+        "IDENTITY_AMBIGUOUS",
+        "NO_REVIEWS",
+        "INSUFFICIENT_REVIEWS",
+      ].includes(error.code);
+    const category = failureCode(error);
+    const code =
+      !terminal && category === "INGESTION_FAILED" ? "RESULT_LOOKUP_UNAVAILABLE" : category;
+    log("result-lookup", code);
+    if (!terminal) {
       throw new IngestionRefreshError(code);
     }
     return summarizeAttempt(await deps.writer.finish(bound.id, ownerId, [], 0, null, code));

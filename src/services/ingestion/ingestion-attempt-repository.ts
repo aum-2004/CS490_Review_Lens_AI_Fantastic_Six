@@ -150,6 +150,11 @@ export function createIngestionAttemptWriter(admin: SupabaseClient) {
         p_attempt_id: attemptId,
         p_owner_id: ownerId,
       }),
+    expireBound: (attemptId: string, ownerId: string) =>
+      rpc<IngestionAttemptRow>("expire_bound_ingestion_attempt", {
+        p_attempt_id: attemptId,
+        p_owner_id: ownerId,
+      }),
     finish: (
       attemptId: string,
       ownerId: string,
