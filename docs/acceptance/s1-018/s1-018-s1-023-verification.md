@@ -1,5 +1,29 @@
 # S1-018 / S1-023 local verification
 
+## Latest §7 security follow-up to e69f084
+
+625 tests across 47 Jest suites, all 22 Edge browser tests, all nine SQL files across
+five migrations, lint, formatting, typecheck and production build passed locally.
+Private server configuration identifiers were absent from browser-delivered JS.
+The isolated PGlite mutation baseline passed; all eight weakened variants failed:
+browser deletion restriction, each attempt/parent owner predicate in both expiry
+RPCs, owner reservation cap, completion review count and completion JSON byte cap.
+Existing tests also cover authenticated denial of operator-note columns.
+
+New SQL coverage proves uncertain/succeeded targets cannot be deleted by owners,
+audit/review rows survive, expiry RPCs reject foreign owners, owner budgets are
+isolated and age out after 24 hours, and oversized completions insert no partial
+reviews. Unit coverage exercises actual streamed-body limits, malformed/lying
+lengths, provider business-name NUL cleaning, safe cap mapping, retained accepted
+job holds and disabled refresh before database/provider work.
+
+All provider responses were synthetic. No paid job, real provider storage, hosted
+migration, commit, push or GitHub edit was performed. Local PGlite verification does
+not replace native PostgreSQL CI. The next published head needs fresh CI and §7
+security re-review, with all three ingestion migrations, recovery configuration and
+recorded storage approval required before live use. Keep Refs #18 / Refs #23 until
+hosted verification. See docs/pr-48-security-review-response.md for the local reply.
+
 Original verification: 2026-11-06, America/New_York. Branch: `s1-018`.
 PR #48 baseline: implementation `0558509`, published; CI #112 was independently
 verified green through GitHub's check-runs API, including PostgreSQL. Main through S1-015 `e8839ef` was then integrated

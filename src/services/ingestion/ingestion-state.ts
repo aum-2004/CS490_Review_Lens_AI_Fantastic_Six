@@ -23,6 +23,10 @@ export const NO_INGESTION: IngestionSummary = {
 };
 
 const ERRORS: Record<string, string> = {
+  INGESTION_START_LIMIT:
+    "Your review collection limit has been reached. Please try again later or contact the project team.",
+  INGESTION_RESULT_LIMIT:
+    "The review service result exceeds our collection limits. Nothing new was saved. Contact the project team to reconcile this request.",
   RESULT_LOOKUP_UNAVAILABLE:
     "We couldn't check this collection right now. Your existing request is saved. Try checking its status again later.",
   RESULT_WINDOW_EXPIRED:

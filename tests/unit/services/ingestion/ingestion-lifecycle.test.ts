@@ -9,6 +9,7 @@ import {
 import { OutscraperError, startOutscraperExtraction } from "@/services/ingestion/outscraper-client";
 import { getExtractedReviews } from "@/services/ingestion/outscraper-service";
 import { ingestionErrorMessage } from "@/services/ingestion/ingestion-state";
+import { IngestionLimitError } from "@/services/ingestion/ingestion-limits";
 
 jest.mock("@/services/analysis-targets/target-ownership", () => ({
   getOwnedTargetOrThrow: jest.fn(),
@@ -118,6 +119,43 @@ it("does not pay twice when an attempt is already active", async () => {
   await beginIngestion({} as never, "user-a", "target-a", deps);
   expect(deps.start).not.toHaveBeenCalled();
 });
+it("does not call the paid provider after the owner budget is exhausted", async () => {
+  const deps = dependencies();
+  deps.writer.reserve.mockRejectedValue(new IngestionLimitError("INGESTION_START_LIMIT"));
+  await expect(beginIngestion({} as never, "user-a", "target-a", deps)).rejects.toMatchObject({
+    code: "INGESTION_START_LIMIT",
+  });
+  expect(deps.start).not.toHaveBeenCalled();
+  expect(deps.writer.bind).not.toHaveBeenCalled();
+});
+it("preserves an accepted job when result size limits reject a lookup", async () => {
+  const deps = dependencies();
+  deps.extract.mockRejectedValue(new IngestionLimitError("INGESTION_RESULT_LIMIT"));
+  await expect(reconcileIngestion({} as never, "user-a", "target-a", deps)).rejects.toMatchObject({
+    code: "INGESTION_RESULT_LIMIT",
+  });
+  expect(deps.writer.finish).not.toHaveBeenCalled();
+  deps.writer.reserve.mockResolvedValue({ attempt, created: false });
+  await beginIngestion({} as never, "user-a", "target-a", deps);
+  expect(deps.start).not.toHaveBeenCalled();
+});
+it("cleans the verified business name before sending it to persistence", async () => {
+  const deps = dependencies();
+  deps.extract.mockResolvedValue({
+    ...completed,
+    businessName: "Syn\u0000thetic",
+    identity: { ...completed.identity, businessName: "Syn\u0000thetic" },
+  });
+  await reconcileIngestion({} as never, "user-a", "target-a", deps);
+  expect(deps.writer.finish).toHaveBeenCalledWith(
+    "attempt-a",
+    "user-a",
+    expect.any(Array),
+    0,
+    expect.objectContaining({ businessName: "Synthetic" }),
+    null,
+  );
+});
 it("does not start another run for a successfully ingested target", async () => {
   const deps = dependencies();
   deps.writer.reserve.mockResolvedValue({
@@ -174,13 +212,12 @@ it.each([401, 402, 403, 404, 502, "invalid-json", "missing-key"])(
     const previousKey = process.env.OUTSCRAPER_API_KEY;
     try {
       process.env.OUTSCRAPER_API_KEY = "synthetic-test-key";
-      const provider = jest.fn().mockResolvedValue({
-        ok: failure === "invalid-json",
-        status: typeof failure === "number" ? failure : 200,
-        json: async () => {
-          throw new SyntaxError("synthetic invalid JSON");
-        },
-      });
+      const provider = jest.fn().mockImplementation(
+        async () =>
+          new Response("invalid JSON", {
+            status: typeof failure === "number" ? failure : 200,
+          }),
+      );
       await beginIngestion({} as never, "user-a", "target-a", deps);
       if (failure === "missing-key") delete process.env.OUTSCRAPER_API_KEY;
       deps.extract.mockImplementationOnce(

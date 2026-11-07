@@ -75,6 +75,15 @@ begin
   if p_error_code is null then
     if attempt.provider_request_id is null or jsonb_array_length(p_reviews) = 0 or p_identity is null
       then raise exception 'Missing verified completion'; end if;
+    -- Match the provider request's 30-review limit and the protected review API's
+    -- field sizes. This is independent of HTTP/app validation and commits nothing on breach.
+    if jsonb_array_length(p_reviews) > 30 or octet_length(p_reviews::text) > 2097152
+      or octet_length(p_identity::text) > 16384 or char_length(p_identity->>'businessName') > 200
+      or exists (select 1 from jsonb_array_elements(p_reviews) r where
+        char_length(r->>'text') > 10000 or char_length(r->>'reviewer_name') > 200
+        or char_length(r->>'source_review_id') > 256 or char_length(r->>'review_url') > 2048
+        or char_length(r->>'review_date') > 64 or octet_length((r->'source_metadata')::text) > 16384)
+      then raise exception 'INGESTION_RESULT_LIMIT' using errcode = '22023'; end if;
     if jsonb_typeof(p_identity->'placeId') is distinct from 'string'
       or p_identity->>'placeId' !~ '^ChIJ[A-Za-z0-9_-]+$'
       or jsonb_typeof(p_identity->'businessName') is distinct from 'string'

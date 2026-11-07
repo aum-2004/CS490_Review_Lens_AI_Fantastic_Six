@@ -788,3 +788,103 @@ verification; the next published head needs fresh CI and independent section 7
 security review. No requested fix was declined and normative standards were not
 silently changed; availability-aware copy/single workspace badge follow the explicit
 review directions accepted by the user.
+
+## Assistant (final_answer) — 2026-11-07T19:28:44.934Z
+
+Fixed all requested items, including the optional polling improvement:
+
+- Restricted operator-note columns and added SQL regression tests.
+- Corrected creation messages, cleared the URL marker, and removed the duplicate badge.
+- Added account/configuration error feedback and bounded polling retries.
+- Redacted local-user paths and updated the PR description for baseline `4e0ff89`.
+
+Passed: **608 unit tests, 22 browser tests, eight SQL files**, lint, formatting, typecheck, and production build.
+
+[PR response comment draft](../docs/pr-48-review-response.md) · [Updated PR description](../docs/pr-48-description.md)
+
+Everything remains local and uncommitted. Nothing was pushed or posted to GitHub. Keep `Refs #18` / `Refs #23`; fresh CI and the separate security review remain required after publication.
+
+## User — 2026-11-07T20:57:11.739Z
+
+# Context from my IDE setup:
+
+## Active file: docs/pr-48-review-response.md
+
+## Active selection of the file:
+Addressed the review of **4e0ff89** in the local follow-up changes:
+
+1. **Operator-note privacy:** replaced authenticated table-wide SELECT with an
+   explicit lifecycle/binding column allowlist. resolution_reference and
+   resolved_at are excluded. SQL tests verify owner reads are denied, ordinary
+   status/binding reads still work, and service_role retains recovery access.
+2. **Description:** updated the local PR description to identify 4e0ff89 and these
+   follow-up corrections. Removed the stale unpublished-baseline/head claim and
+   CI #112 references; fresh CI is required for the next published head.
+3. **Workspace copy and marker:** creation suggests starting ingestion only when
+   available; otherwise it confirms creation without a start invitation. Empty
+   reviews no longer say to start a disabled operation. created=1 is consumed
+   with history replacement, preserving other parameters/hash; the notice does
+   not replay after reload and is hidden after ingestion succeeds.
+4. **Missing SQL regressions:** tests now check the operator resolution state guard
+   and directly attempt an insert that must be blocked by an expired hold's
+   unique-index entry. Mutation probes reject removing either safeguard, including
+   the status-only predicate, and reject restoring owner access to operator notes.
+5. **Single badge:** one shared status badge appears in the workspace header;
+   the panel keeps its processing/error/count feedback without a duplicate badge.
+6. **Transcript privacy:** replaced local-user paths in all three affected files
+   with repository-relative paths or explicit privacy placeholders.
+7. **Account/configuration errors:** submission PROVIDER_AUTH, PROVIDER_BILLING and
+   MISSING_API_KEY now explain that the service account/configuration needs
+   attention, without blaming the saved source.
+8. **Optional polling improvement:** five-second normal checks, automatic retries
+   after ten and twenty seconds, then manual status retry. These only refresh the
+   existing bound job. Successful checks clear transient lookup feedback.
+
+**Validation:** 608 tests / 46 Jest suites, all 22 local Edge browser tests, all
+eight SQL files across four migrations, lint, formatting, typecheck and production
+build passed. The SQL mutation baseline passed and all four targeted weakened
+variants were rejected. Provider data is synthetic; no paid calls were made.
+
+Refs #18
+Refs #23
+## Open tabs:
+- pr-48-review-response.md: docs/pr-48-review-response.md
+- pr-48-description.md: docs/pr-48-description.md
+
+## My request:
+Security review results, please add this fixes alongside a small PR comment description describing the changes made. Do not push anything to git.
+"Hi Melissa, I finished the §7 security review on PR #48 (e69f084). Nice work: it held up to a lot of probing. The RPCs can't be called by browser users, two simultaneous starts only create one job, a browser-sent job ID is ignored, the provider key never reaches the browser, and all your test counts matched when I ran them.
+
+I'm requesting changes for two blockers, both small fixes:
+
+Deleting a target undoes the duplicate-charge hold. ingestion_attempts is on delete cascade, and signed-in users can delete their own targets through the Supabase API. So someone can delete a target that's held as "uncertain" or "succeeded", re-create it, and start a new paid job, and that also wipes the audit rows the runbook relies on. Easiest fix: revoke DELETE on analysis_targets from authenticated (we don't have a delete route), or add a trigger that blocks deletion while a hold exists. Please add a SQL test for it.
+Two owner checks have no test. Removing the owner check from expire_bound_ingestion_attempt or expire_unbound_ingestion_attempt still passes every test. A foreign-owner no_data_found assertion for each, like the ones you have for reserve, finish and resolve, would fix it.
+Should-fix before anyone turns on INGESTION_ENABLED: a per-user cap on paid starts, size and count limits on provider results (the DB accepted about 50 MB in one finish), an INGESTION_ENABLED check on the refresh route, and NUL-cleaning of the provider business name. Once the two blockers are fixed I'll re-run the mutation and SQL checks. I can send you the full write"
+
+## Assistant (commentary) — 2026-11-07T20:57:33.180Z
+
+I’ll fix both blockers and the four safeguards requested before live ingestion: a per-user start cap, provider-result limits, a refresh feature gate, and business-name NUL cleaning. I’ll add regressions, draft a short PR comment locally, and won’t commit or push anything.
+
+## Assistant (commentary) — 2026-11-07T21:01:00.219Z
+
+I’ll use conservative limits: at most five ingestion reservations per owner in a rolling 24 hours, a 2 MiB streamed result body, and 30 reviews per completion. Rejected and uncertain reservations will count toward the cap so errors cannot refund the budget. Deleting targets will be disabled for browser users, and business names will use the existing PostgreSQL-safe text cleaner.
+
+## Assistant (commentary) — 2026-11-07T21:08:53.286Z
+
+The new unit tests pass, and all nine SQL test files now pass across five migrations. Legacy tests that expected browser deletion were updated to assert denial while still testing administrative cascades. The new SQL coverage checks both expiry owner guards, audit preservation for uncertain/succeeded targets, owner-budget isolation, and rejection of oversized completions without partial inserts.
+
+## Assistant (commentary) — 2026-11-07T21:15:38.912Z
+
+All 22 browser tests passed. The SQL mutation checks also caught all eight weakened safeguards, including each expiry owner check and the deletion restriction. I’m finishing the production build and updating the recovery instructions and local PR comment.
+
+## Assistant (commentary) — 2026-11-07T21:17:09.765Z
+
+The production build passed. Both blockers and all four before-enable safeguards are now implemented locally, with no requested fix declined. The PR comment and recovery instructions are drafted; I’m checking the transcript and final diff before handing them back.
+
+## Security follow-up execution record — 2026-11-07
+
+Reviewed e69f084 and implemented both security blockers and all four before-enable safeguards. Revoked browser target DELETE and removed its policy; added independent attempt/parent ownership assertions for both expiry RPCs. Added a serialized five-reservation per-owner rolling-24-hour cap, streamed 2 MiB result limit, 30-review completion and field/identity/metadata limits in application and SQL, disabled-refresh gate and business-name NUL cleaning. Accepted oversized results preserve the bound job/hold without partial insertion. No requested fix was declined.
+
+Validation: 625 tests / 47 Jest suites, 22 Edge browser tests, nine SQL files across five migrations, lint, formatting, typecheck and production build passed. The SQL mutation baseline passed; all eight weakened variants were rejected. Private configuration identifiers were absent from browser JS. Legacy browser-delete assertions were corrected to expect denial while administrative cascade coverage remains. Several documentation patch attempts had unmatched context and were reapplied with exact contexts; no unrelated edits resulted. Python was unavailable, so transcript retention used Node. Original messages are retained above with the existing path/identifier/whitespace privacy transformations.
+
+Updated documentation and prepared docs/pr-48-security-review-response.md locally. No commit, push, GitHub edit/comment, hosted migration, paid call or real provider storage. Live flags remain off; fresh native PostgreSQL CI, separate section 7 re-review and hosted verification remain outstanding. Keep Refs #18 / Refs #23.

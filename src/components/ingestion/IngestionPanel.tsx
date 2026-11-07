@@ -223,5 +223,6 @@ const responseErrorMessages = new Set(
     "PROVIDER_UNAVAILABLE",
     "INGESTION_FAILED",
     "RESULT_LOOKUP_UNAVAILABLE",
+    "INGESTION_RESULT_LIMIT",
   ].map(ingestionErrorMessage),
 );

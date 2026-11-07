@@ -10,6 +10,14 @@ Main through S1-015 commit `e8839ef` was subsequently merged into this branch in
 
 ## Submission
 
+The latest reviewed baseline is `e69f084`. Its local security follow-up prevents
+browser deletion from erasing billing holds/audit, tests both expiry ownership
+predicates, caps reservations at five per owner per rolling 24 hours, bounds result
+transport/completion, gates refresh on INGESTION_ENABLED and cleans business-name
+NULs. See the recovery runbook and local PR security-review response. These changes
+have not been committed or pushed by this follow-up; fresh CI and §7 re-review remain
+required.
+
 One POST route owns submission. It authenticates, applies the existing live/storage/
 recovery gates, and invokes S1-023 beginIngestion. Ownership and stored source input
 are checked before a database reservation. Only a newly reserved attempt may call

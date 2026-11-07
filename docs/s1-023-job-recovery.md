@@ -38,6 +38,28 @@ its active-submission lock. Restoring approval resumes that same job.
 
 ## Configuration before enabling live ingestion
 
+Apply all three ingestion migrations, including
+`20261107020000_enforce_ingestion_safety_limits.sql`. Browser users cannot DELETE
+analysis_targets, so deleting a target cannot erase its billing hold or audit rows.
+Administrative deletion remains privileged and must not be used to bypass recovery.
+
+The database permits at most five reservations per owner in a rolling 24 hours,
+serialized across different targets. Rejected and uncertain submissions also count;
+operator release does not refund a reservation. Existing held/succeeded attempts
+remain readable/idempotent at the limit. Do not delete audit rows to reset it.
+
+Provider result bodies are streamed with a 2 MiB ceiling. Completion accepts at
+most 30 reviews, bounded review fields and metadata, and a bounded business identity;
+the completion RPC independently enforces limits before inserting anything.
+INGESTION_RESULT_LIMIT preserves the accepted binding and submission hold and saves
+no partial batch. Investigate the provider result and storage limits with the project
+team; starting another paid job is not a recovery step.
+
+When INGESTION_ENABLED is off, refresh returns INGESTION_DISABLED before any
+database/provider reconciliation. Read-only status remains available and signed
+callbacks can still recover bindings. Restore the approved configuration before
+resuming the same job, subject to its existing deadline.
+
 - INGESTION_CALLBACK_ORIGIN must be the stable, publicly reachable HTTPS application
   origin, without credentials, path, query or fragment. Keep the old endpoint
   reachable for outstanding jobs if changing domains.

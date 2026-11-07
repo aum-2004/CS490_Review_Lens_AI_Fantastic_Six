@@ -10,11 +10,12 @@ Main through S1-015 commit `e8839ef` was merged in `366dc01`. Successful creatio
 now opens the owned workspace with `?created=1` and an availability-aware success
 notice. The marker is consumed after display; reload does not replay it.
 
-The latest review baseline is `4e0ff89`; subsequent local changes restrict operator
-columns, remove conflicting creation/empty-review copy and the duplicate workspace
-badge, improve polling/account feedback, add SQL regressions and redact transcript
-paths. Current PR text and response are prepared locally only; no GitHub operation
-was performed in this follow-up.
+The latest review baseline is `e69f084`, which includes the normal-review privacy,
+copy, badge, polling and transcript corrections. Subsequent local security fixes
+revoke browser target deletion, test both expiry owner guards, cap owner reservations
+and provider results, gate refresh, and clean business-name NULs. Current PR text
+and security response are prepared locally only; no GitHub operation was performed
+in this follow-up.
 
 ## Workspace and shared UI
 

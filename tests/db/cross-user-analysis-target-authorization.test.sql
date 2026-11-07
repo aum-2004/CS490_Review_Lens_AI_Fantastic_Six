@@ -87,10 +87,10 @@ begin
     when insufficient_privilege then null;
   end;
 
-  delete from public.analysis_targets
-  where id = current_setting('test.s1_012_target_id')::uuid;
-  get diagnostics affected = row_count;
-  assert affected = 0, 'User B deleted User A''s target by its known id';
+  begin
+    delete from public.analysis_targets where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'browser DELETE unexpectedly permitted';
+  exception when insufficient_privilege then null; end;
 end
 $$;
 \echo 'ok - User B cannot read, update, or delete Target A by its known id'
@@ -126,7 +126,7 @@ $$;
 
 -- An authenticated database role without a verified user identity cannot create, access, or
 -- modify a target. INSERT is rejected by RLS with insufficient_privilege, UPDATE is rejected by
--- the immutable-source privilege boundary, and DELETE remains ownership-filtered by RLS.
+-- the immutable-source privilege boundary. DELETE is now denied to browser users.
 set request.jwt.claims to '';
 
 do $$
@@ -161,10 +161,10 @@ begin
     when insufficient_privilege then null;
   end;
 
-  delete from public.analysis_targets
-  where id = current_setting('test.s1_012_target_id')::uuid;
-  get diagnostics affected = row_count;
-  assert affected = 0, 'a request without a user identity deleted Target A';
+  begin
+    delete from public.analysis_targets where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'browser DELETE unexpectedly permitted';
+  exception when insufficient_privilege then null; end;
 end
 $$;
 \echo 'ok - requests without a verified user identity cannot create, access, or modify targets'
@@ -258,18 +258,18 @@ begin
   assert target.created_at = current_setting('test.s1_012_target_created_at')::timestamptz,
     'a prohibited operation changed Target A''s creation time';
 
-  delete from public.analysis_targets
-  where id = current_setting('test.s1_012_target_id')::uuid;
-  get diagnostics affected = row_count;
-  assert affected = 1, 'User A could not delete the owned target';
-  assert not exists (
+  begin
+    delete from public.analysis_targets where id = current_setting('test.s1_012_target_id')::uuid;
+    raise exception 'owner browser DELETE unexpectedly permitted';
+  exception when insufficient_privilege then null; end;
+  assert exists (
     select 1
     from public.analysis_targets
     where id = current_setting('test.s1_012_target_id')::uuid
-  ), 'User A''s delete was not persisted';
+  ), 'denied deletion removed target/audit context';
 end
 $$;
-\echo 'ok - User A can read and delete, but cannot directly update, the owned target'
+\echo 'ok - User A can read, but cannot directly update or delete, the owned target'
 
 reset role;
 rollback;

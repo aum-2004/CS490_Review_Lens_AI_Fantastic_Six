@@ -577,7 +577,7 @@ describe("POST /api/analysis-targets/[targetId]/ingestion", () => {
 
     expect(startOutscraperExtraction).not.toHaveBeenCalled();
     expect(getOutscraperResult).not.toHaveBeenCalled();
-    expect(getExtractedReviews).not.toHaveBeenCalled();
+    expect(getOutscraperResult).not.toHaveBeenCalled();
     expect(normalizeBatch).not.toHaveBeenCalled();
     expect(tablesTouched()).not.toContain("reviews");
     expect(tables).toEqual(before);
@@ -760,6 +760,17 @@ describe("durable ingestion status and result reconciliation", () => {
     expect(result.status).toBe(503);
     expect(startOutscraperExtraction).not.toHaveBeenCalled();
     expect(createIngestionAdminClient).not.toHaveBeenCalled();
+  });
+  it("also disables refresh before any provider or privileged work", async () => {
+    signInAs(USER_A);
+    useDatabase();
+    delete process.env.INGESTION_ENABLED;
+    const result = await refresh(TARGET_A);
+    expect(result.status).toBe(503);
+    expect((await result.json()).error.code).toBe("INGESTION_DISABLED");
+    expect(getExtractedReviews).not.toHaveBeenCalled();
+    expect(createIngestionAdminClient).not.toHaveBeenCalled();
+    expect(createSupabaseServerClient).not.toHaveBeenCalled();
   });
   it("requires both storage approval and its evidence reference", async () => {
     signInAs(USER_A);

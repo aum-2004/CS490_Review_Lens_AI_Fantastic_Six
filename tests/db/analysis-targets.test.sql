@@ -119,9 +119,10 @@ begin
     when insufficient_privilege then null;
   end;
 
-  delete from public.analysis_targets where id = current_setting('test.target_a')::uuid;
-  get diagnostics affected = row_count;
-  assert affected = 0, 'User B deleted User A''s target';
+  begin
+    delete from public.analysis_targets where id = current_setting('test.target_a')::uuid;
+    raise exception 'browser DELETE unexpectedly permitted';
+  exception when insufficient_privilege then null; end;
 end
 $$;
 \echo 'ok - User B cannot update or delete User A''s target'

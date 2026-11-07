@@ -9,6 +9,7 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { startOutscraperExtraction } from "@/services/ingestion/outscraper-client";
 import { NextRequest, NextResponse } from "next/server";
+import { IngestionLimitError } from "@/services/ingestion/ingestion-limits";
 
 jest.mock("@/services/auth/access-control", () => ({ requireApiUser: jest.fn() }));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
@@ -63,6 +64,19 @@ const mockWriter = { reserve: jest.fn(), bind: jest.fn(), finish: jest.fn() };
 function context() {
   return { params: Promise.resolve({ targetId: TARGET_ID }) };
 }
+
+it("returns safe 429 feedback before a paid start when the owner cap is reached", async () => {
+  mockWriter.reserve.mockRejectedValueOnce(new IngestionLimitError("INGESTION_START_LIMIT"));
+  const response = await POST(
+    new NextRequest("http://localhost/api/analysis-targets/" + TARGET_ID + "/ingestion", {
+      method: "POST",
+    }),
+    context(),
+  );
+  expect(response.status).toBe(429);
+  expect((await response.json()).error.code).toBe("INGESTION_START_LIMIT");
+  expect(startOutscraperExtraction).not.toHaveBeenCalled();
+});
 
 beforeEach(() => {
   jest.clearAllMocks();

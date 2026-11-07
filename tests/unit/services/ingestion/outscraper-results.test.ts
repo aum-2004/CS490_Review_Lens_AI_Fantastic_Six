@@ -1,3 +1,4 @@
+/** @jest-environment node */
 import { getOutscraperResult } from "@/services/ingestion/outscraper-client";
 
 describe("Outscraper result retrieval", () => {
@@ -17,11 +18,12 @@ describe("Outscraper result retrieval", () => {
   });
 
   function mockFetchResponse(status: number, body: unknown = {}) {
-    return jest.fn().mockResolvedValue({
-      ok: status >= 200 && status < 300,
-      status,
-      json: jest.fn().mockResolvedValue(body),
-    });
+    return jest
+      .fn()
+      .mockImplementation(
+        async () =>
+          new Response([204, 205, 304].includes(status) ? null : JSON.stringify(body), { status }),
+      );
   }
 
   it("returns pending while processing", async () => {

@@ -21,6 +21,7 @@ import {
   ingestionStorageApproved,
 } from "@/services/ingestion/ingestion-runtime";
 import { ingestionErrorMessage } from "@/services/ingestion/ingestion-state";
+import { IngestionLimitError } from "@/services/ingestion/ingestion-limits";
 import { errorResponse, logFailure, successResponse, targetNotFoundResponse } from "../responses";
 
 export async function GET(
@@ -77,6 +78,12 @@ export async function POST(
     if (error instanceof TargetNotFoundError) return targetNotFoundResponse();
     if (error instanceof IngestionBindingPendingError)
       return errorResponse(503, error.code, error.message);
+    if (error instanceof IngestionLimitError)
+      return errorResponse(
+        error.code === "INGESTION_START_LIMIT" ? 429 : 503,
+        error.code,
+        error.message,
+      );
     if (error instanceof IngestionGateError)
       return errorResponse(
         error.code === "SOURCE_NOT_CONFIGURED" ? 422 : 503,

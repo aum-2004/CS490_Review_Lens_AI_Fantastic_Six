@@ -7,7 +7,8 @@ import {
   IngestionRefreshError,
 } from "@/services/ingestion/ingestion-lifecycle";
 import { ingestionErrorMessage } from "@/services/ingestion/ingestion-state";
-import { ingestionDependencies } from "@/services/ingestion/ingestion-runtime";
+import { ingestionDependencies, ingestionEnabled } from "@/services/ingestion/ingestion-runtime";
+import { IngestionLimitError } from "@/services/ingestion/ingestion-limits";
 import {
   errorResponse,
   logFailure,
@@ -22,6 +23,8 @@ export async function POST(
 ) {
   const auth = await requireApiUser();
   if (auth.response) return auth.response;
+  if (!ingestionEnabled())
+    return errorResponse(503, "INGESTION_DISABLED", ingestionErrorMessage("INGESTION_DISABLED"));
   const { targetId } = await ctx.params;
   try {
     const client = await createSupabaseServerClient(true);
@@ -34,7 +37,7 @@ export async function POST(
     return successResponse(200, result);
   } catch (error) {
     if (error instanceof TargetNotFoundError) return targetNotFoundResponse();
-    if (error instanceof IngestionRefreshError)
+    if (error instanceof IngestionRefreshError || error instanceof IngestionLimitError)
       return errorResponse(503, error.code, ingestionErrorMessage(error.code));
     logFailure("refresh-ingestion", error);
     return errorResponse(

@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NO_INGESTION, type IngestionSummary, type IdentityBasis } from "./ingestion-state";
 import type { VerifiedBusinessIdentity } from "./outscraper-client";
+import { IngestionLimitError } from "./ingestion-limits";
 
 export interface IngestionAttemptRow {
   id: string;
@@ -121,6 +122,10 @@ export async function getTargetIngestionSummaries(
 export function createIngestionAttemptWriter(admin: SupabaseClient) {
   async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
     const { data, error } = await admin.rpc(name, args);
+    if (error?.code === "P0001" && error.message === "INGESTION_START_LIMIT")
+      throw new IngestionLimitError("INGESTION_START_LIMIT");
+    if (error?.code === "22023" && error.message === "INGESTION_RESULT_LIMIT")
+      throw new IngestionLimitError("INGESTION_RESULT_LIMIT");
     if (error || !data) throw new IngestionPersistenceError();
     return data as T;
   }

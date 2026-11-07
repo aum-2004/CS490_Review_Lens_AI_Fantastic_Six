@@ -17,6 +17,8 @@ import { getExtractedReviews, type VerifiedExtractedReviews } from "./outscraper
 import { OutscraperError, startOutscraperExtraction } from "./outscraper-client";
 import { submitReviewSource, type SubmittedReviewSource } from "./submit-review-source";
 import { validateAnalysisTargetInput } from "@/lib/validation/analysis-target";
+import { assertIngestionResultWithinLimits, IngestionLimitError } from "./ingestion-limits";
+import { toStorableText } from "@/services/reviews/storable-text";
 
 export interface IngestionDependencies {
   writer: ReturnType<typeof createIngestionAttemptWriter>;
@@ -168,6 +170,7 @@ export async function reconcileIngestion(
       googlePlaceId: bound.expected_place_id,
     });
   } catch (error) {
+    if (error instanceof IngestionLimitError) throw new IngestionRefreshError(error.code);
     const terminal =
       error instanceof OutscraperError &&
       [
@@ -188,9 +191,18 @@ export async function reconcileIngestion(
     return summarizeAttempt(await deps.writer.finish(bound.id, ownerId, [], 0, null, code));
   }
   if (extracted.status === "pending") return summarizeAttempt(bound);
+  extracted = {
+    ...extracted,
+    businessName: toStorableText(extracted.businessName).trim(),
+    identity: {
+      ...extracted.identity,
+      businessName: toStorableText(extracted.identity.businessName).trim(),
+    },
+  };
   // A result must match an expected Place ID when one existed at submission. For URL jobs,
   // retain provider-resolved identity as provenance, never as independent source-URL proof.
   if (
+    !extracted.identity.businessName ||
     extracted.identity.placeId !== extracted.placeId ||
     (bound.query_kind === "place_id" &&
       (!bound.expected_place_id || extracted.placeId !== bound.expected_place_id))
@@ -229,6 +241,7 @@ export async function reconcileIngestion(
     review_url: review.reviewUrl ?? null,
     source_metadata: sanitizeMetadata(review.sourceMetadata) ?? null,
   }));
+  assertIngestionResultWithinLimits(rows, extracted.identity);
   // Atomic review insert + result state; duplicate polling cannot save a completed attempt twice.
   const completed = await deps.writer.finish(
     bound.id,

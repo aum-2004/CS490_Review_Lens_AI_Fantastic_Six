@@ -101,6 +101,23 @@ identity and must not describe URL-query consistency alone as proof of source-UR
 
 ## S1-023 provider-job binding implementation
 
+Security follow-up to e69f084: browser DELETE on analysis_targets is revoked, so
+owners cannot cascade away billing holds or audit records. A server-only database
+budget serializes reservations per owner and permits at most five in a rolling
+24 hours; rejected/uncertain reservations are conservatively counted. Existing
+held/successful attempts are returned before applying the new-reservation cap.
+Start-limit feedback is safe HTTP 429 and no provider call follows a denied reservation.
+
+Provider result bodies are streamed with a 2 MiB maximum before parsing. Only
+30 reviews may complete an attempt. App and SQL checks independently enforce
+2 MiB completion JSON, 10,000-character text, 200-character reviewer/business names,
+256-character source IDs, 2,048-character review URLs, 64-character dates and
+16 KiB metadata/identity budgets. Whole batches are rejected, never silently
+truncated. Oversized lookups retain the existing job hold. The existing
+manual-review API has separate limits; this does not claim to change its Data API grants.
+Business names are made PostgreSQL-safe using the shared NUL/surrogate cleaner.
+Both start and refresh honor INGESTION_ENABLED; read-only status remains available.
+
 The current branch includes merged S1-019 commit `0388c43`. It retains its submission
 service, latest nested identity checks and regression tests, and composes submission
 with S1-023's durable lifecycle. A valid stored source URL is sufficient when no

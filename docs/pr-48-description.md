@@ -9,8 +9,8 @@ Refs #23
 
 Issues remain open until hosted verification is complete.
 
-Reviewed baseline: `4e0ff89`, including the earlier main/S1-015 integration and
-spacing correction. This description also covers the subsequent local reviewer
+Reviewed baseline: `e69f084`, including the earlier main/S1-015 integration,
+spacing correction and normal-review fixes. This description also covers the subsequent local security-review
 fixes listed below; those follow-up changes have not been committed or pushed by
 this agent. Require fresh CI and the separate security review on the next published
 head. No current-head GitHub checks were asserted or changed during this follow-up.
@@ -55,6 +55,16 @@ head. No current-head GitHub checks were asserted or changed during this follow-
   before manual status retry. All checks remain bound-job refreshes, never starts.
 - Redacts local-user paths in the three affected AI transcripts while preserving
   the dialogue with documented privacy replacements.
+- Revokes browser DELETE on analysis_targets, preserving uncertain/succeeded
+  attempts, billing holds and audit rows. No delete route or UI is introduced.
+- Enforces a database-serialized cap of five reservations per owner in a rolling
+  24 hours, including rejected/uncertain reservations. Existing held/completed
+  requests remain idempotent at the cap; new targets do not reset the budget.
+- Bounds provider result transport to 2 MiB before JSON parsing and completion to
+  30 reviews, with normalized field/identity limits and independent SQL guards.
+  Oversized results save nothing and preserve the accepted job's submission hold.
+- Requires INGESTION_ENABLED on refresh as well as start, and cleans NUL/lone
+  surrogate characters from verified provider business names before persistence.
 
 ## Reviewer guidance: include the deferred integrations
 
@@ -108,6 +118,9 @@ Useful test entry points:
 - `tests/db/ingestion-privacy-and-resolution.test.sql`: denied owner reads of
   operator evidence/time, valid allowed-column/status reads, service-role access,
   operator state rejection and direct expired-hold unique-index enforcement.
+- `tests/db/ingestion-security-budget.test.sql`: owner deletion denial without
+  losing holds/audit, foreign-owner expiry denial, cross-target owner budgets,
+  rolling-window/isolation behavior and rejected oversized completions.
 
 ## Additional section 7 security review
 
@@ -121,30 +134,38 @@ remain off by default. Use synthetic provider responses for failure probes; a pa
 provider call or enabling live ingestion is not required for this review.
 Verify operator evidence stays inaccessible to authenticated owners, including
 direct Data API requests; job-ID readability does not imply operator-note access.
+Also probe browser deletion of uncertain/succeeded targets and both expiry owner
+checks. Review per-owner advisory locking, quota accounting across targets and
+the independent stream/app/SQL result limits. Confirm refresh cannot contact the
+provider while the feature flag is off. Use the new mutation/SQL tests for the
+deletion, expiry and persistence boundaries; production paid calls are unnecessary.
 
 ## Validation
 
-Current local follow-up checks on top of reviewed baseline 4e0ff89:
+Current local follow-up checks on top of reviewed baseline e69f084:
 
-- 608 unit tests passed across 46 suites.
+- 625 unit tests passed across 47 suites.
 - All 22 local Edge authentication/creation/workspace browser tests passed.
-- All eight SQL test files passed in isolated PGlite with all four migrations.
+- All nine SQL test files passed in isolated PGlite with all five migrations.
 - New mutation probes passed the baseline and rejected weakened operator-state
   checks, removal of expired-hold index protection and operator-column privacy.
   Prior owner/identity/recovery-read mutation evidence remains in the verification.
+- Security mutation probes additionally reject removal of browser-delete denial,
+  each owner predicate in both expiry RPCs, the owner budget and DB count/byte limits.
 - Formatting, lint, explicit typecheck and production build passed.
 - No current-head CI result is asserted. Require fresh application and native
   PostgreSQL checks on the next published head, plus the separate security review.
 - Tests use synthetic provider data and no paid calls. Local PGlite verification
   does not replace the PR's native PostgreSQL job or hosted acceptance.
-  Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md),
-  [final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md),
-  [recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
+
+Evidence: [verification](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/acceptance/s1-018/s1-018-s1-023-verification.md),
+[final review](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-018-s1-023-final-review.md),
+[recovery runbook](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/s1-018/docs/s1-023-job-recovery.md).
 
 ## Deployment and review requirements
 
-Apply both ingestion migrations, including
-`20261107010000_harden_ingestion_lifecycle.sql`, before using the feature.
+Apply all three ingestion migrations, including
+`20261107020000_enforce_ingestion_safety_limits.sql`, before using the feature.
 INGESTION_ENABLED and provider-review storage approval remain off by default.
 No hosted migration, paid extraction or real provider-review persistence was
 performed in this follow-up. Live use requires recovery configuration and recorded

@@ -1,16 +1,36 @@
 # S1-018 / S1-023 final integration review
 
 Date: 2026-11-07, America/New_York. Branch: s1-018.
-Latest reviewer baseline: 4e0ff89, followed by the local privacy/copy/polling
-corrections documented at the end of this report. Earlier review targets and
+Latest reviewer baseline: e69f084, followed by local security corrections
+documented at the end of this report. Earlier review targets and
 counts below remain historical checkpoints.
-Current review target: e5ce0c3, containing implementation 0558509, main merge
+Earlier integration review target: e5ce0c3, containing implementation 0558509, main merge
 366dc01 and the PR #48 review corrections. Main includes S1-015 e8839ef.
 The fixes are now committed; earlier references to uncommitted corrections below
 are historical descriptions of the preceding implementation turn. This is an implementation review,
 not independent teammate/security approval or hosted acceptance.
 
 ## Requirement coverage
+
+### Security-review follow-up to e69f084
+
+Both blockers and all four before-enable safeguards are implemented locally.
+Browser DELETE and its target policy are removed, preserving billing holds/audit.
+Both expiry RPCs now have foreign-owner and independent attempt/parent-owner SQL
+assertions. A per-owner advisory lock serializes a five-reservation rolling-24-hour
+budget across targets. Provider transport is bounded to 2 MiB; completion is limited
+to 30 reviews with bounded fields/identity/metadata in both application and SQL.
+Oversized accepted results preserve the binding/hold, without partial insertion.
+Refresh requires INGESTION_ENABLED, and provider business names are NUL-cleaned.
+
+Validation: 625 unit tests / 47 suites; 22 Edge browser tests; nine SQL files across
+five migrations; lint, formatting, typecheck and production build passed. Mutation
+baseline passed and eight weakened variants failed: deletion restriction, each of
+four expiry owner predicates, owner cap, completion count and completion byte cap.
+No paid calls, hosted migration, real provider storage, commit, push or GitHub edit.
+This is local implementation evidence, not independent security approval. Fresh
+native PostgreSQL CI and §7 re-review remain required before merge; hosted acceptance
+remains required for issue closure. See docs/pr-48-security-review-response.md.
 
 | Requirement                          | Implementation and evidence                                                                                                                                                                                                                                   |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

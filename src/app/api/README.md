@@ -34,6 +34,16 @@ S1-019's submission service, registers recovery, and saves the job binding befor
 returning its public status summary. Storage approval and recovery configuration
 are separately required; all live gates remain off by default.
 
+The refresh POST also returns `503 INGESTION_DISABLED` when the flag is off, before
+database/provider work. Read-only status GET remains available. New starts are
+limited in the database to five reservations per owner per rolling 24 hours
+(`429 INGESTION_START_LIMIT`); rejected/uncertain reservations still count.
+Provider results have a streamed 2 MiB limit and completion accepts at most 30
+reviews with bounded fields/metadata, independently checked by the completion RPC.
+`503 INGESTION_RESULT_LIMIT` retains an accepted job/hold without partial insertion.
+Browser users cannot DELETE analysis_targets through the Data API; there is no
+target deletion route. This preserves billing holds and the recovery audit.
+
 ### Target child routes (S1-013)
 
 Every route under `/api/analysis-targets/[targetId]/` runs `requireApiUser()`, then
