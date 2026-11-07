@@ -79,6 +79,23 @@ describe("Outscraper result retrieval", () => {
     });
   });
 
+  it.each(["", "   "])("rejects a nested business with a blank name: %j", async (name) => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        {
+          name,
+          place_id: placeId,
+          reviews_data: [{ review_text: "Test review", review_rating: 5 }],
+        },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-1", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "IDENTITY_MISSING" });
+  });
+
   it("rejects reviews from a different business", async () => {
     const fetcher = mockFetchResponse(200, {
       status: "Success",
@@ -197,6 +214,77 @@ describe("Outscraper result retrieval", () => {
       expect(result.reviews[0].review_text).toBe("Test coffee review");
       expect(result.reviews[0].review_rating).toBe(5);
     }
+  });
+
+  it("accepts nested reviews that inherit parent identity fields", async () => {
+    const googleId = "0x89c259190e44dc8b:0x4c6e949e71e57565";
+    const locationLink = "https://www.google.com/maps/place/Cortaditos";
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        {
+          name: "Cortaditos",
+          place_id: placeId,
+          google_id: googleId,
+          location_link: locationLink,
+          reviews_data: [
+            { review_id: "nested-001", review_text: "A" },
+            {
+              review_id: "nested-002",
+              google_id: googleId,
+              location_link: locationLink,
+              review_text: "B",
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-2", placeId, fetcher as unknown as typeof fetch),
+    ).resolves.toMatchObject({
+      status: "completed",
+      identity: { googleId, locationLink },
+      reviews: [{ review_id: "nested-001" }, { review_id: "nested-002" }],
+    });
+  });
+
+  it("rejects a nested child review with a conflicting Google ID", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        {
+          name: "Cortaditos",
+          place_id: placeId,
+          google_id: "google-parent",
+          reviews_data: [{ review_text: "A", google_id: "google-other" }],
+        },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-2", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
+  });
+
+  it("rejects a nested child review with a conflicting location link", async () => {
+    const fetcher = mockFetchResponse(200, {
+      status: "Success",
+      data: [
+        {
+          name: "Cortaditos",
+          place_id: placeId,
+          location_link: "https://www.google.com/maps/place/Cortaditos",
+          reviews_data: [
+            { review_text: "A", location_link: "https://www.google.com/maps/place/Other" },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      getOutscraperResult("test-request-2", placeId, fetcher as unknown as typeof fetch),
+    ).rejects.toMatchObject({ code: "IDENTITY_AMBIGUOUS" });
   });
 
   it("resolves a URL query into one verified provider Place ID", async () => {

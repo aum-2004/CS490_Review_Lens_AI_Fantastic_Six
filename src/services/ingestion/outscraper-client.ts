@@ -392,6 +392,7 @@ export async function getOutscraperResult(
 
   if (
     typeof business.name !== "string" ||
+    !business.name.trim() ||
     !Array.isArray(business.reviews_data) ||
     !business.reviews_data.every(isRecord)
   ) {
@@ -405,19 +406,48 @@ export async function getOutscraperResult(
     throw new OutscraperError("NO_REVIEWS", "No reviews were found for this business.");
   }
 
+  const parentGoogleId = getOptionalIdentityField(business.google_id, "Google ID");
+  const parentLocationLink = getOptionalIdentityField(business.location_link, "location link");
+  const childGoogleIds = business.reviews_data.map((review) =>
+    getOptionalIdentityField(review.google_id, "Google ID"),
+  );
+  const childLocationLinks = business.reviews_data.map((review) =>
+    getOptionalIdentityField(review.location_link, "location link"),
+  );
+
+  if (
+    (parentGoogleId !== undefined &&
+      childGoogleIds.some((googleId) => googleId !== undefined && googleId !== parentGoogleId)) ||
+    uniqueNonEmptyStrings(childGoogleIds).length > 1
+  ) {
+    throw new OutscraperError(
+      "IDENTITY_AMBIGUOUS",
+      "The review provider returned conflicting Google business identifiers.",
+    );
+  }
+
+  if (
+    (parentLocationLink !== undefined &&
+      childLocationLinks.some(
+        (locationLink) => locationLink !== undefined && locationLink !== parentLocationLink,
+      )) ||
+    uniqueNonEmptyStrings(childLocationLinks).length > 1
+  ) {
+    throw new OutscraperError(
+      "IDENTITY_AMBIGUOUS",
+      "The review provider returned conflicting business locations.",
+    );
+  }
+
   return {
     status: "completed",
     businessName: business.name,
     placeId: business.place_id,
     identity: {
       placeId: business.place_id,
-      ...(typeof business.google_id === "string" && business.google_id.trim()
-        ? { googleId: business.google_id }
-        : {}),
+      ...(parentGoogleId ? { googleId: parentGoogleId } : {}),
       businessName: business.name,
-      ...(typeof business.location_link === "string" && business.location_link.trim()
-        ? { locationLink: business.location_link }
-        : {}),
+      ...(parentLocationLink ? { locationLink: parentLocationLink } : {}),
     },
     reviews: business.reviews_data,
   };
@@ -435,4 +465,17 @@ function uniqueNonEmptyStrings(values: unknown[]): string[] {
 
 function isGooglePlaceId(value: string): boolean {
   return GOOGLE_PLACE_ID_PATTERN.test(value);
+}
+
+function getOptionalIdentityField(value: unknown, label: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string") {
+    throw new OutscraperError(
+      "IDENTITY_MISSING",
+      `The review provider returned an invalid ${label}.`,
+    );
+  }
+
+  const normalized = value.trim();
+  return normalized || undefined;
 }
