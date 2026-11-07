@@ -1,19 +1,38 @@
 import "server-only";
 
-import { getOutscraperResult, OutscraperError } from "./outscraper-client";
+import {
+  getOutscraperResult,
+  OutscraperError,
+  type OutscraperExpectedIdentity,
+  type VerifiedBusinessIdentity,
+} from "./outscraper-client";
 import { mapOutscraperReviews } from "./outscraper-adapter";
+
+export type VerifiedExtractedReviews =
+  | { status: "pending" }
+  | {
+      status: "completed";
+      identity: VerifiedBusinessIdentity;
+      businessName: string;
+      placeId: string;
+      reviews: ReturnType<typeof mapOutscraperReviews>;
+    };
+
 /**
  * S1-020: Retrieve Outscraper results and convert
  * them into the field structure used by S1-021.
  *
- * Does not persist reviews or modify AnalysisTargets.
+ * Does not persist reviews or modify AnalysisTargets. S1-022/S1-023 may consume only the
+ * completed result returned here; raw provider payloads and adapter output are not verified
+ * persistence inputs. A pending result has no reviews, and missing, ambiguous, or mismatched
+ * provider identity throws before any review mapping is accepted.
  */
 export async function getExtractedReviews(
   requestId: string,
-  expectedPlaceId: string,
+  expectedIdentity: string | OutscraperExpectedIdentity,
   fetcher?: typeof fetch,
-) {
-  const result = await getOutscraperResult(requestId, expectedPlaceId, fetcher);
+): Promise<VerifiedExtractedReviews> {
+  const result = await getOutscraperResult(requestId, expectedIdentity, fetcher);
 
   if (result.status === "pending") {
     return {
@@ -23,7 +42,7 @@ export async function getExtractedReviews(
 
   const mappedReviews = mapOutscraperReviews(
     result.reviews.map((review) => {
-      if (review.place_id !== undefined && review.place_id !== expectedPlaceId) {
+      if (review.place_id !== undefined && review.place_id !== result.placeId) {
         throw new OutscraperError(
           "BUSINESS_MISMATCH",
           "The provider returned a review for a different business.",
@@ -32,7 +51,7 @@ export async function getExtractedReviews(
 
       return {
         ...review,
-        place_id: review.place_id ?? expectedPlaceId,
+        place_id: review.place_id ?? result.placeId,
       };
     }),
   );
@@ -63,6 +82,7 @@ export async function getExtractedReviews(
     status: "completed" as const,
     businessName: result.businessName,
     placeId: result.placeId,
+    identity: result.identity,
     reviews: usableReviews,
   };
 }
