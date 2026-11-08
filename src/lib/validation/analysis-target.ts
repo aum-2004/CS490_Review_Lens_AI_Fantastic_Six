@@ -16,6 +16,8 @@ const SOURCE_URL_SHORT_LINK_UNSUPPORTED_MESSAGE =
   "Shortened Google Maps links aren't supported yet. Open the full Google Maps URL in your browser and copy it from the address bar.";
 const SOURCE_URL_UNSUPPORTED_PATH_CASE_MESSAGE =
   "Google Maps links must use a lowercase /maps path. Open the business in Google Maps and copy its link again.";
+const SOURCE_URL_BACKSLASH_MESSAGE =
+  "Google Maps links can't contain backslashes. Open the business in Google Maps and copy its link again.";
 
 const GOOGLE_MAPS_HOSTNAMES = new Set(["google.com", "www.google.com", "maps.google.com"]);
 const SHORTENED_GOOGLE_MAPS_HOSTNAMES = new Set(["maps.app.goo.gl"]);
@@ -302,6 +304,12 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
             field: "sourceUrl",
             code: "SOURCE_URL_UNSUPPORTED_PROTOCOL",
             message: SOURCE_URL_INVALID_MESSAGE,
+          });
+        } else if (parsedUrl.href.includes("\\")) {
+          issues.push({
+            field: "sourceUrl",
+            code: "SOURCE_URL_MALFORMED",
+            message: SOURCE_URL_BACKSLASH_MESSAGE,
           });
         } else if (hasUnsupportedMapsPathCasing(parsedUrl)) {
           issues.push({
