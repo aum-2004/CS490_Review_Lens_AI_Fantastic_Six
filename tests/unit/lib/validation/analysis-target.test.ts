@@ -305,6 +305,62 @@ describe("validateAnalysisTargetInput", () => {
       });
     });
 
+    it("continues to accept a normal valid URL without backslashes", () => {
+      expect(validateAnalysisTargetInput({ name: "NJIT", sourceUrl: validSourceUrl })).toEqual({
+        success: true,
+        data: {
+          name: "NJIT",
+          sourceUrl: validSourceUrl,
+          platform: "google_maps",
+        },
+      });
+    });
+
+    it("continues to accept an uppercase maps path on maps.google.com", () => {
+      const sourceUrl = "https://maps.google.com/MAPS/place/NJIT";
+
+      expect(validateAnalysisTargetInput({ name: "NJIT", sourceUrl })).toEqual({
+        success: true,
+        data: {
+          name: "NJIT",
+          sourceUrl,
+          platform: "google_maps",
+        },
+      });
+    });
+
+    it.each([
+      ["query string", String.raw`https://www.google.com/maps/place/NJIT?q=a\b`],
+      ["fragment", String.raw`https://www.google.com/maps/place/NJIT#a\b`],
+    ])("rejects a literal backslash in the %s", (_location, sourceUrl) => {
+      expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
+        {
+          field: "sourceUrl",
+          code: "SOURCE_URL_MALFORMED",
+          message:
+            "Google Maps links can't contain backslashes. Open the business in Google Maps and copy its link again.",
+        },
+      ]);
+    });
+
+    it.each([
+      "https://www.google.com/MAPS/place/NJIT",
+      "https://www.google.com/Maps/place/NJIT",
+      "https://google.com/mApS?place_id=ChIJ123456789",
+    ])(
+      "rejects a case-variant Google Maps path that the database cannot store: %s",
+      (sourceUrl) => {
+        expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
+          {
+            field: "sourceUrl",
+            code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
+            message:
+              "Google Maps links must use a lowercase /maps path. Open the business in Google Maps and copy its link again.",
+          },
+        ]);
+      },
+    );
+
     it.each([
       [
         "missing both slashes",
