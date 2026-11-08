@@ -144,6 +144,70 @@ end
 $$;
 \echo 'ok - the owner RPC writes and returns a valid batch'
 
+-- Reproduce the complete API-to-RPC expansion at the request boundary. JavaScript preserves the
+-- compact 1e-300 representation in the request and normalized Supabase payload; PostgreSQL JSONB
+-- renders those values as full decimals. The resulting metadata remains below its 32 KiB database
+-- limit, but the complete normalized batch exceeds both the old 2 MiB cap and a proposed 4 MiB cap.
+do $$
+declare
+  api_request text;
+  api_review text;
+  app_metadata text;
+  before_count bigint;
+  filler_per_review integer;
+  normalized_rows jsonb;
+  raw_text text := repeat('😀', 4900);
+begin
+  app_metadata := '{"values":[' || rtrim(repeat('1e-300,', 100), ',') || ']}';
+  api_review := '{"text":"' || raw_text
+    || '","rating":5,"reviewDate":"2026-01-01","metadata":' || app_metadata || '}';
+  select '{"reviews":[' || string_agg(api_review, ',') || ']}'
+  into api_request
+  from generate_series(1, 100);
+
+  filler_per_review := (2097151 - octet_length(api_request)) / 100;
+  assert filler_per_review > 0, 'near-limit API fixture is already too large';
+  raw_text := raw_text || repeat('x', filler_per_review);
+  api_review := '{"text":"' || raw_text
+    || '","rating":5,"reviewDate":"2026-01-01","metadata":' || app_metadata || '}';
+  select '{"reviews":[' || string_agg(api_review, ',') || ']}'
+  into api_request
+  from generate_series(1, 100);
+
+  assert octet_length(api_request) between 2097052 and 2097152,
+    'API fixture is not within 100 bytes of MAX_REQUEST_BODY_BYTES';
+  assert char_length(raw_text) <= 10000, 'API review text exceeds its character limit';
+  assert octet_length(app_metadata) <= 16384, 'API metadata exceeds its compact byte limit';
+
+  select jsonb_agg(jsonb_build_object(
+    'review_text', raw.value->>'text',
+    'rating', (raw.value->>'rating')::numeric,
+    'source_review_id', null,
+    'reviewer_name', null,
+    'review_date', '2026-01-01T00:00:00.000Z',
+    'review_url', null,
+    'source_metadata', raw.value->'metadata'
+  ))
+  into normalized_rows
+  from jsonb_array_elements((api_request::jsonb)->'reviews') raw(value);
+
+  assert octet_length((normalized_rows->0->'source_metadata')::text) <= 32768,
+    'normalized metadata exceeds its database limit';
+  assert octet_length(normalized_rows::text) > 4194304,
+    'fixture does not prove that a 4 MiB RPC cap is too small';
+  assert octet_length(normalized_rows::text) <= 8388608,
+    'route-valid fixture exceeds the selected 8 MiB RPC cap';
+
+  select count(*) into before_count from public.reviews;
+  perform public.insert_reviews(
+    '46000000-0000-4000-8000-000000000011', normalized_rows
+  );
+  assert (select count(*) from public.reviews) = before_count + 100,
+    'near-2-MiB API request did not persist its complete normalized batch';
+end
+$$;
+\echo 'ok - a near-2-MiB API request expands beyond 4 MiB and persists through the RPC'
+
 do $$
 declare
   candidate text;
@@ -229,6 +293,57 @@ begin
 end
 $$;
 \echo 'ok - malformed and oversized RPC batches are rejected atomically'
+
+-- All fields in this direct-RPC batch meet their individual limits. A high-scale but in-range
+-- numeric rating makes the serialized batch exceed 8 MiB without relying on an invalid field. If
+-- the aggregate cap is removed, the insert succeeds and the deliberate exception fails this test.
+do $$
+declare
+  before_count bigint;
+  metadata_at_limit jsonb;
+  over_cap_batch jsonb;
+  precise_rating numeric := ('4.' || repeat('0', 1200))::numeric;
+begin
+  metadata_at_limit := jsonb_build_object(
+    'note',
+    repeat('m', 32768 - octet_length(jsonb_build_object('note', '')::text))
+  );
+  select jsonb_agg(jsonb_build_object(
+    'review_text', repeat('😀', 10000),
+    'rating', precise_rating,
+    'source_review_id', repeat('😀', 256),
+    'reviewer_name', repeat('😀', 200),
+    'review_date', '2026-01-01T00:00:00.000Z',
+    'review_url', 'http://' || repeat('😀', 2041),
+    'source_metadata', metadata_at_limit
+  ))
+  into over_cap_batch
+  from generate_series(1, 100);
+
+  assert char_length(over_cap_batch->0->>'review_text') = 10000;
+  assert (over_cap_batch->0->>'rating')::numeric between 1 and 5;
+  assert char_length(over_cap_batch->0->>'source_review_id') = 256;
+  assert char_length(over_cap_batch->0->>'reviewer_name') = 200;
+  assert char_length(over_cap_batch->0->>'review_url') = 2048;
+  assert octet_length((over_cap_batch->0->'source_metadata')::text) = 32768;
+  assert octet_length(over_cap_batch::text) > 8388608,
+    'dedicated aggregate-cap fixture does not exceed 8 MiB';
+
+  select count(*) into before_count from public.reviews;
+  begin
+    perform public.insert_reviews(
+      '46000000-0000-4000-8000-000000000011', over_cap_batch
+    );
+    raise exception 'over-8-MiB batch was accepted';
+  exception
+    when check_violation then
+      assert sqlerrm = 'Invalid review batch', 'a non-aggregate validation rejected the fixture';
+  end;
+  assert (select count(*) from public.reviews) = before_count,
+    'the over-8-MiB batch was partially saved';
+end
+$$;
+\echo 'ok - a field-valid payload over the 8 MiB RPC cap is rejected atomically'
 
 reset role;
 

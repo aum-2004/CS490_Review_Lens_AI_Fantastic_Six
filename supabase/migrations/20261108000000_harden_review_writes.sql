@@ -72,6 +72,10 @@ revoke insert (
   review_url, source_metadata
 ) on table public.reviews from public, anon, authenticated;
 
+comment on policy reviews_insert_own on public.reviews is
+  'Defense in depth if direct INSERT is ever reintroduced; browser roles currently have no '
+  'table or column INSERT privilege and must use insert_reviews.';
+
 create function public.insert_reviews(p_target_id text, p_rows jsonb)
 returns setof public.reviews
 language plpgsql
@@ -97,9 +101,13 @@ begin
     raise exception 'Target unavailable' using errcode = 'P0002';
   end if;
 
+  -- MAX_REQUEST_BODY_BYTES in review-input.ts is 2 MiB before normalization. Mapping to the RPC
+  -- adds null fields and ISO dates, while PostgreSQL JSONB rendering can expand compact metadata.
+  -- Eight MiB accommodates every route-valid batch that still meets the per-field database limits
+  -- while retaining a finite aggregate bound for callers that invoke this RPC directly.
   if jsonb_typeof(p_rows) is distinct from 'array'
     or jsonb_array_length(p_rows) not between 1 and 100
-    or octet_length(p_rows::text) > 2097152 then
+    or octet_length(p_rows::text) > 8388608 then
     raise exception 'Invalid review batch' using errcode = '23514';
   end if;
 
