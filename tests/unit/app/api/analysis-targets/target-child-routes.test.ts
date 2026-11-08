@@ -84,9 +84,8 @@ function reviewRow(id: string, targetId: string, text: string): Row {
 }
 
 /**
- * Minimal in-memory stand-in for the supabase-js query builder: select/eq/order/range/insert and
- * maybeSingle, which is all the repository and review store use. It applies eq filters, so the
- * repository's owner_id filter behaves as it does against Supabase.
+ * Minimal in-memory stand-in for the supabase-js query builder and review insertion RPC. It
+ * applies eq filters, so the repository's owner_id filter behaves as it does against Supabase.
  */
 function useDatabase() {
   const tables: Record<string, Row[]> = {
@@ -145,7 +144,22 @@ function useDatabase() {
     return query;
   });
 
-  jest.mocked(createSupabaseServerClient).mockResolvedValue({ from } as never);
+  const rpc = jest.fn(async (name: string, args: { p_target_id: string; p_rows: Row[] }) => {
+    if (name !== "insert_reviews") {
+      return { data: null, error: { message: `Unexpected RPC: ${name}` } };
+    }
+
+    const created = args.p_rows.map((row) => ({
+      id: `r-new-${nextId++}`,
+      analysis_target_id: args.p_target_id,
+      created_at: "2026-11-06T00:00:00Z",
+      ...row,
+    }));
+    tables.reviews.push(...created);
+    return { data: created, error: null };
+  });
+
+  jest.mocked(createSupabaseServerClient).mockResolvedValue({ from, rpc } as never);
   jest.mocked(createIngestionAdminClient).mockReturnValue({
     rpc: jest.fn(async (name, args) => {
       if (name === "reserve_ingestion_attempt") {

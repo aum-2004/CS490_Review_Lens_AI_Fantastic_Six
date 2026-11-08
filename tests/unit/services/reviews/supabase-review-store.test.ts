@@ -64,7 +64,10 @@ function createFakeClient(...results: QueryResult[]) {
   for (const method of ["insert", "select", "eq", "order", "range"]) {
     builder[method] = (...args: unknown[]) => (calls.push([method, ...args]), builder);
   }
-  const client = { from: (table: string) => (calls.push(["from", table]), builder) };
+  const client = {
+    from: (table: string) => (calls.push(["from", table]), builder),
+    rpc: (name: string, args: unknown) => (calls.push(["rpc", name, args]), next()),
+  };
 
   return { client: client as unknown as SupabaseClient, calls };
 }
@@ -99,7 +102,7 @@ describe("createSupabaseReviewStore", () => {
     ).resolves.toBe(false);
   });
 
-  test("inserts the batch in one statement with the target id and mapped columns", async () => {
+  test("inserts the batch through the user-scoped atomic RPC", async () => {
     const { client, calls } = createFakeClient({ data: [storedRow], error: null });
 
     const saved = await createSupabaseReviewStore(client).insertReviews(TARGET_ID, [
@@ -116,33 +119,33 @@ describe("createSupabaseReviewStore", () => {
     ]);
 
     expect(calls).toEqual([
-      ["from", "reviews"],
       [
-        "insert",
-        [
-          {
-            analysis_target_id: TARGET_ID,
-            review_text: "Great food",
-            rating: 4.5,
-            source_review_id: "src-1",
-            reviewer_name: "Sam",
-            review_date: "2026-10-01T12:00:00.000Z",
-            review_url: "https://maps.google.com/review/1",
-            source_metadata: { helpfulVotes: 3 },
-          },
-          {
-            analysis_target_id: TARGET_ID,
-            review_text: "Slow",
-            rating: 2,
-            source_review_id: null,
-            reviewer_name: null,
-            review_date: null,
-            review_url: null,
-            source_metadata: null,
-          },
-        ],
+        "rpc",
+        "insert_reviews",
+        {
+          p_target_id: TARGET_ID,
+          p_rows: [
+            {
+              review_text: "Great food",
+              rating: 4.5,
+              source_review_id: "src-1",
+              reviewer_name: "Sam",
+              review_date: "2026-10-01T12:00:00.000Z",
+              review_url: "https://maps.google.com/review/1",
+              source_metadata: { helpfulVotes: 3 },
+            },
+            {
+              review_text: "Slow",
+              rating: 2,
+              source_review_id: null,
+              reviewer_name: null,
+              review_date: null,
+              review_url: null,
+              source_metadata: null,
+            },
+          ],
+        },
       ],
-      ["select", COLUMNS],
     ]);
     expect(saved).toEqual([
       {

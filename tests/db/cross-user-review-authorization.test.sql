@@ -57,8 +57,10 @@ begin
 end
 $$;
 
-insert into public.reviews (analysis_target_id, review_text, rating)
-values ('a1300000-0000-4000-8000-00000000a7a1', 'User A second review', 4);
+select * from public.insert_reviews(
+  'a1300000-0000-4000-8000-00000000a7a1',
+  '[{"review_text":"User A second review","rating":4}]'
+);
 
 do $$
 begin
@@ -105,11 +107,13 @@ $$;
 do $$
 begin
   begin
-    insert into public.reviews (analysis_target_id, review_text, rating)
-    values ('a1300000-0000-4000-8000-00000000a7a1', 'Injected by B', 1);
+    perform public.insert_reviews(
+      'a1300000-0000-4000-8000-00000000a7a1',
+      '[{"review_text":"Injected by B","rating":1}]'
+    );
     raise exception 'User B created a review under User A''s target';
-  exception when insufficient_privilege then
-    null; -- RLS: new row violates the reviews_insert_own policy.
+  exception when no_data_found then
+    null; -- RPC returns the same result for missing and foreign targets.
   end;
 end
 $$;
@@ -142,9 +146,11 @@ end
 $$;
 \echo 'ok - User B cannot update, delete, or truncate User A''s reviews'
 
--- User B can add reviews to B's own target, but cannot move one onto User A's target.
-insert into public.reviews (analysis_target_id, review_text, rating)
-values ('b1300000-0000-4000-8000-00000000b7b1', 'User B review', 3);
+-- User B can add reviews to B's own target through the RPC, but cannot move one onto User A's.
+select * from public.insert_reviews(
+  'b1300000-0000-4000-8000-00000000b7b1',
+  '[{"review_text":"User B review","rating":3}]'
+);
 
 do $$
 begin

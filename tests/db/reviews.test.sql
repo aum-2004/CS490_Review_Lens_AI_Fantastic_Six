@@ -30,13 +30,13 @@ insert into public.analysis_targets (id, owner_id, name, platform, source_url) v
 set role authenticated;
 set request.jwt.claims to '{"sub":"55555555-5555-4555-8555-555555555555"}';
 
-insert into public.reviews (
-  analysis_target_id, review_text, rating, source_review_id, reviewer_name, review_date,
-  review_url, source_metadata
-) values
-  ('77777777-7777-4777-8777-777777777771', 'Great food', 4.5, 'src-1', 'Sam',
-   '2026-10-01T12:00:00Z', 'https://maps.google.com/review/1', '{"helpfulVotes": 3}'),
-  ('77777777-7777-4777-8777-777777777771', 'Slow service', 2, null, null, null, null, null);
+select * from public.insert_reviews(
+  '77777777-7777-4777-8777-777777777771',
+  '[
+    {"review_text":"Great food","rating":4.5,"source_review_id":"src-1","reviewer_name":"Sam","review_date":"2026-10-01T12:00:00Z","review_url":"https://maps.google.com/review/1","source_metadata":{"helpfulVotes":3}},
+    {"review_text":"Slow service","rating":2}
+  ]'
+);
 
 do $$
 declare
@@ -72,8 +72,10 @@ end
 $$;
 \echo 'ok - reviews of one target do not appear under another target of the same user'
 
-insert into public.reviews (analysis_target_id, review_text, rating, source_review_id) values
-  ('77777777-7777-4777-8777-777777777771', 'Same source review again', 5, 'src-1');
+select * from public.insert_reviews(
+  '77777777-7777-4777-8777-777777777771',
+  '[{"review_text":"Same source review again","rating":5,"source_review_id":"src-1"}]'
+);
 \echo 'ok - duplicate source_review_id values are allowed in Sprint 1'
 
 -- ---------------------------------------------------------------------------------------------
@@ -81,8 +83,10 @@ insert into public.reviews (analysis_target_id, review_text, rating, source_revi
 -- ---------------------------------------------------------------------------------------------
 set request.jwt.claims to '{"sub":"66666666-6666-4666-8666-666666666666"}';
 
-insert into public.reviews (analysis_target_id, review_text, rating)
-values ('88888888-8888-4888-8888-888888888888', 'Fine', 3);
+select * from public.insert_reviews(
+  '88888888-8888-4888-8888-888888888888',
+  '[{"review_text":"Fine","rating":3}]'
+);
 
 do $$
 begin
@@ -184,11 +188,9 @@ $$;
 \echo 'ok - anonymous requests are denied'
 
 -- ---------------------------------------------------------------------------------------------
--- Field constraints (as User A on target A2, so RLS passes and only the constraint can fail)
+-- Field constraints (as the database owner, so only table constraints can fail)
 -- ---------------------------------------------------------------------------------------------
 reset role;
-set role authenticated;
-set request.jwt.claims to '{"sub":"55555555-5555-4555-8555-555555555555"}';
 
 do $$
 declare

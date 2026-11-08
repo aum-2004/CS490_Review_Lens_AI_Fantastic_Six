@@ -14,7 +14,11 @@ export const MAX_REVIEWS_PER_REQUEST = 100;
  */
 export const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
 
-/** Per-field limits, in characters (Unicode code points, as PostgreSQL's char_length counts). */
+/**
+ * Per-field limits, in characters (Unicode code points, as PostgreSQL's char_length counts).
+ * Keep these at or below the database backstops in
+ * supabase/migrations/20261108000000_harden_review_writes.sql.
+ */
 export const MAX_REVIEW_TEXT_CHARS = 10_000;
 export const MAX_REVIEWER_NAME_CHARS = 200;
 export const MAX_SOURCE_REVIEW_ID_CHARS = 256;

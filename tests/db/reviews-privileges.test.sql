@@ -65,8 +65,8 @@ begin
     'analysis_target_id', 'review_text', 'rating', 'source_review_id', 'reviewer_name',
     'review_date', 'review_url', 'source_metadata'
   ] loop
-    assert has_column_privilege('authenticated', 'public.reviews', writable, 'INSERT'),
-      format('authenticated cannot insert reviews.%s', writable);
+    assert not has_column_privilege('authenticated', 'public.reviews', writable, 'INSERT'),
+      format('authenticated can directly insert reviews.%s', writable);
   end loop;
 
   assert not has_column_privilege('authenticated', 'public.reviews', 'id', 'INSERT'),
@@ -75,7 +75,7 @@ begin
     'authenticated can insert reviews.created_at';
 end
 $$;
-\echo 'ok - authenticated has SELECT and column-limited INSERT only (no UPDATE, DELETE, id or created_at)'
+\echo 'ok - authenticated has SELECT only and no direct table or column INSERT privileges'
 
 do $$
 begin
@@ -190,14 +190,10 @@ do $$
 declare
   inserted public.reviews;
 begin
-  insert into public.reviews (
-    analysis_target_id, review_text, rating, source_review_id, reviewer_name, review_date,
-    review_url, source_metadata
-  ) values (
-    'cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'C three', 3, 'src-c3', 'Cam',
-    '2026-10-01T12:00:00Z', 'https://maps.google.com/review/c3', '{"helpfulVotes": 1}'
-  )
-  returning * into inserted;
+  select * into strict inserted from public.insert_reviews(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '[{"review_text":"C three","rating":3,"source_review_id":"src-c3","reviewer_name":"Cam","review_date":"2026-10-01T12:00:00Z","review_url":"https://maps.google.com/review/c3","source_metadata":{"helpfulVotes":1}}]'
+  );
 
   assert inserted.id is not null, 'id was not generated';
   assert inserted.created_at is not null and inserted.created_at <= now(),
@@ -205,7 +201,7 @@ begin
   assert inserted.review_text = 'C three' and inserted.rating = 3, 'values were not persisted';
 end
 $$;
-\echo 'ok - a normal insert of the app''s columns still works and returns the row'
+\echo 'ok - the authenticated RPC writes a normal review and returns the row'
 
 reset role;
 
