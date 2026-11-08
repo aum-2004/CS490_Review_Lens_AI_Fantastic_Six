@@ -7,26 +7,27 @@ persisted review evidence. Each user's targets and reviews are private to that u
 
 NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
 
-> **Status:** Sprint 1 authentication and target foundations. The home route redirects to login or
-> the protected My Targets list. S1-017 supplies owner-scoped listing; creation and workspace
-> screens remain with S1-015/018. Hosted deployment verification is separate from local tests.
-> See [Implemented vs. planned](#implemented-vs-planned).
+> **Status:** Sprint 1 implementation is merged: authentication and authorization, analysis target
+> creation and listing, the target workspace, and guarded review ingestion, persistence, status,
+> and recovery. Hosted acceptance and readiness for paid ingestion are separate and remain pending.
+> Sprint 2 AI features and Sprint 3 production deployment are not implemented. See
+> [Implemented vs. planned](#implemented-vs-planned).
 
 ---
 
 ## Technology stack
 
-| Layer           | Technology                                               | Status                                    |
-| --------------- | -------------------------------------------------------- | ----------------------------------------- |
-| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                                  |
-| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                                  |
-| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                                  |
-| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Auth implemented; schema started (S1-014) |
-| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                                  |
-| Tests           | Jest, React Testing Library, Playwright                  | In place                                  |
-| CI              | GitHub Actions                                           | In place (S1-007)                         |
-| Hosting         | Vercel                                                   | Planned (Sprint 3)                        |
-| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                                  |
+| Layer           | Technology                                               | Status                         |
+| --------------- | -------------------------------------------------------- | ------------------------------ |
+| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                       |
+| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                       |
+| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                       |
+| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Sprint 1 implementation merged |
+| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                       |
+| Tests           | Jest, React Testing Library, Playwright                  | In place                       |
+| CI              | GitHub Actions                                           | In place (S1-007)              |
+| Hosting         | Vercel                                                   | Planned (Sprint 3)             |
+| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                       |
 
 Exact versions are pinned in `package-lock.json`.
 
@@ -74,7 +75,7 @@ only when you are intentionally adding a dependency (and commit the updated lock
 
 ### 3. Create your local environment file
 
-Authentication and target listing require Supabase public configuration. Create your local file:
+Authentication and target features require Supabase public configuration. Create your local file:
 
 ```bash
 # macOS / Linux
@@ -265,7 +266,8 @@ ReviewLens AI uses environment variables to configure Supabase and external serv
 3. Install dependencies using `npm ci`.
 4. Start the application using `npm run dev`.
 
-The S1-005 starter application runs without environment variables. Supabase configuration is required when Supabase-dependent features are initialized.
+The public health route can run without environment variables. Authentication and target features
+require the Supabase public configuration.
 
 ### Required environment variables
 
@@ -276,7 +278,9 @@ The S1-005 starter application runs without environment variables. Supabase conf
 
 The Supabase URL and publishable key can be obtained from the team's Supabase project dashboard.
 
-Additional server-side configuration for the review-data provider will be documented once the provider is finalized.
+Ingestion also requires server-only Supabase, Outscraper, storage-approval, and signed-callback
+configuration. Keep `INGESTION_ENABLED=false` until the team has completed the hosted and paid-use
+readiness steps described below; `.env.example` lists every required variable.
 
 ### Security requirements
 
@@ -306,8 +310,8 @@ The `getSupabasePublicConfig()` function:
 Validation occurs when the function is called by
 Supabase-dependent code.
 
-The starter application does not require Supabase
-credentials to start. S1-009 adds Supabase client initialization and authentication.
+The public health route can run without Supabase credentials, but authentication and target routes
+require them. S1-009 supplies Supabase client initialization and authentication.
 See [authentication setup and verification](docs/s1-009-authentication.md) for dashboard settings,
 email confirmation, `/login`, the session endpoint, and pending manual checks.
 
@@ -361,41 +365,48 @@ require a live Supabase connection.
 
 ## Implemented vs. planned
 
-**Implemented (including the S1-017 target list)**
+### Merged Sprint 1 implementation
 
 - Next.js App Router application with TypeScript (strict) and Tailwind CSS.
-- Protected, responsive My Targets list and shared navigation (S1-017). See [listing and integration guidance](docs/s1-017-analysis-targets.md).
 - `GET /api/health` Route Handler.
 - Frontend, backend, and data directory boundaries with documentation.
-- ESLint via `npm run lint` (scaffold default; S1-006 may extend it).
-- Environment template and secret-safe ignore rules.
-- Prettier formatting with write and check commands.
-- Clean-checkout type-checking with Next.js route type generation.
-- Jest and React Testing Library unit/component tests for the starter frontend and health endpoint.
-- Separate Playwright headless end-to-end smoke tests.
-- Pull-request CI running formatting, lint, typecheck, unit tests, and build.
+- ESLint, Prettier, clean-checkout type-checking, Jest/React Testing Library, Playwright, and
+  pull-request CI for formatting, lint, typecheck, unit tests, and build.
 - Supabase environment validation and unit tests.
-- Supabase sign-in, registration/confirmation, cookie sessions, verified server identity, and logout.
-- `/login` and `/api/auth/session`; live verification and human security review remain required.
-- Protected target-page navigation, safe post-login return, and independent backend guard helpers.
-  See [S1-010 integration guidance](docs/s1-010-route-protection.md); target-route adoption and live
-  verification remain pending. No target feature or database ownership is supplied by these guards.
-- `analysis_targets` table with owner-only Row Level Security, restricted client writes, a
-  server-side repository, and database tests in CI (S1-014).
-- `POST /api/analysis-targets`, which takes ownership only from the verified session, never from
-  request input. See [S1-011 ownership rules](docs/s1-011-ownership.md); live Supabase verification
-  remains required.
+- Supabase registration/confirmation, sign-in, cookie sessions, verified server identity, logout,
+  protected navigation, and safe post-login returns (S1-009 and S1-010).
+- Server-side ownership checks, cross-user denial, owner-only Row Level Security, restricted client
+  writes, and database authorization tests for targets, reviews, and ingestion (S1-011 – S1-014).
+- Validated analysis target creation through the protected form and `POST /api/analysis-targets`,
+  with ownership derived only from the authenticated session (S1-015 and S1-016).
+- Protected, responsive My Targets listing with ingestion status and shared navigation (S1-017).
+  See [listing and integration guidance](docs/s1-017-analysis-targets.md).
+- An ownership-gated target workspace that displays source provenance, saved reviews, and ingestion
+  controls and status (S1-018).
+- Outscraper ingestion submission, response validation, review normalization, bounded atomic
+  persistence, and source-identity verification (S1-019 – S1-022).
+- Persisted ingestion states, safe refresh/retry behavior, signed callback binding recovery,
+  duplicate-paid-start protections, limits, and an operator recovery runbook (S1-023). See
+  [the recovery runbook](docs/s1-023-job-recovery.md).
 
-**Planned (not implemented)**
+### Hosted acceptance and paid-ingestion readiness
 
-| Capability                                                      | Story              |
-| --------------------------------------------------------------- | ------------------ |
-| Integrate guards with target pages/APIs as their stories arrive | S1-010 integration |
-| Cross-user authorization                                        | S1-012, S1-013     |
-| Target creation and workspace screens                           | S1-015, S1-018     |
-| Review ingestion, normalization, persistence, result state      | S1-019 – S1-023    |
-| AI question answering, ingestion summaries                      | Sprint 2           |
-| Production deployment                                           | Sprint 3           |
+Merged code and local/CI tests do not establish that every migration and flow has passed acceptance
+against the shared hosted Supabase and Vercel environments. The repository's ingestion tests use
+synthetic provider data; they do not prove a paid extraction or persistence of real provider reviews.
+
+Paid ingestion remains disabled by default. Before enabling it, the team must apply and verify the
+hosted migrations, configure the server-only provider and callback secrets, record approval for
+provider/source review storage, complete the documented security and human acceptance checks, and
+decide the global paid-start/spend-control policy. The implemented per-account limit is not a global
+spend cap.
+
+### Pending
+
+| Capability                                    | Planned sprint |
+| --------------------------------------------- | -------------- |
+| AI question answering and ingestion summaries | Sprint 2       |
+| Production deployment                         | Sprint 3       |
 
 ---
 

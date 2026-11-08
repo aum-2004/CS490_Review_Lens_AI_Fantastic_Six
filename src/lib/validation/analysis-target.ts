@@ -14,6 +14,8 @@ const SOURCE_URL_MISSING_BUSINESS_MESSAGE =
   "This Google Maps link doesn't identify a business. Open a specific business and copy its link.";
 const SOURCE_URL_SHORT_LINK_UNSUPPORTED_MESSAGE =
   "Shortened Google Maps links aren't supported yet. Open the full Google Maps URL in your browser and copy it from the address bar.";
+const SOURCE_URL_UNSUPPORTED_PATH_CASE_MESSAGE =
+  "Google Maps links must use a lowercase /maps path. Open the business in Google Maps and copy its link again.";
 
 const GOOGLE_MAPS_HOSTNAMES = new Set(["google.com", "www.google.com", "maps.google.com"]);
 const SHORTENED_GOOGLE_MAPS_HOSTNAMES = new Set(["maps.app.goo.gl"]);
@@ -131,6 +133,20 @@ function isGoogleMapsBusinessUrl(url: URL): boolean {
     (url.hostname === "maps.google.com" && path === "/");
 
   return acceptsBusinessQuery && hasPlaceIdentifier(url);
+}
+
+function hasUnsupportedMapsPathCasing(url: URL): boolean {
+  if (
+    (url.hostname !== "google.com" && url.hostname !== "www.google.com") ||
+    url.username ||
+    url.password ||
+    url.port
+  ) {
+    return false;
+  }
+
+  const firstPathSegment = url.pathname.split("/", 2)[1];
+  return firstPathSegment?.toLowerCase() === "maps" && firstPathSegment !== "maps";
 }
 
 function isGoogleMapsUrl(url: URL): boolean {
@@ -286,6 +302,12 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
             field: "sourceUrl",
             code: "SOURCE_URL_UNSUPPORTED_PROTOCOL",
             message: SOURCE_URL_INVALID_MESSAGE,
+          });
+        } else if (hasUnsupportedMapsPathCasing(parsedUrl)) {
+          issues.push({
+            field: "sourceUrl",
+            code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
+            message: SOURCE_URL_UNSUPPORTED_PATH_CASE_MESSAGE,
           });
         } else if (!isGoogleMapsBusinessUrl(parsedUrl)) {
           issues.push({

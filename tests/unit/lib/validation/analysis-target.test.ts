@@ -306,6 +306,24 @@ describe("validateAnalysisTargetInput", () => {
     });
 
     it.each([
+      "https://www.google.com/MAPS/place/NJIT",
+      "https://www.google.com/Maps/place/NJIT",
+      "https://google.com/mApS?place_id=ChIJ123456789",
+    ])(
+      "rejects a case-variant Google Maps path that the database cannot store: %s",
+      (sourceUrl) => {
+        expectFailure(validateAnalysisTargetInput({ name: "NJIT", sourceUrl }), [
+          {
+            field: "sourceUrl",
+            code: "SOURCE_URL_UNSUPPORTED_PLATFORM",
+            message:
+              "Google Maps links must use a lowercase /maps path. Open the business in Google Maps and copy its link again.",
+          },
+        ]);
+      },
+    );
+
+    it.each([
       [
         "missing both slashes",
         "https:www.google.com/maps/place/NJIT",
