@@ -5,10 +5,11 @@ import { AnalysisTargetCreationError } from "@/lib/api/analysis-targets";
 import type { CreateAnalysisTarget } from "@/types/analysis-target";
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 let mockBfcacheId = "route-1";
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ bfcacheId: mockBfcacheId, push: mockPush }),
+  useRouter: () => ({ bfcacheId: mockBfcacheId, push: mockPush, replace: mockReplace }),
 }));
 
 const validSourceUrl = "https://www.google.com/maps/place/NJIT/@40.742,-74.179,17z";
@@ -29,6 +30,7 @@ function submitForm() {
 describe("TargetForm", () => {
   beforeEach(() => {
     mockPush.mockReset();
+    mockReplace.mockReset();
     mockBfcacheId = "route-1";
   });
 
@@ -361,7 +363,7 @@ describe("TargetForm", () => {
     );
   });
 
-  it("submits normalized data and shows an accessible confirmation without broken navigation", async () => {
+  it("submits normalized data and opens the encoded workspace with the creation marker", async () => {
     const createTarget: jest.MockedFunction<CreateAnalysisTarget> = jest.fn().mockResolvedValue({
       id: "target/with spaces",
       name: "NJIT, Newark",
@@ -385,16 +387,10 @@ describe("TargetForm", () => {
     expect(confirmation.querySelector('[data-slot="alert-title"]')).toHaveClass("min-w-0");
     expect(confirmation.querySelector('[data-slot="alert-description"]')).toHaveClass("min-w-0");
     expect(within(confirmation).getByText("Target created")).toBeInTheDocument();
-    expect(within(confirmation).getByText("NJIT, Newark")).toBeInTheDocument();
-    expect(within(confirmation).getByText("target/with spaces")).toBeInTheDocument();
-    expect(within(confirmation).getByText(validSourceUrl)).toBeInTheDocument();
     expect(
-      within(confirmation).getByText("Workspace access will be available in a future update."),
+      within(confirmation).getByText(/Opening the workspace for NJIT, Newark/),
     ).toBeInTheDocument();
-    expect(within(confirmation).getByRole("link", { name: "Back to My Targets" })).toHaveAttribute(
-      "href",
-      "/analysis-targets",
-    );
+    expect(mockReplace).toHaveBeenCalledWith("/analysis-targets/target%2Fwith%20spaces?created=1");
     expect(mockPush).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Create target" })).not.toBeInTheDocument();
   });
@@ -471,6 +467,7 @@ describe("TargetForm", () => {
     });
 
     expect(screen.queryByText("stale-target")).not.toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/target name/i)).toHaveValue("");
   });
 

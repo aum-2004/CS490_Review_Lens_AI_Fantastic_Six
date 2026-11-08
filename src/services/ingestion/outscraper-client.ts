@@ -1,6 +1,9 @@
 import "server-only";
 
 import { validateAnalysisTargetInput } from "@/lib/validation/analysis-target";
+import { readBoundedProviderJson } from "./bounded-provider-json";
+import { IngestionLimitError, MAX_INGESTED_REVIEWS } from "./ingestion-limits";
+import { toStorableText } from "@/services/reviews/storable-text";
 
 const OUTSCRAPER_URL = "https://api.outscraper.cloud/google-maps-reviews";
 const GOOGLE_PLACE_ID_PATTERN = /^ChIJ[A-Za-z0-9_-]+$/;
@@ -29,6 +32,7 @@ export class OutscraperError extends Error {
   constructor(
     public readonly code: string,
     message: string,
+    public readonly submissionRejected = false,
   ) {
     super(message);
     this.name = "OutscraperError";
@@ -53,6 +57,7 @@ function providerFetchError(error: unknown): OutscraperError {
 export async function startOutscraperExtraction(
   query: OutscraperQuery | string,
   fetcher?: typeof fetch,
+  recoveryUrl?: string,
 ): Promise<OutscraperJob> {
   const apiKey = process.env.OUTSCRAPER_API_KEY;
   const normalizedQuery: OutscraperQuery =
@@ -84,6 +89,7 @@ export async function startOutscraperExtraction(
   url.searchParams.set("sort", "most_relevant");
   url.searchParams.set("ignoreEmpty", "true");
   url.searchParams.set("async", "true");
+  if (recoveryUrl) url.searchParams.set("webhook", recoveryUrl);
 
   let response: Response;
 
@@ -102,18 +108,37 @@ export async function startOutscraperExtraction(
   }
 
   if (response.status === 429) {
-    throw new OutscraperError("PROVIDER_QUOTA", "The review service usage limit was reached.");
+    throw new OutscraperError(
+      "PROVIDER_QUOTA",
+      "The review service usage limit was reached.",
+      true,
+    );
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new OutscraperError("PROVIDER_AUTH", "The review service rejected its credentials.");
+    throw new OutscraperError(
+      "PROVIDER_AUTH",
+      "The review service rejected its credentials.",
+      true,
+    );
   }
 
   if (response.status === 402) {
-    throw new OutscraperError("PROVIDER_BILLING", "The review service account requires attention.");
+    throw new OutscraperError(
+      "PROVIDER_BILLING",
+      "The review service account requires attention.",
+      true,
+    );
   }
 
   if (!response.ok) {
+    if (response.status >= 400 && response.status < 500 && response.status !== 408) {
+      throw new OutscraperError(
+        "PROVIDER_REJECTED",
+        "The review service rejected this request.",
+        true,
+      );
+    }
     throw new OutscraperError("PROVIDER_FAILED", "The review service could not start extraction.");
   }
 
@@ -229,7 +254,7 @@ export async function getOutscraperResult(
 
   if (!response.ok) {
     throw new OutscraperError(
-      "PROVIDER_FAILED",
+      "PROVIDER_UNAVAILABLE",
       "The review service could not retrieve the results.",
     );
   }
@@ -237,8 +262,9 @@ export async function getOutscraperResult(
   let payload: unknown;
 
   try {
-    payload = await response.json();
-  } catch {
+    payload = await readBoundedProviderJson(response);
+  } catch (error) {
+    if (error instanceof IngestionLimitError) throw error;
     throw new OutscraperError("INVALID_RESPONSE", "The review service returned invalid JSON.");
   }
 
@@ -261,6 +287,8 @@ export async function getOutscraperResult(
   if (payload.data.length === 0) {
     throw new OutscraperError("NO_REVIEWS", "No reviews were found for this business.");
   }
+  if (payload.data.length > MAX_INGESTED_REVIEWS)
+    throw new IngestionLimitError("INGESTION_RESULT_LIMIT");
 
   // The live Outscraper API returns a flat array of review records.
   // Each record includes its own place_id and business name.
@@ -310,7 +338,10 @@ export async function getOutscraperResult(
 
     const resolvedPlaceId = placeIds[0];
 
-    const businessName = reviews[0].name;
+    const businessName =
+      typeof reviews[0].name === "string"
+        ? toStorableText(reviews[0].name).trim()
+        : reviews[0].name;
 
     if (typeof businessName !== "string" || !businessName.trim()) {
       throw new OutscraperError(
@@ -320,14 +351,21 @@ export async function getOutscraperResult(
     }
 
     // Make sure all returned records belong to the same business.
-    if (reviews.some((review) => review.name !== businessName)) {
+    if (
+      reviews.some(
+        (review) =>
+          typeof review.name !== "string" || toStorableText(review.name).trim() !== businessName,
+      )
+    ) {
       throw new OutscraperError(
         "IDENTITY_AMBIGUOUS",
         "The provider returned inconsistent business information.",
       );
     }
 
-    const googleIds = uniqueNonEmptyStrings(reviews.map((review) => review.google_id));
+    const googleIds = uniqueNonEmptyStrings(
+      reviews.map((review) => getOptionalIdentityField(review.google_id, "Google ID")),
+    );
     if (googleIds.length > 1) {
       throw new OutscraperError(
         "IDENTITY_AMBIGUOUS",
@@ -335,7 +373,9 @@ export async function getOutscraperResult(
       );
     }
 
-    const locationLinks = uniqueNonEmptyStrings(reviews.map((review) => review.location_link));
+    const locationLinks = uniqueNonEmptyStrings(
+      reviews.map((review) => getOptionalIdentityField(review.location_link, "location link")),
+    );
     if (locationLinks.length > 1) {
       throw new OutscraperError(
         "IDENTITY_AMBIGUOUS",
@@ -405,10 +445,14 @@ export async function getOutscraperResult(
   if (business.reviews_data.length === 0) {
     throw new OutscraperError("NO_REVIEWS", "No reviews were found for this business.");
   }
+  if (business.reviews_data.length > MAX_INGESTED_REVIEWS)
+    throw new IngestionLimitError("INGESTION_RESULT_LIMIT");
 
   const parentGoogleId = getOptionalIdentityField(business.google_id, "Google ID");
   const parentLocationLink = getOptionalIdentityField(business.location_link, "location link");
-  const parentBusinessName = business.name.trim();
+  const parentBusinessName = toStorableText(business.name).trim();
+  if (!parentBusinessName)
+    throw new OutscraperError("IDENTITY_MISSING", "The provider business name is empty.");
   const childBusinessNames = business.reviews_data.map((review) =>
     getOptionalIdentityField(review.name, "business name"),
   );
@@ -456,12 +500,12 @@ export async function getOutscraperResult(
 
   return {
     status: "completed",
-    businessName: business.name,
+    businessName: parentBusinessName,
     placeId: business.place_id,
     identity: {
       placeId: business.place_id,
       ...(parentGoogleId ? { googleId: parentGoogleId } : {}),
-      businessName: business.name,
+      businessName: parentBusinessName,
       ...(parentLocationLink ? { locationLink: parentLocationLink } : {}),
     },
     reviews: business.reviews_data,
@@ -491,6 +535,6 @@ function getOptionalIdentityField(value: unknown, label: string): string | undef
     );
   }
 
-  const normalized = value.trim();
+  const normalized = toStorableText(value).trim();
   return normalized || undefined;
 }

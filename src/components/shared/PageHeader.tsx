@@ -20,7 +20,7 @@ export function PageHeader({
         <nav aria-label="Breadcrumb">
           <ol className="flex flex-wrap gap-2 text-sm text-muted-foreground">
             {breadcrumbs.map((crumb, index) => (
-              <li key={index}>
+              <li key={index} className="min-w-0 break-words">
                 {crumb.href ? (
                   <Link
                     href={crumb.href}
@@ -40,8 +40,8 @@ export function PageHeader({
         </nav>
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">{title}</h1>
+        <div className="min-w-0 max-w-full">
+          <h1 className="break-words text-3xl font-semibold">{title}</h1>
           {description && <p className="mt-2 text-muted-foreground">{description}</p>}
         </div>
         {action}

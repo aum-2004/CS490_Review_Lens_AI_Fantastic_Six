@@ -17,12 +17,18 @@ The protected Route Handler:
 5. Translate expected failures to the shared safe error response and never return fabricated target
    data.
 
-The result exposes at least `id`, `name`, `sourceUrl`, and `platform`. Until S1-018 is merged, the
-creation form displays an accessible confirmation containing the saved target's name, ID, and
-normalized source URL. It does not link or redirect to the unfinished target workspace.
+The result exposes at least `id`, `name`, `sourceUrl`, and `platform`. S1-018 now
+integrates successful creation with `/analysis-targets/{encoded id}?created=1`.
+The temporary workspace-unavailable confirmation is removed. The form ignores a
+stale completion after navigation and prevents duplicate submission during handoff.
 
 S1-017 now supplies the shared `AppShell`, navigation, and `/analysis-targets` list. The creation
-page uses that shell; its breadcrumb, Cancel action, and post-creation link return to My Targets.
-S1-018 should replace the temporary inline confirmation with navigation to
-`/analysis-targets/{id}?created=1`; the workspace should use that query marker to show the
-standards-required confirmation: "Target created. You can now start ingestion."
+page uses that shell; its breadcrumb and Cancel action return to My Targets.
+After verifying target ownership, the workspace consumes the marker using native
+history replacement, preserving other query parameters and the hash. The notice
+remains for the current view but does not reappear after reload. It says
+"Target created. You can now start ingestion." only when collection is available;
+otherwise it says "Target created." without offering a disabled action. It hides
+after ingestion succeeds. This availability-aware refinement follows PR #48 review.
+The marker controls presentation only; it never creates a target, starts ingestion,
+or bypasses ownership. Reopening without the marker does not show the notice.

@@ -85,3 +85,12 @@ The independent review at `b377267` requested bounding list work. The former off
 Validation after this remediation: 351 unit tests in 28 suites, all 13 isolated Edge auth/target browser tests, lint, explicit typecheck, production build, formatting and diff checks passed. No database tests were run locally; CI is checked after publication. Foundation smoke tests were not repeated for this update.
 
 This fixes the requested implementation issue; independent security re-review on the new commit remains required. The separate ingestion-status badge/deferral decision is still unresolved. Earlier acceptance/test counts above are historical checkpoints, not claims that this update was manually reverified by the author.
+
+## S1-018 / S1-023 integration follow-up — 2026-11-07
+
+The historical pending-status notes above are superseded by PR #48's integration.
+Every card now uses the shared IngestionStatus component with authoritative,
+owner-scoped state. Not ingested requires backend confirmation of no attempt;
+unavailable or truncated responses never imply no ingestion. Creation from merged
+S1-015 opens the workspace with confirmation. See docs/s1-018-s1-023-final-review.md
+for the combined scope and remaining hosted/review acceptance requirements.

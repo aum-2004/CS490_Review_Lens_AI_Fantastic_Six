@@ -229,20 +229,29 @@ $$;
 \echo 'ok - denied writes left User C''s reviews unchanged'
 
 -- ---------------------------------------------------------------------------------------------
--- Deleting a target still removes its reviews, even though DELETE on reviews is revoked
+-- Browser deletion is denied; only an administrative deletion may exercise the FK cascade.
 -- ---------------------------------------------------------------------------------------------
 set role authenticated;
 set request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}';
 
-delete from public.analysis_targets where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+do $$ begin
+  begin
+    delete from public.analysis_targets where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    raise exception 'owner browser DELETE unexpectedly permitted';
+  exception when insufficient_privilege then null; end;
+  assert exists (select 1 from public.analysis_targets where id='cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+  assert exists (select 1 from public.reviews where analysis_target_id='cccccccc-cccc-4ccc-8ccc-cccccccccccc');
+end $$;
 
 reset role;
+
+delete from public.analysis_targets where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 do $$
 begin
   assert not exists (
     select 1 from public.analysis_targets where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-  ), 'User C could not delete their own target';
+  ), 'administrative deletion did not remove the target';
   assert not exists (
     select 1 from public.reviews where analysis_target_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
   ), 'reviews remained after their target was deleted';
@@ -252,4 +261,4 @@ begin
   ) = 3, 'deleting User C''s target removed User D''s reviews';
 end
 $$;
-\echo 'ok - deleting a target as its owner still removes its reviews with DELETE revoked'
+\echo 'ok - browser deletion is denied and administrative deletion retains FK cascade behavior'

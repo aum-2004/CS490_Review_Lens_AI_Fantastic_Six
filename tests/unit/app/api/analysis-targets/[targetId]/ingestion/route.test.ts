@@ -9,9 +9,23 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { startOutscraperExtraction } from "@/services/ingestion/outscraper-client";
 import { NextRequest, NextResponse } from "next/server";
+import { IngestionLimitError } from "@/services/ingestion/ingestion-limits";
 
 jest.mock("@/services/auth/access-control", () => ({ requireApiUser: jest.fn() }));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock("@/services/ingestion/ingestion-recovery", () => ({
+  ingestionRecoveryConfigured: () => true,
+}));
+jest.mock("@/services/ingestion/ingestion-runtime", () => ({
+  ingestionEnabled: () => process.env.INGESTION_ENABLED === "true",
+  ingestionStorageApproved: () => true,
+  ingestionDependencies: () => ({
+    writer: mockWriter,
+    storageApproved: true,
+    recoveryUrl: () => "https://app.example.com/synthetic-callback",
+    retryDelay: async () => {},
+  }),
+}));
 jest.mock("@/services/analysis-targets/target-ownership", () => ({
   TargetNotFoundError: class TargetNotFoundError extends Error {
     code = "TARGET_NOT_FOUND";
@@ -44,18 +58,70 @@ const target = {
 };
 
 const originalIngestionEnabled = process.env.INGESTION_ENABLED;
+let mockAttempt: Record<string, unknown>;
+const mockWriter = { reserve: jest.fn(), bind: jest.fn(), finish: jest.fn() };
 
 function context() {
   return { params: Promise.resolve({ targetId: TARGET_ID }) };
 }
 
+it("returns safe 429 feedback before a paid start when the owner cap is reached", async () => {
+  mockWriter.reserve.mockRejectedValueOnce(new IngestionLimitError("INGESTION_START_LIMIT"));
+  const response = await POST(
+    new NextRequest("http://localhost/api/analysis-targets/" + TARGET_ID + "/ingestion", {
+      method: "POST",
+    }),
+    context(),
+  );
+  expect(response.status).toBe(429);
+  expect((await response.json()).error.code).toBe("INGESTION_START_LIMIT");
+  expect(startOutscraperExtraction).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
+  jest.clearAllMocks();
+  jest.spyOn(console, "info").mockImplementation(() => {});
+  jest.spyOn(console, "error").mockImplementation(() => {});
   process.env.INGESTION_ENABLED = "true";
   jest.mocked(requireApiUser).mockResolvedValue({ user: { id: USER_ID, email: null } });
   jest.mocked(createSupabaseServerClient).mockResolvedValue({} as never);
   jest.mocked(getOwnedTargetOrThrow).mockResolvedValue(target);
   jest.mocked(startOutscraperExtraction).mockResolvedValue({ id: "job-1", status: "Pending" });
+  mockWriter.reserve.mockImplementation(async (targetId, ownerId) => {
+    const owned = await getOwnedTargetOrThrow({} as never, targetId, ownerId);
+    mockAttempt = {
+      id: TARGET_ID,
+      analysis_target_id: targetId,
+      owner_id: ownerId,
+      source_url: owned.sourceUrl,
+      expected_place_id: owned.googlePlaceId,
+      submitted_query: owned.googlePlaceId ?? owned.sourceUrl,
+      query_kind: owned.googlePlaceId ? "place_id" : "source_url",
+      provider_request_id: null,
+      status: "processing",
+      started_at: "2026-11-06T00:00:00Z",
+      finished_at: null,
+      saved_count: 0,
+      skipped_count: 0,
+      error_code: null,
+      identity_basis: null,
+      verified_identity: null,
+    };
+    return { attempt: mockAttempt, created: true };
+  });
+  mockWriter.bind.mockImplementation(async (_id, _owner, jobId) => ({
+    ...mockAttempt,
+    provider_request_id: jobId,
+  }));
+  mockWriter.finish.mockImplementation(
+    async (_id, _owner, _reviews, _skipped, _identity, code) => ({
+      ...mockAttempt,
+      status: "failed",
+      error_code: code,
+    }),
+  );
 });
+afterEach(() => jest.restoreAllMocks());
 
 afterAll(() => {
   if (originalIngestionEnabled === undefined) delete process.env.INGESTION_ENABLED;
@@ -129,14 +195,26 @@ it("returns 202 and starts extraction only after the owned target is loaded", as
   await expect(response.json()).resolves.toEqual({
     success: true,
     data: {
-      status: "accepted",
-      targetId: TARGET_ID,
-      requestId: "job-1",
-      providerStatus: "Pending",
+      state: "processing",
+      startedAt: "2026-11-06T00:00:00Z",
+      finishedAt: null,
+      savedCount: 0,
+      skippedCount: 0,
+      errorCode: null,
+      identityBasis: null,
+      providerBusinessName: null,
     },
   });
   expect(getOwnedTargetOrThrow).toHaveBeenCalledWith({}, TARGET_ID, USER_ID);
-  expect(startOutscraperExtraction).toHaveBeenCalledWith({ kind: "place_id", value: PLACE_ID });
+  expect(startOutscraperExtraction).toHaveBeenCalledWith(
+    { kind: "place_id", value: PLACE_ID },
+    undefined,
+    "https://app.example.com/synthetic-callback",
+  );
+  expect(mockWriter.reserve.mock.invocationCallOrder[0]).toBeLessThan(
+    jest.mocked(startOutscraperExtraction).mock.invocationCallOrder[0],
+  );
+  expect(mockWriter.bind).toHaveBeenCalledWith(TARGET_ID, USER_ID, "job-1");
 });
 
 it("submits a stored Google Maps URL when the target has no Place ID", async () => {
@@ -145,10 +223,14 @@ it("submits a stored Google Maps URL when the target has no Place ID", async () 
   const response = await POST(new NextRequest("http://localhost"), context());
 
   expect(response.status).toBe(202);
-  expect(startOutscraperExtraction).toHaveBeenCalledWith({
-    kind: "source_url",
-    value: target.sourceUrl,
-  });
+  expect(startOutscraperExtraction).toHaveBeenCalledWith(
+    {
+      kind: "source_url",
+      value: target.sourceUrl,
+    },
+    undefined,
+    "https://app.example.com/synthetic-callback",
+  );
 });
 
 it("returns a safe provider failure", async () => {
@@ -156,8 +238,14 @@ it("returns a safe provider failure", async () => {
 
   const response = await POST(new NextRequest("http://localhost"), context());
 
-  expect(response.status).toBe(500);
-  await expect(response.text()).resolves.not.toContain("provider failure");
+  expect(response.status).toBe(200);
+  const body = await response.json();
+  expect(body.data).toMatchObject({
+    state: "failed",
+    savedCount: 0,
+    errorCode: "SUBMISSION_UNCERTAIN",
+  });
+  expect(JSON.stringify(body)).not.toContain("provider failure");
 });
 
 it("returns a safe error when the Supabase client cannot be initialized", async () => {

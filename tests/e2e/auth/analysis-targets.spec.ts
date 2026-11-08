@@ -55,6 +55,7 @@ test("lists owned targets through the bounded real SDK query and preserves the l
   expect(Object.keys(body.data[0]).sort()).toEqual([
     "createdAt",
     "id",
+    "ingestion",
     "name",
     "platform",
     "sourceUrl",
@@ -105,11 +106,22 @@ test("creates two targets without a reload and resets success, draft, and errors
   await page.getByRole("link", { name: "Create your first target" }).click();
 
   await fillTargetForm(page, firstName, "https://www.google.com/maps/place/First+Fixture+Target");
-  let confirmation = page.getByRole("status");
+  await expect(page).toHaveURL(/\/analysis-targets\/cccccccc-[^?]+$/);
+  let confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
   await expect(confirmation).toContainText("Target created");
-  await expect(confirmation).toContainText(firstName);
-  await confirmation.getByRole("link", { name: "Back to My Targets" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(firstName);
+  await expect(page.getByRole("main").getByText("Not ingested", { exact: true })).toHaveCount(1);
+  await expect(page.getByText(/No saved reviews yet/)).toBeVisible();
+  await expect(page.getByText(/You can now start ingestion|Start ingestion above/)).toHaveCount(0);
+  await expect(page).not.toHaveURL(/created=/);
+  await page.reload();
+  await expect(confirmation).toHaveCount(0);
+  await page.getByRole("link", { name: "My Targets", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: firstName })).toBeVisible();
+  const firstCard = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("heading", { name: firstName, exact: true }) });
+  await expect(firstCard.getByText("Not ingested", { exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "New Target", exact: true }).click();
   await expect(page.getByLabel("Target name *")).toHaveValue("");
@@ -117,10 +129,11 @@ test("creates two targets without a reload and resets success, draft, and errors
   await expect(page.getByRole("status")).toHaveCount(0);
 
   await fillTargetForm(page, secondName, "https://www.google.com/maps/place/Second+Fixture+Target");
-  confirmation = page.getByRole("status");
+  await expect(page).toHaveURL(/\/analysis-targets\/cccccccc-[^?]+$/);
+  confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
   await expect(confirmation).toContainText("Target created");
-  await expect(confirmation).toContainText(secondName);
-  await confirmation.getByRole("link", { name: "Back to My Targets" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(secondName);
+  await page.getByRole("link", { name: "My Targets", exact: true }).first().click();
   await expect(page.getByRole("heading", { name: firstName })).toBeVisible();
   await expect(page.getByRole("heading", { name: secondName })).toBeVisible();
 
@@ -150,8 +163,8 @@ test("wraps a 120-character success name without mobile document overflow", asyn
   await page.getByRole("link", { name: "Create your first target" }).click();
   await fillTargetForm(page, longName, "https://www.google.com/maps/place/Mobile+Fixture+Target");
 
-  const confirmation = page.getByRole("status");
-  const renderedName = confirmation.getByText(longName);
+  const confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
+  const renderedName = page.getByRole("heading", { level: 1, name: longName });
   await expect(confirmation).toBeVisible();
   await expect(renderedName).toBeVisible();
   expect(await renderedName.evaluate((element) => getComputedStyle(element).overflowWrap)).toBe(

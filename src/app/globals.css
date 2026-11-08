@@ -16,6 +16,8 @@
   --ring: #52525b;
   --destructive: #b91c1c;
   --destructive-foreground: #ffffff;
+  --success: #166534;
+  --info: #1e40af;
 }
 
 @theme inline {
@@ -34,8 +36,10 @@
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-success: var(--success);
+  --color-info: var(--info);
+  --font-sans: var(--font-inter);
+  --font-mono: ui-monospace, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -55,11 +59,13 @@
     --ring: #a1a1aa;
     --destructive: #fca5a5;
     --destructive-foreground: #450a0a;
+    --success: #86efac;
+    --info: #93c5fd;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }

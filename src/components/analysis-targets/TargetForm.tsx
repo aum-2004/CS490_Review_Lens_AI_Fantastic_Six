@@ -1,8 +1,7 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { CircleAlert } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Spinner } from "@/components/shared/Spinner";
@@ -76,26 +75,7 @@ function TargetCreationConfirmation({ target }: { target: AnalysisTarget }) {
     <Alert role="status" aria-live="polite">
       <AlertTitle>Target created</AlertTitle>
       <AlertDescription>
-        <p>
-          <span className="break-words font-medium text-foreground">{target.name}</span> was saved
-          successfully.
-        </p>
-        <dl className="mt-3 space-y-2">
-          <div>
-            <dt className="font-medium text-foreground">Target ID</dt>
-            <dd className="break-all">{target.id}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-foreground">Google Maps source</dt>
-            <dd className="break-all">{target.sourceUrl}</dd>
-          </div>
-        </dl>
-        <p className="mt-3">Workspace access will be available in a future update.</p>
-        <Button asChild className="mt-4">
-          <Link href="/analysis-targets" prefetch={false}>
-            Back to My Targets
-          </Link>
-        </Button>
+        <p className="max-w-prose break-words">Opening the workspace for {target.name}…</p>
       </AlertDescription>
     </Alert>
   );
@@ -109,6 +89,13 @@ export function TargetForm({ createTarget = createAnalysisTarget }: TargetFormPr
 
 function TargetFormState({ createTarget }: Required<TargetFormProps>) {
   const router = useRouter();
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const nameRef = useRef<HTMLInputElement>(null);
   const sourceUrlRef = useRef<HTMLInputElement>(null);
   const submissionInFlight = useRef(false);
@@ -190,10 +177,13 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
 
     try {
       const target = await createTarget(validation.data);
+      if (!active.current) return;
       setFieldErrors({});
       creationComplete.current = true;
       setCreatedTarget(target);
+      router.replace(`/analysis-targets/${encodeURIComponent(target.id)}?created=1`);
     } catch (error) {
+      if (!active.current) return;
       if (error instanceof AnalysisTargetCreationError) {
         if (error.code === "AUTHENTICATION_REQUIRED") {
           router.push("/login?next=%2Fanalysis-targets%2Fnew");
@@ -222,7 +212,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
   }
 
   return (
-    <form className="space-y-6" noValidate onSubmit={submit} aria-busy={isSubmitting}>
+    <form className="space-y-4" noValidate onSubmit={submit} aria-busy={isSubmitting}>
       <p className="text-sm text-muted-foreground">
         <span aria-hidden="true">*</span> Required
       </p>
@@ -241,7 +231,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         </Alert>
       ) : null}
 
-      <div className="space-y-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="target-name">
           Target name <span aria-hidden="true">*</span>
         </Label>
@@ -279,7 +269,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         {fieldErrors.name ? <FieldError id="target-name-error" message={fieldErrors.name} /> : null}
       </div>
 
-      <div className="space-y-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="review-platform">Review platform</Label>
         <Input
           id="review-platform"
@@ -294,7 +284,7 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="grid gap-1.5">
         <Label htmlFor="source-url">
           Google Maps URL <span aria-hidden="true">*</span>
         </Label>

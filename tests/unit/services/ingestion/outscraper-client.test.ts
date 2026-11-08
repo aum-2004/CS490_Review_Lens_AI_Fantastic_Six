@@ -55,6 +55,16 @@ describe("Outscraper API client", () => {
       code: "INVALID_PLACE_ID",
     });
   });
+  it("sends the server-generated recovery callback in the documented webhook parameter", async () => {
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValue(mockResponse(202, { id: "synthetic-job", status: "Pending" }));
+    const recoveryUrl =
+      "https://app.example.com/api/ingestion/provider-callback/synthetic?signature=synthetic";
+    await startOutscraperExtraction(placeId, mockFetch as never, recoveryUrl);
+    expect(mockFetch.mock.calls[0][0].searchParams.get("webhook")).toBe(recoveryUrl);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
 
   it("rejects missing API configuration", async () => {
     delete process.env.OUTSCRAPER_API_KEY;
