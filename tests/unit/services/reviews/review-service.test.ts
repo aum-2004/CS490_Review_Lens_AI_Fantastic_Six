@@ -191,6 +191,18 @@ describe("review persistence (S1-022)", () => {
     expect(inserted[0][0].sourceMetadata).toEqual({ note: "ab" });
   });
 
+  test("saves the review with null metadata and an unchanged rating for exponent numbers", async () => {
+    const sourceMetadata = { values: Array(2338).fill(1e300) };
+
+    const saved = await saveReviews(store, userA, "target-a", [
+      { text: "safe review", rating: 4.5, sourceMetadata },
+    ]);
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ text: "safe review", rating: 4.5, sourceMetadata: null });
+    expect(inserted[0][0]).toMatchObject({ rating: 4.5, sourceMetadata: undefined });
+  });
+
   test("saves a whole batch in full when one review has malformed characters", async () => {
     const { reviews, rejected } = normalizeBatch([
       { text: "Fine", rating: 3 },
@@ -271,6 +283,35 @@ describe("sanitizeMetadata", () => {
   test("drops metadata larger than the size limit", () => {
     expect(sanitizeMetadata({ blob: "x".repeat(MAX_METADATA_BYTES) })).toBeUndefined();
     expect(sanitizeMetadata({ blob: "x".repeat(100) })).toEqual({ blob: "x".repeat(100) });
+  });
+
+  test("drops near-limit metadata containing many positive exponent numbers", () => {
+    const metadata = { values: Array(2338).fill(1e300) };
+    const bytes = new TextEncoder().encode(JSON.stringify(metadata)).length;
+
+    expect(bytes).toBeGreaterThan(MAX_METADATA_BYTES - 32);
+    expect(bytes).toBeLessThanOrEqual(MAX_METADATA_BYTES);
+    expect(sanitizeMetadata(metadata)).toBeUndefined();
+  });
+
+  test("drops metadata containing a negative exponent number", () => {
+    expect(sanitizeMetadata({ value: 1e-300 })).toBeUndefined();
+  });
+
+  test("detects exponent numbers nested inside objects and arrays", () => {
+    expect(sanitizeMetadata({ outer: [{ safe: 10 }, { inner: [0, 1e300] }] })).toBeUndefined();
+  });
+
+  test("preserves ordinary finite numeric metadata", () => {
+    const metadata = {
+      integer: 42,
+      decimal: -12.5,
+      smallWithoutExponent: 0.000001,
+      largeWithoutExponent: 100000000000000000000,
+      nested: { values: [0, 1, 2.5] },
+    };
+
+    expect(sanitizeMetadata(metadata)).toEqual(metadata);
   });
 
   test("returns undefined for missing or non-object metadata", () => {

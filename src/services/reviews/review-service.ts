@@ -62,6 +62,16 @@ function toJsonValue(value: unknown, depth: number): unknown {
   return result;
 }
 
+/** PostgreSQL jsonb expands exponent-form numbers, so its stored text can dwarf JSON.stringify. */
+function containsExponentNumber(value: unknown): boolean {
+  if (typeof value === "number") {
+    return JSON.stringify(value)?.toLowerCase().includes("e") ?? false;
+  }
+  if (Array.isArray(value)) return value.some(containsExponentNumber);
+  if (value === null || typeof value !== "object") return false;
+  return Object.values(value).some(containsExponentNumber);
+}
+
 /** S1-021 hands metadata sanitization to persistence. Unstorable metadata is dropped. */
 export function sanitizeMetadata(metadata: unknown): Record<string, unknown> | undefined {
   if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) {
@@ -69,7 +79,7 @@ export function sanitizeMetadata(metadata: unknown): Record<string, unknown> | u
   }
 
   const clean = toJsonValue(metadata, 0) as Record<string, unknown> | undefined;
-  if (clean === undefined) return undefined;
+  if (clean === undefined || containsExponentNumber(clean)) return undefined;
 
   const bytes = new TextEncoder().encode(JSON.stringify(clean)).length;
   return bytes <= MAX_METADATA_BYTES ? clean : undefined;

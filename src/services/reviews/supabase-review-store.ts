@@ -20,6 +20,8 @@ interface ReviewRow {
 }
 
 const TABLE = "reviews";
+const INSERT_RPC = "insert_reviews";
+
 /**
  * Rows requested per page when reading reviews. Supabase's Data API returns at most the
  * project's "Max rows" (1,000 by default) per request, so one unpaginated query would silently
@@ -46,9 +48,8 @@ function toReview(row: ReviewRow): Review {
   };
 }
 
-function toInsertRow(targetId: string, review: NormalizedReview) {
+function toInsertRow(review: NormalizedReview) {
   return {
-    analysis_target_id: targetId,
     review_text: review.text,
     rating: review.rating,
     source_review_id: review.sourceReviewId ?? null,
@@ -68,11 +69,12 @@ export function createSupabaseReviewStore(client: SupabaseClient): ReviewStore {
     },
 
     async insertReviews(targetId, reviews) {
-      // One statement, so the batch is saved entirely or not at all.
-      const { data, error } = await client
-        .from(TABLE)
-        .insert(reviews.map((review) => toInsertRow(targetId, review)))
-        .select(COLUMNS);
+      // The user-scoped RPC derives ownership from auth.uid(), validates the complete batch, and
+      // inserts atomically. Authenticated clients have no direct INSERT privilege on reviews.
+      const { data, error } = await client.rpc(INSERT_RPC, {
+        p_target_id: targetId,
+        p_rows: reviews.map(toInsertRow),
+      });
 
       if (error || !data) {
         throw new ReviewPersistenceError("save", { cause: error });
