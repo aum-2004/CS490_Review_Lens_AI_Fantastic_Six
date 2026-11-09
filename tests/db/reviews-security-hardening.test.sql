@@ -144,10 +144,10 @@ end
 $$;
 \echo 'ok - the owner RPC writes and returns a valid batch'
 
--- Reproduce the complete API-to-RPC expansion at the request boundary. JavaScript preserves the
--- compact 1e-300 representation in the request and normalized Supabase payload; PostgreSQL JSONB
--- renders those values as full decimals. The resulting metadata remains below its 32 KiB database
--- limit, but the complete normalized batch exceeds both the old 2 MiB cap and a proposed 4 MiB cap.
+-- Reproduce the complete API-to-RPC expansion at the request boundary with ordinary metadata that
+-- sanitizeMetadata preserves. Added null fields, the full ISO date, renamed keys, and JSONB spacing
+-- make the normalized payload exceed the old 2 MiB cap without relying on exponent-form numbers,
+-- which the application now drops before persistence.
 do $$
 declare
   api_request text;
@@ -158,7 +158,7 @@ declare
   normalized_rows jsonb;
   raw_text text := repeat('😀', 4900);
 begin
-  app_metadata := '{"values":[' || rtrim(repeat('1e-300,', 100), ',') || ']}';
+  app_metadata := '{"values":[1,2,3]}';
   api_review := '{"text":"' || raw_text
     || '","rating":5,"reviewDate":"2026-01-01","metadata":' || app_metadata || '}';
   select '{"reviews":[' || string_agg(api_review, ',') || ']}'
@@ -193,8 +193,8 @@ begin
 
   assert octet_length((normalized_rows->0->'source_metadata')::text) <= 32768,
     'normalized metadata exceeds its database limit';
-  assert octet_length(normalized_rows::text) > 4194304,
-    'fixture does not prove that a 4 MiB RPC cap is too small';
+  assert octet_length(normalized_rows::text) > 2097152,
+    'fixture does not prove that the old 2 MiB RPC cap is too small';
   assert octet_length(normalized_rows::text) <= 8388608,
     'route-valid fixture exceeds the selected 8 MiB RPC cap';
 
@@ -206,7 +206,7 @@ begin
     'near-2-MiB API request did not persist its complete normalized batch';
 end
 $$;
-\echo 'ok - a near-2-MiB API request expands beyond 4 MiB and persists through the RPC'
+\echo 'ok - a near-2-MiB API request expands beyond 2 MiB and persists through the RPC'
 
 do $$
 declare
