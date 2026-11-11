@@ -1,5 +1,6 @@
 /** @jest-environment node */
 
+import { validateAnalysisTargetInput } from "@/lib/validation/analysis-target";
 import { normalizeReview } from "@/services/reviews/normalize";
 import { MAX_RATING, MIN_RATING } from "@/services/reviews/types";
 import {
@@ -26,15 +27,47 @@ const idPrefixesToCategories = [
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const timestampPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
+const isRealTimestamp = (value: string): boolean => {
+  if (!timestampPattern.test(value)) return false;
+
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  const calendarDay = new Date(Date.UTC(year, month - 1, day));
+  const timestamp = new Date(value);
+
+  return (
+    !Number.isNaN(timestamp.getTime()) &&
+    calendarDay.getUTCFullYear() === year &&
+    calendarDay.getUTCMonth() === month - 1 &&
+    calendarDay.getUTCDate() === day
+  );
+};
+
 describe("scope-guard evaluation fixture", () => {
   const { activeTarget, persistedReviews, cases } = scopeGuardEvaluationFixture;
 
   test("has a synthetic owned Google Maps target and related persisted reviews", () => {
     expect(activeTarget.name).toBe("Restaurant A");
     expect(activeTarget.platform).toBe("google_maps");
+    expect(activeTarget.sourceUrl).toBe("https://www.google.com/maps/place/Restaurant+A");
     expect(activeTarget.id).toMatch(uuidPattern);
     expect(activeTarget.ownerId).toMatch(uuidPattern);
     expect(activeTarget.id).not.toBe(activeTarget.ownerId);
+    expect(isRealTimestamp(activeTarget.createdAt)).toBe(true);
+
+    expect(
+      validateAnalysisTargetInput({
+        name: activeTarget.name,
+        sourceUrl: activeTarget.sourceUrl,
+      }),
+    ).toEqual({
+      success: true,
+      data: {
+        name: activeTarget.name,
+        sourceUrl: activeTarget.sourceUrl,
+        platform: activeTarget.platform,
+      },
+    });
+
     expect(persistedReviews).toHaveLength(4);
     expect(
       persistedReviews.every(({ analysisTargetId }) => analysisTargetId === activeTarget.id),
@@ -49,15 +82,15 @@ describe("scope-guard evaluation fixture", () => {
       expect(review.rating).toBeGreaterThanOrEqual(MIN_RATING);
       expect(review.rating).toBeLessThanOrEqual(MAX_RATING);
       expect(review.reviewDate).toMatch(timestampPattern);
-      expect(review.createdAt).toMatch(timestampPattern);
+      expect(isRealTimestamp(review.createdAt)).toBe(true);
 
       const normalized = normalizeReview({
         text: review.text,
         rating: review.rating,
         reviewDate: review.reviewDate,
-        sourceReviewId: review.sourceReviewId,
-        reviewerName: review.reviewerName,
-        reviewUrl: review.reviewUrl,
+        sourceReviewId: review.sourceReviewId ?? undefined,
+        reviewerName: review.reviewerName ?? undefined,
+        reviewUrl: review.reviewUrl ?? undefined,
       });
 
       expect(normalized.ok).toBe(true);
@@ -65,6 +98,8 @@ describe("scope-guard evaluation fixture", () => {
         expect(normalized.review.reviewDate?.toISOString()).toBe(review.reviewDate);
         expect(normalized.review.text).toBe(review.text);
         expect(normalized.review.rating).toBe(review.rating);
+        expect(normalized.review.sourceReviewId ?? null).toBe(review.sourceReviewId);
+        expect(normalized.review.reviewUrl ?? null).toBe(review.reviewUrl);
       }
     }
   });
@@ -111,7 +146,7 @@ describe("scope-guard evaluation fixture", () => {
     }
   });
 
-  test("references only existing reviews and requires evidence only for answerable cases", () => {
+  test("references existing reviews and declares required evidence for supported answers", () => {
     const reviewIds = new Set<string>(persistedReviews.map(({ id }) => id));
 
     for (const evaluationCase of cases) {
@@ -121,8 +156,6 @@ describe("scope-guard evaluation fixture", () => {
 
       if (evaluationCase.expectedCategory === "answer_from_active_reviews") {
         expect(cited.length).toBeGreaterThan(0);
-      } else {
-        expect(cited).toHaveLength(0);
       }
     }
   });

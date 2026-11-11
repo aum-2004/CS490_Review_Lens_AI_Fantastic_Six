@@ -17,7 +17,10 @@ export interface ScopeGuardEvaluationCase {
   readonly question: string;
   readonly expectedCategory: ScopeGuardExpectedCategory;
   readonly explanation: string;
-  /** Persisted reviews supporting answerable cases; empty for all other cases. */
+  /**
+   * Persisted reviews required or relevant to substantiate the expected in-scope answer. An empty
+   * list means no review evidence is required; it does not forbid permitted citations.
+   */
   readonly expectedReviewIds: readonly string[];
 }
 
