@@ -36,9 +36,9 @@ describe("scope-guard evaluation fixture", () => {
     expect(activeTarget.ownerId).toMatch(uuidPattern);
     expect(activeTarget.id).not.toBe(activeTarget.ownerId);
     expect(persistedReviews).toHaveLength(4);
-    expect(persistedReviews.every(({ analysisTargetId }) => analysisTargetId === activeTarget.id)).toBe(
-      true,
-    );
+    expect(
+      persistedReviews.every(({ analysisTargetId }) => analysisTargetId === activeTarget.id),
+    ).toBe(true);
     expect(new Set(persistedReviews.map(({ id }) => id)).size).toBe(persistedReviews.length);
   });
 

@@ -179,8 +179,7 @@ export const scopeGuardEvaluationFixture = {
       question: "What do customers say about the service at Coffee Shop C?",
       expectedCategory: "decline_other_entity_or_product",
       expectedReviewIds: [],
-      explanation:
-        "The active dataset has no reviews for Coffee Shop C.",
+      explanation: "The active dataset has no reviews for Coffee Shop C.",
     },
     {
       id: "sg-other-entity-003",
@@ -208,8 +207,7 @@ export const scopeGuardEvaluationFixture = {
       question: "What do DoorDash reviewers say about Restaurant A's delivery speed?",
       expectedCategory: "decline_other_review_platform",
       expectedReviewIds: [],
-      explanation:
-        "The active dataset contains Google Maps reviews, not DoorDash reviews.",
+      explanation: "The active dataset contains Google Maps reviews, not DoorDash reviews.",
     },
   ],
 } as const satisfies ScopeGuardEvaluationFixture;
