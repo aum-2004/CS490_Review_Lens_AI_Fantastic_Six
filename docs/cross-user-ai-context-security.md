@@ -24,37 +24,53 @@ These tests supplement the existing route and PostgreSQL RLS tests. They do not 
 acceptance because this branch has no S2-010 context builder, S2-011 Q&A orchestrator, or model
 invocation boundary.
 
+The ReviewStore-based Phase 1 tests remain valid for the current production review-service
+boundary. Phase 2 must adapt the fixture and infrastructure mocks to S2-010's session-scoped,
+bounded Supabase query implementation; it must not replace the real context builder with the
+ReviewStore test double.
+
 ## Required integration once S2-010 and S2-011 land
 
-Use Deep's S2-003 deterministic harness or an equivalent injected model adapter to capture the
-complete model request without making a provider call. Add integration tests with the synthetic
-fixture that verify all of the following:
+Call the real S2-010 context builder while mocking only its underlying authentication and Supabase
+infrastructure and the permitted provider/model boundary. Do not mock the builder's authorization,
+ownership, or evidence-bounding behavior. Use Deep's S2-003 deterministic harness or an equivalent
+injected model adapter to capture the complete model request without making a provider call. Add
+integration tests with the synthetic fixture that verify all of the following:
 
-1. Authenticate as User B, select Target B, and submit the fixture's adversarial question. Assert
-   that the retrieved review IDs are exactly the Target B review IDs.
-2. Inspect the complete captured model request, including system instructions, user messages,
-   review text, tool payloads, and metadata. Assert that it contains `BETA_PRIVATE_REVIEW_MARKER`
-   and never contains `ALPHA_PRIVATE_REVIEW_MARKER`, a Target A review ID, or Target A metadata.
+1. Mock a verified User B session, call `buildReviewDatasetContext` for Target B, and submit the
+   fixture's adversarial question through the real orchestration boundary. Assert that the returned
+   review IDs are exactly the Target B review IDs.
+2. Once S2-011 is available, inspect the complete outgoing model request, including the system
+   prompt, evidence, user question, message history, metadata, and any tool payloads. Assert that it
+   contains the authorized `BETA_PRIVATE_REVIEW_MARKER` evidence and never contains
+   `ALPHA_PRIVATE_REVIEW_MARKER`, a Target A review ID, or evidence or metadata retained from a
+   prior target. The adversarial question intentionally contains a user-supplied Target A
+   identifier; its presence in the user question is not by itself an unauthorized review-data leak.
 3. Configure the deterministic model response to echo every marker it receives. Assert that the
    Q&A result still cannot contain `ALPHA_PRIVATE_REVIEW_MARKER`. This is an output check in
    addition to, not a substitute for, inspecting model input.
-4. Authenticate as User B and submit Target A's ID. Compare the response with a request for the
-   fixture's missing target ID, assert the existing indistinguishable 404 response, and assert that
-   neither context construction nor model invocation occurs.
+4. With the verified User B session, call the real builder for Target A and for the fixture's
+   missing target so the builder can perform its ownership check. Assert that both receive
+   indistinguishable denials, no unauthorized review lookup occurs, no successful review context is
+   returned, and no model invocation occurs.
 5. Repeat the Target A request with every fixture `spoofedIdentityClaims` field in the body or query.
-   Assert that the verified User B session remains authoritative and the model is not invoked.
-6. Exercise consecutive requests through the real orchestration boundary and assert that request
-   two is built only from its newly authorized active target. Coordinate the active-target state
-   setup and cache-reset expectations with Shawn's S2-019 work instead of implementing that state
-   here.
+   Assert that the internally verified User B session remains authoritative and the model is not
+   invoked.
+6. Exercise consecutive users and targets through the real orchestration boundary and assert that
+   request two is built only from its newly verified session and authorized target, with no stale
+   evidence from request one. Coordinate the active-target state setup and cache-reset expectations
+   with Shawn's S2-019 work instead of implementing that state here.
 
 ## Shared interface expectations
 
-- S2-010 should accept an authenticated identity from the server auth boundary and an authorized
-  active target. It must load persisted reviews server-side; it must not accept client-supplied
-  review context or ownership claims.
-- S2-011 should expose a dependency-injection boundary around the model call so a test can capture
-  the entire request before any provider receives it.
+- S2-010's proposed public builder interface is
+  `buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext>`. The builder verifies
+  the session identity and target ownership internally before querying reviews. Its public interface
+  must not accept a user ID, authenticated identity, client-supplied review context, or ownership
+  claims.
+- Once S2-011 is available, its permitted model boundary should let the integration test capture the
+  complete outgoing request before any provider receives it. This document does not prescribe a
+  finalized S2-011 interface.
 - S2-003 should let tests inspect every model invocation and supply deterministic responses without
   live API access. The captured request type should include all content and metadata sent to the
   provider.
