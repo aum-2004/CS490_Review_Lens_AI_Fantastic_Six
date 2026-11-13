@@ -239,6 +239,7 @@ export const reply = {
   answered(citedReviewIds: string[], answer = "Fixture answer grounded in the cited reviews.") {
     return reply.payload({ outcome: "answered", answer, citedReviewIds });
   },
+  /** Pass citations only to script a contradictory reply; #79 rejects it (UNEXPECTED_CITATIONS). */
   insufficientEvidence(
     citedReviewIds: string[] = [],
     answer = "The reviews do not contain enough information to answer that.",

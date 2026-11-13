@@ -1,7 +1,5 @@
 import type { QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
-  ESTIMATED_BYTES_PER_TOKEN,
-  isDeclineOutcome,
   QA_INPUT_QUESTION_HEADER,
   QA_MAX_REQUEST_TOKENS,
   QA_OUTCOMES,
@@ -19,18 +17,29 @@ import {
  * S2-003 CONTRACT REFERENCE PIPELINE. TEST-ONLY STAND-IN, NOT THE REVIEWLENS IMPLEMENTATION.
  *
  * The real Q&A pipeline (S2-010 context builder, S2-013 prompt, S2-011 reply validation) is not on
- * `main` yet. This stand-in follows the same contract as PR #82, so the harness, golden cases and
- * assertions can run in CI today: same order of checks, same error names and codes, same
- * request layout. Its system prompt is a placeholder and is NOT the S2-013 prompt.
+ * `main` yet. This stand-in follows the contract of PR #79 (`answerQuestion`, `parseQaModelReply`)
+ * and PR #78 (`buildReviewDatasetContext`), so the harness, golden cases and assertions can run in
+ * CI today: same order of checks, same error names and codes, same request layout. Its system
+ * prompt is a placeholder and is NOT the S2-013 prompt.
  *
- * The S2-003 follow-up PR passes the real `answerActiveTargetQuestion` as the harness `pipeline`.
- * The same golden cases must then pass unchanged. Any case that passes here but fails there is a
- * contract mismatch to raise with the owning story, not something to "fix" in this file.
+ * The S2-003 follow-up PR replaces this with an adapter that calls the real
+ * `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })` using the REAL
+ * S2-010 builder over a fake Supabase client and fake verified session, so authentication and
+ * ownership stay under test. The same golden cases must then pass unchanged. Any case that passes
+ * here but fails there is a contract mismatch to raise with the owning story, not something to
+ * "fix" in this file.
+ *
+ * KNOWN DIFFERENCE (open question): this stand-in rejects an oversized request with
+ * REQUEST_TOO_LARGE before calling the model. In #79 that budget check runs inside the OpenAI
+ * adapter, below the `callModel` seam, so with a fake model the real pipeline would call the model
+ * instead. The `qa-edge-long-question` golden case needs a team decision before PR 2.
  */
 
 export const REFERENCE_PROMPT_VERSION = "s2-003.reference";
 const MAX_ANSWER_CHARACTERS = 8_000;
 const MAX_CITED_REVIEW_IDS = 1_000;
+/** Placeholder size estimate for the stand-in only; #79 counts real tokens in token-budget.ts. */
+const ESTIMATED_BYTES_PER_TOKEN = 3;
 
 class ReferencePipelineError extends Error {
   readonly code: string;
@@ -121,7 +130,6 @@ function buildRequest(dataset: QaFixtureDataset, question: string): QaModelReque
     instructions,
     input,
     reviewIds: rows.map((row) => row.id),
-    estimatedInputTokens,
     maxOutputTokens: QA_RESERVED_OUTPUT_TOKENS,
   };
 }
@@ -129,10 +137,17 @@ function buildRequest(dataset: QaFixtureDataset, question: string): QaModelReque
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** S2-011 validation: strict shape, no invented citations, answers must cite evidence. */
+/**
+ * S2-011 validation (#79 `parseQaModelReply`), in the same order: strict shape, then no invented
+ * citations (UNGROUNDED_ANSWER), then "answered" must cite at least one review (UNGROUNDED_ANSWER),
+ * and every other outcome must cite none (UNEXPECTED_CITATIONS). Contradictory replies are
+ * rejected, never repaired by dropping citations.
+ */
 function validateReply(text: string, request: QaModelRequest): QaAnswer {
   const invalid = () => new ReferencePipelineError(QA_PIPELINE_ERRORS.invalidModelResponse);
   const ungrounded = () => new ReferencePipelineError(QA_PIPELINE_ERRORS.ungroundedAnswer);
+  const unexpectedCitations = () =>
+    new ReferencePipelineError(QA_PIPELINE_ERRORS.unexpectedCitations);
 
   let json: unknown;
   try {
@@ -166,12 +181,16 @@ function validateReply(text: string, request: QaModelRequest): QaAnswer {
   if (citedReviewIds.some((id) => !allowed.has(id))) throw ungrounded();
   const cited = [...new Set(citedReviewIds)];
   const typedOutcome = outcome as QaOutcome;
-  if (typedOutcome === "answered" && cited.length === 0) throw ungrounded();
+  if (typedOutcome === "answered") {
+    if (cited.length === 0) throw ungrounded();
+  } else if (cited.length > 0) {
+    throw unexpectedCitations();
+  }
 
   return {
     outcome: typedOutcome,
     answer: answer.trim(),
-    citedReviewIds: isDeclineOutcome(typedOutcome) ? [] : cited,
+    citedReviewIds: cited,
     promptVersion: request.promptVersion,
     targetId: request.targetId,
   };

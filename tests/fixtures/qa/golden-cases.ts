@@ -147,18 +147,33 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
   {
     id: "qa-other-platform-001",
     scenario: "other_entity_or_platform",
-    title: "Question about Yelp reviews is declined, and a cited decline is stripped",
+    title: "A Yelp decline that carries citations is rejected, not stripped (#79)",
     steps: [
       {
         actor: "userA",
         target: "restaurantA",
         question: "What do Restaurant A's Yelp reviewers say about the food?",
-        // The model wrongly attaches citations to a decline; the app must drop them.
+        // The model wrongly attaches citations to a decline. #79 treats that reply as
+        // contradictory and rejects it; it must never be shown with the citations silently dropped.
         reply: reply.payload({
           outcome: "declined_other_platform",
           answer: "I can only analyze the Google Maps reviews for Restaurant A.",
           citedReviewIds: reviewIds("restaurantA", 0),
         }),
+        expect: rejectedAfterCall("unexpectedCitations"),
+      },
+    ],
+  },
+  {
+    id: "qa-other-platform-002",
+    scenario: "other_entity_or_platform",
+    title: "Question about TripAdvisor reviews is declined",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "How do Restaurant A's TripAdvisor reviews compare with these?",
+        reply: reply.declined("declined_other_platform"),
         expect: { result: "declined", outcome: "declined_other_platform" },
       },
     ],
@@ -377,6 +392,38 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         target: "restaurantA",
         question: "How is the pizza?",
         reply: reply.answered([]),
+        expect: rejectedAfterCall("ungroundedAnswer"),
+      },
+    ],
+  },
+  {
+    id: "qa-output-cited-insufficient",
+    scenario: "malformed_model_output",
+    title: "insufficient_evidence that carries citations is rejected, not stripped (#79)",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "Does Restaurant A have outdoor seating?",
+        reply: reply.insufficientEvidence(reviewIds("restaurantA", 0)),
+        expect: rejectedAfterCall("unexpectedCitations"),
+      },
+    ],
+  },
+  {
+    id: "qa-output-decline-invented-citation",
+    scenario: "malformed_model_output",
+    title: "A decline citing an ID outside the request is UNGROUNDED_ANSWER (checked first in #79)",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "What do customers think about Restaurant B?",
+        reply: reply.payload({
+          outcome: "declined_other_entity",
+          answer: "I can only analyze Restaurant A.",
+          citedReviewIds: ["00000000-0000-4000-8000-000000009999"],
+        }),
         expect: rejectedAfterCall("ungroundedAnswer"),
       },
     ],

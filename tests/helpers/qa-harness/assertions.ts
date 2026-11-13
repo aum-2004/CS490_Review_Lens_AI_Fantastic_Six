@@ -264,15 +264,25 @@ export function expectGroundedAnswer(answer: QaAnswer, request: QaModelRequest):
   if (answer.citedReviewIds.length === 0) fail("An answered reply cites no reviews.");
 }
 
-/** S2-012: the limitation is reported; any citations still come from the request. */
+/**
+ * S2-012: the limitation is reported with no citations. Under #79 a reply that cites reviews with
+ * this outcome is rejected (UNEXPECTED_CITATIONS), so a validated answer never carries any.
+ */
 export function expectInsufficientEvidence(answer: QaAnswer, request: QaModelRequest): void {
   if (answer.outcome !== "insufficient_evidence") {
     fail(`Expected outcome "insufficient_evidence", got "${answer.outcome}".`);
   }
   expectCitationsWithinRequest(answer, request);
+  if (answer.citedReviewIds.length > 0) {
+    fail("An insufficient_evidence answer carries cited reviews; #79 must reject that reply.");
+  }
 }
 
-/** S2-014 / S2-015: a decline, with no supporting evidence attached. */
+/**
+ * S2-014 / S2-015: a decline with no citations. Under #79 a decline that cites reviews is rejected
+ * (UNEXPECTED_CITATIONS), so a validated decline never carries any; citations here mean the
+ * pipeline accepted a contradictory reply instead of rejecting it.
+ */
 export function expectDeclined(answer: QaAnswer, outcome?: QaDeclineOutcome): void {
   if (!isDeclineOutcome(answer.outcome)) fail(`Expected a decline, got "${answer.outcome}".`);
   if (outcome !== undefined && answer.outcome !== outcome) {
