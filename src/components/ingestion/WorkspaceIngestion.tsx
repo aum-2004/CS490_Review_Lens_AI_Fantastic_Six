@@ -56,7 +56,7 @@ export function WorkspaceIngestion({
         {pending ? (
           <p role="status">Updating ingestion…</p>
         ) : (
-          <IngestionStatus state={summary?.state ?? null} />
+          <IngestionStatus state={summary?.state ?? null} skippedCount={summary?.skippedCount} />
         )}
       </div>
       <IngestionPanel
