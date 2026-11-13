@@ -214,9 +214,25 @@ cover behaviour and structure, never exact model wording.
   other-entity and other-platform questions. Each rule must be stated within one sentence, but
   any wording is accepted.
 
-**Pipeline.** Until the S2-010/S2-011 Q&A services are merged, golden cases run against a small
-test-only _contract reference pipeline_ (`reference-pipeline.ts`). When they are merged, pass the
-real orchestration as `pipeline` so the same cases run against production code.
+**Replies with citations.** Following S2-011 (#79), an `answered` reply must cite at least one
+review from the request. Every other outcome (`insufficient_evidence` and the three declines) must
+cite none. A reply that breaks this is rejected (`UNGROUNDED_ANSWER` or `UNEXPECTED_CITATIONS`),
+never repaired by dropping its citations.
+
+**Pipeline.** Until S2-010 (#78) and S2-011 (#79) are merged, golden cases run against a small
+test-only _contract reference pipeline_ (`reference-pipeline.ts`). The follow-up PR replaces it
+with an adapter that calls the real
+`answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })`:
+
+- `buildReviewDatasetContext` is the **real** S2-010 builder, so its authentication and ownership
+  checks stay under test. It is never replaced with a fake.
+- Only the infrastructure beneath it is faked: a fake Supabase client holding the fixture rows
+  and a fake verified auth session for the test user.
+- `callModel` is the harness's fake model.
+
+Open question for that PR: #79 enforces the token budget (`REQUEST_TOO_LARGE`) inside the OpenAI
+adapter, below `callModel`, so with a fake model an oversized question reaches the model. The
+reference pipeline still rejects it before the call, as the `qa-edge-long-question` case expects.
 
 > **Limitation:** until that integration lands, CI checks the prompt contract and evidence layout
 > against the reference pipeline's placeholder prompt, **not** the real S2-013 prompt. The
