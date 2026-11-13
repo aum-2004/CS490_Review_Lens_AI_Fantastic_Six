@@ -1,8 +1,10 @@
 # S2-010: Review dataset context for Q&A
 
 Issue: [#61](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/61).
-Owner: Shawn. Status: context implementation with a typed S2-013 handoff;
-S2-011 caller integration, human/security review and PR CI remain pending.
+Owner: Shawn. The builder has functional/security approvals and passing CI at
+`c9c7f38`. Service composition with current S2-011 has been verified; production
+route, full-budget and manual acceptance remain pending. See the
+[integration handoff](s2-010-011-integration.md) for current evidence and gates.
 
 ## Scope and architectural decision
 
@@ -140,9 +142,9 @@ own readiness/status UX; do not infer successful ingestion merely from review ro
   reads are foundational coverage only; UI races, late answers and any future chat
   memory still require the separate switching/stale-context stories.
 
-S2-013 request construction is available in PR #76 and has been tested against this
-builder in isolation. S2-011 orchestration and Q&A UI integration are not present on
-main yet. Consequently this service does not establish live-model grounding,
+S2-013 request construction and current S2-011 orchestration have been tested against
+this builder in isolation. Their production modules and the Q&A UI are not present
+on this main-based branch yet. Consequently this service does not establish live-model grounding,
 full S2-016 isolation or completion of S2-018/019. Do not close those stories based
 on the context tests alone.
 
@@ -201,8 +203,9 @@ Completion follow-up on 2026-11-12:
 - [x] Active-target, cross-user, empty-data, transition and boundary tests.
 - [x] Interoperability with the actual S2-013 snapshot (not a copied prompt fixture).
 - [x] Local configured checks and available original AI dialogue retained.
-- [ ] Author reviews the final implementation before opening the PR.
-- [ ] Normal and independent security reviews; published-head CI.
+- [ ] Author reviews the final documentation/test consolidation.
+- [x] Normal and independent security reviews; published-head CI at `c9c7f38`.
+- [ ] Current-head CI and reviewer reconfirmation for subsequent changes.
 - [ ] S2-011 calls this builder in the running application and enforces the complete
       model-request token budget; integrated model-boundary/manual acceptance.
 - [ ] Merge and update the issue/board after acceptance.
@@ -210,6 +213,11 @@ Completion follow-up on 2026-11-12:
 The context implementation is ready for review/integration. This checklist keeps
 unavailable downstream wiring and human/remote acceptance visible; it does not
 represent the entire story as already Done or authorize closing #61.
+
+The later [integration handoff](s2-010-011-integration.md) supersedes the historical
+unavailable-orchestrator checkpoint above. The useful combined-branch scenarios
+are retained as a dependency-gated suite in this PR; its skipped cases do not
+count as current-branch integration acceptance.
 
 Run the focused checks with:
 
