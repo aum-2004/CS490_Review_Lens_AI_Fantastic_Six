@@ -209,7 +209,7 @@ describe("answer-side assertions", () => {
     );
   });
 
-  it("expectInsufficientEvidence allows in-request citations only", async () => {
+  it("expectInsufficientEvidence requires no citations (#79 rejects cited non-answers)", async () => {
     const request = await validRequest();
     const insufficient = answer({ outcome: "insufficient_evidence", citedReviewIds: [] });
     expect(() => expectInsufficientEvidence(insufficient, request)).not.toThrow();
@@ -217,6 +217,14 @@ describe("answer-side assertions", () => {
     rejects(
       () => expectInsufficientEvidence({ ...insufficient, citedReviewIds: ["foreign"] }, request),
       /not in the request/,
+    );
+    rejects(
+      () =>
+        expectInsufficientEvidence(
+          { ...insufficient, citedReviewIds: [targetA.reviews[0].id] },
+          request,
+        ),
+      /insufficient_evidence answer carries cited reviews/,
     );
   });
 

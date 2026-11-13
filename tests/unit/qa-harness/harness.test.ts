@@ -5,6 +5,7 @@ import {
   createQaTestHarness,
   QaHarnessAssertionError,
   RealNetworkCallError,
+  QA_OUTCOMES,
   reply,
   setupQaTestHarness,
 } from "../../helpers/qa-harness";
@@ -111,6 +112,57 @@ describe("createQaTestHarness", () => {
     expect(globalThis.fetch).not.toBe(realFetch);
     harness.cleanup();
     expect(globalThis.fetch).toBe(realFetch);
+  });
+});
+
+describe("reference pipeline citation contract (#79 parseQaModelReply)", () => {
+  const cited = [restaurantA.reviews[0].id];
+
+  it.each(QA_OUTCOMES.filter((outcome) => outcome !== "answered").map((outcome) => [outcome]))(
+    "rejects %s with citations as UNEXPECTED_CITATIONS instead of stripping them",
+    async (outcome) => {
+      const harness = createQaTestHarness({
+        fallback: reply.payload({ outcome, answer: "Not an answer.", citedReviewIds: cited }),
+      });
+      try {
+        expect(await harness.ask(restaurantA.target.id, "Anything?")).toMatchObject({
+          ok: false,
+          errorName: "QaResponseError",
+          errorCode: "UNEXPECTED_CITATIONS",
+        });
+      } finally {
+        harness.cleanup();
+      }
+    },
+  );
+
+  it.each(QA_OUTCOMES.filter((outcome) => outcome !== "answered").map((outcome) => [outcome]))(
+    "accepts %s with no citations",
+    async (outcome) => {
+      const harness = createQaTestHarness({
+        fallback: reply.payload({ outcome, answer: "Not an answer.", citedReviewIds: [] }),
+      });
+      try {
+        expect(await harness.ask(restaurantA.target.id, "Anything?")).toMatchObject({
+          ok: true,
+          answer: { outcome, citedReviewIds: [] },
+        });
+      } finally {
+        harness.cleanup();
+      }
+    },
+  );
+
+  it("keeps citations on an answered reply, deduplicated", async () => {
+    const harness = createQaTestHarness({ fallback: reply.answered([...cited, ...cited]) });
+    try {
+      expect(await harness.ask(restaurantA.target.id, "Anything?")).toMatchObject({
+        ok: true,
+        answer: { outcome: "answered", citedReviewIds: cited },
+      });
+    } finally {
+      harness.cleanup();
+    }
   });
 });
 

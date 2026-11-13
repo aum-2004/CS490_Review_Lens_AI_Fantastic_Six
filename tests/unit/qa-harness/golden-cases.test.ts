@@ -11,7 +11,8 @@ import {
 
 /**
  * Runs every golden case through the contract reference pipeline. PR 2 runs the same table
- * against the real `answerActiveTargetQuestion` by passing it as `pipeline`.
+ * against the real `answerQuestion` (with the real S2-010 `buildReviewDatasetContext` over fake
+ * Supabase and a fake verified session) by passing that adapter as `pipeline`.
  */
 describe("golden Q&A cases (contract reference pipeline)", () => {
   it.each(QA_GOLDEN_CASES.map((goldenCase) => [goldenCase.id, goldenCase] as const))(
@@ -39,6 +40,19 @@ describe("golden runner rejects broken pipelines", () => {
     (rewrite: (request: QaModelRequest) => QaModelRequest): QaPipeline =>
     (input) =>
       reference({ ...input, callModel: (request) => input.callModel(rewrite(request)) });
+
+  /** The pre-#79 behaviour: silently repair a non-answer by dropping its citations. */
+  const dropCitationsBeforeValidation: QaPipeline = (input) =>
+    reference({
+      ...input,
+      callModel: async (request) => {
+        const modelReply = await input.callModel(request);
+        const payload = JSON.parse(modelReply.text) as Record<string, unknown>;
+        const repaired =
+          payload.outcome === "answered" ? payload : { ...payload, citedReviewIds: [] };
+        return { text: JSON.stringify(repaired) };
+      },
+    });
 
   const userBReview = getQaDataset("userBPrivate").reviews[0];
   const targetAReview = getQaDataset("targetA").reviews[0];
@@ -123,7 +137,6 @@ describe("golden runner rejects broken pipelines", () => {
             instructions: "x",
             input: "x",
             reviewIds: [],
-            estimatedInputTokens: 0,
             maxOutputTokens: 0,
           })
           .catch(() => undefined);
@@ -164,12 +177,24 @@ describe("golden runner rejects broken pipelines", () => {
     ],
     [
       "keeps citations on a decline",
-      "qa-other-platform-001",
+      "qa-other-platform-002",
       async (input) => ({
         ...(await reference(input)),
         citedReviewIds: [getQaDataset("restaurantA").reviews[0].id],
       }),
       /declined reply carries cited reviews/,
+    ],
+    [
+      "strips citations from a cited decline instead of rejecting it",
+      "qa-other-platform-001",
+      dropCitationsBeforeValidation,
+      /qa-other-platform-001 step 1: Expected unexpectedCitations, but the pipeline answered with "declined_other_platform"/,
+    ],
+    [
+      "strips citations from cited insufficient_evidence instead of rejecting it",
+      "qa-output-cited-insufficient",
+      dropCitationsBeforeValidation,
+      /qa-output-cited-insufficient step 1: Expected unexpectedCitations, but the pipeline answered with "insufficient_evidence"/,
     ],
     [
       "leaks a foreign marker into the answer text",

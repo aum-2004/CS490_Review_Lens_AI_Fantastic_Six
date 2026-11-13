@@ -20,7 +20,6 @@ function request(
     instructions: "SYSTEM PROMPT",
     input: `REVIEW DATASET (2 reviews, JSON array):\n[]\n\nQUESTION (JSON string):\n${JSON.stringify(question)}`,
     reviewIds,
-    estimatedInputTokens: 10,
     maxOutputTokens: 100,
   };
 }
