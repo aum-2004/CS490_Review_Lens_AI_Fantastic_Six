@@ -122,6 +122,7 @@ Stop the server with `Ctrl+C`.
 | `npm run test`          | Runs Jest unit and component tests; no browser is required                                   |
 | `npm run test:watch`    | Re-runs relevant Jest tests while files change                                               |
 | `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
+| `npm run test:qa`       | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)          |
 | `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium                                |
 | `npm run test:e2e:auth` | Runs authentication browser tests against an isolated local test provider                    |
 | `npm run test:db`       | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
@@ -154,6 +155,57 @@ Authentication specifications live under `tests/e2e/auth/` and run separately wi
 The smoke command excludes those tests so it does not require the provider. Neither auth test
 accounts nor live Supabase credentials are needed. Both suites can use an existing supported
 browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they use bundled Chromium.
+
+### Deterministic Q&A test harness (S2-003)
+
+Q&A tests never call OpenAI, the network, or a live Supabase project. The harness swaps the model
+seam (`QaModelCaller`) for a scripted fake, records every request sent to it, and blocks all
+network access while a test runs.
+
+| Path                                   | Contents                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `tests/helpers/qa-harness/`            | Harness: fake model, network guard, assertions, golden-case runner                   |
+| `tests/helpers/qa-harness/contract.ts` | Harness-owned copy of the S2-010/011/013 Q&A types (pending team agreement)          |
+| `tests/fixtures/qa/datasets.ts`        | Synthetic datasets: normal, empty, mixed ratings, Target A/B, User B, malformed rows |
+| `tests/fixtures/qa/golden-cases.ts`    | Table of golden Q&A cases                                                            |
+| `tests/unit/qa-harness/`               | Harness self-tests, golden-case suite, determinism proof                             |
+
+Run it with `npm run test:qa`. It is also part of `npm test`, so CI runs it with no secrets.
+
+**Script a fake model reply.** Rules are checked in order; the first match wins. Matchers:
+`question` (exact), `questionIncludes`, `targetId`, `predicate`. A call that matches no rule fails
+the test unless you set a `fallback`.
+
+```ts
+import { reply, setupQaTestHarness, expectGroundedAnswer } from "../../helpers/qa-harness";
+
+const qa = setupQaTestHarness({
+  script: [
+    { when: { questionIncludes: "pizza" }, then: reply.answered([reviewId]) },
+    { when: { questionIncludes: "weather" }, then: reply.declined("declined_general_knowledge") },
+  ],
+});
+
+it("answers from the reviews", async () => {
+  const result = await qa().ask(targetId, "How is the pizza?");
+  if (!result.ok) throw result.error;
+  expectGroundedAnswer(result.answer, qa().model.lastCall().request);
+});
+```
+
+Other replies: `reply.insufficientEvidence()`, `reply.raw("not json")`, `reply.empty()`,
+`reply.providerError("MODEL_UNAVAILABLE")`, `reply.timeout(ms)` (use Jest fake timers), and
+`reply.echoContext()`, which echoes everything the app sent so leaks show up in the answer.
+
+**Add a golden case.** Append an entry to `QA_GOLDEN_CASES` in `tests/fixtures/qa/golden-cases.ts`
+with one or more steps of `{ actor, target, question, reply, expect }`. The runner automatically
+checks the system prompt, that only the active target's reviews were sent, that no reviewer
+names were sent, and that no other dataset's data reached the request or the answer. Assertions
+cover behaviour and structure, never exact model wording.
+
+**Pipeline.** Until the S2-010/S2-011 Q&A services are merged, golden cases run against a small
+test-only _contract reference pipeline_ (`reference-pipeline.ts`). When they are merged, pass the
+real orchestration as `pipeline` so the same cases run against production code.
 
 ### Run database tests
 
