@@ -1,13 +1,20 @@
 /** @jest-environment node */
 
 import {
+  ESTIMATED_BYTES_PER_TOKEN,
+  QA_DECLINE_PRIORITY,
+  QA_MAX_REQUEST_TOKENS,
   QA_OUTCOMES,
+  QA_RESERVED_OUTPUT_TOKENS,
   QaPromptError,
   SYSTEM_PROMPT_VERSION,
   buildQaModelRequest,
   buildSystemPrompt,
+  estimateTokens,
+  resolveDeclineOutcome,
   type PromptReview,
   type PromptTarget,
+  type QaDeclineOutcome,
 } from "@/services/qa/system-prompt";
 
 jest.mock("server-only", () => ({}));
@@ -191,5 +198,109 @@ describe("buildQaModelRequest", () => {
     expect(thrown).toBeInstanceOf(QaPromptError);
     expect(thrown).toMatchObject({ code: "REVIEW_TARGET_MISMATCH" });
     expect((thrown as Error).message).not.toContain("TARGET_B_MARKER");
+  });
+});
+
+describe("decline outcome priority", () => {
+  it("lists only decline outcomes from the response contract, most specific first", () => {
+    expect(QA_DECLINE_PRIORITY).toEqual([
+      "declined_other_entity",
+      "declined_other_platform",
+      "declined_general_knowledge",
+    ]);
+    for (const outcome of QA_DECLINE_PRIORITY) expect(QA_OUTCOMES).toContain(outcome);
+  });
+
+  it("states the priority order in the prompt", () => {
+    expect(buildSystemPrompt(target)).toContain(
+      'use the first that matches in this order:\n  "declined_other_entity", then ' +
+        '"declined_other_platform", then "declined_general_knowledge"',
+    );
+  });
+
+  it.each<[QaDeclineOutcome[], QaDeclineOutcome]>([
+    [["declined_other_platform", "declined_other_entity"], "declined_other_entity"],
+    [["declined_general_knowledge", "declined_other_platform"], "declined_other_platform"],
+    [["declined_general_knowledge", "declined_other_entity"], "declined_other_entity"],
+    [["declined_general_knowledge"], "declined_general_knowledge"],
+  ])("resolves %j to %s", (applicable, expected) => {
+    expect(resolveDeclineOutcome(applicable)).toBe(expected);
+  });
+
+  it("requires at least one applicable outcome", () => {
+    expect(() => resolveDeclineOutcome([])).toThrow(RangeError);
+  });
+
+  // S2-015 (#66): a question that is both other-entity and other-platform.
+  it("S2-015: labels another entity's reviews on another platform as declined_other_entity", () => {
+    const s2015Case = {
+      id: "s2-015-other-entity-and-platform",
+      activeTarget: "Restaurant A on Google Maps",
+      question: "What do Restaurant B's Yelp reviews say?",
+      applicable: ["declined_other_entity", "declined_other_platform"] as QaDeclineOutcome[],
+    };
+
+    expect(resolveDeclineOutcome(s2015Case.applicable)).toBe("declined_other_entity");
+    // The prompt example describes this same case, and the question still reaches the model as data.
+    expect(buildSystemPrompt(target)).toMatch(
+      /question about another business's reviews on another\s+platform is "declined_other_entity"/,
+    );
+    expect(parseQuestion(buildRequest({ question: s2015Case.question }).input)).toBe(
+      s2015Case.question,
+    );
+  });
+});
+
+describe("request size budget", () => {
+  it("estimates tokens from UTF-8 bytes", () => {
+    expect(estimateTokens("")).toBe(0);
+    expect(estimateTokens("abc")).toBe(1);
+    expect(estimateTokens("abcd")).toBe(2);
+    // Multi-byte characters count by bytes, not characters.
+    expect(estimateTokens("é".repeat(3))).toBe(Math.ceil(6 / ESTIMATED_BYTES_PER_TOKEN));
+  });
+
+  it("reports the estimated input size and reserved output on every request", () => {
+    const request = buildRequest();
+
+    expect(request.estimatedInputTokens).toBe(
+      estimateTokens(request.instructions) + estimateTokens(request.input),
+    );
+    expect(request.maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
+  });
+
+  it("counts the prompt template, evidence, question, and reserved output together", () => {
+    const base = buildRequest({ question: "q" });
+    // Leave exactly enough room for the remaining question bytes, then go one token over.
+    const spareTokens =
+      QA_MAX_REQUEST_TOKENS - QA_RESERVED_OUTPUT_TOKENS - base.estimatedInputTokens;
+    const fits = "q".repeat(1 + spareTokens * ESTIMATED_BYTES_PER_TOKEN - 2);
+    const tooBig = "q".repeat(1 + (spareTokens + 1) * ESTIMATED_BYTES_PER_TOKEN);
+
+    const accepted = buildRequest({ question: fits });
+    expect(accepted.estimatedInputTokens + QA_RESERVED_OUTPUT_TOKENS).toBeLessThanOrEqual(
+      QA_MAX_REQUEST_TOKENS,
+    );
+    expect(() => buildRequest({ question: tooBig })).toThrow(
+      expect.objectContaining({ name: "QaPromptError", code: "REQUEST_TOO_LARGE" }),
+    );
+  });
+
+  it("rejects oversized evidence even when the question is short", () => {
+    const bulky = Array.from({ length: 20 }, (_, i) => ({
+      ...reviews[0],
+      id: `bulk-${i}`,
+      text: "x".repeat(QA_MAX_REQUEST_TOKENS),
+    }));
+
+    let thrown: unknown;
+    try {
+      buildRequest({ reviews: bulky });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(QaPromptError);
+    expect(thrown).toMatchObject({ code: "REQUEST_TOO_LARGE" });
+    expect((thrown as Error).message).not.toContain("xxxx");
   });
 });
