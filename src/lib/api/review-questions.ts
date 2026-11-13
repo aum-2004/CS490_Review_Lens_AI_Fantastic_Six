@@ -1,3 +1,8 @@
+import {
+  QUESTION_REQUIRED_MESSAGE,
+  QUESTION_LENGTH_MESSAGE,
+} from "@/lib/validation/review-question";
+
 export type ReviewAnswer = {
   targetId: string;
   outcome: "answered" | "insufficient_evidence" | "out_of_scope";
@@ -8,6 +13,7 @@ export class ReviewQuestionError extends Error {
   constructor(
     public readonly code: "AUTHENTICATION_REQUIRED" | "UNAVAILABLE" | "FAILED",
     message: string,
+    public readonly fieldErrors?: { question: string },
   ) {
     super(message);
     this.name = "ReviewQuestionError";
@@ -66,16 +72,26 @@ export async function askReviewQuestion(
       MODEL_RATE_LIMITED: "Too many questions right now. Please try again shortly.",
     };
     let message: string | undefined;
+    let fieldErrors: { question: string } | undefined;
     try {
       const payload = await response.json();
       const code: unknown = payload?.error?.code;
       if (typeof code === "string" && Object.hasOwn(messages, code)) message = messages[code];
+      const questionError: unknown = payload?.error?.fieldErrors?.question;
+      if (
+        response.status === 400 &&
+        code === "INVALID_QUESTION" &&
+        (questionError === QUESTION_REQUIRED_MESSAGE || questionError === QUESTION_LENGTH_MESSAGE)
+      ) {
+        fieldErrors = { question: questionError };
+      }
     } catch {
       // A missing or unreadable error envelope uses the generic safe message.
     }
     throw new ReviewQuestionError(
       "FAILED",
       message ?? "ReviewLens couldn't answer your question. Please try again later.",
+      fieldErrors,
     );
   }
 

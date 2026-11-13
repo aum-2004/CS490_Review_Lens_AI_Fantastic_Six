@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,6 +47,7 @@ export function ReviewQuestions(props: Props) {
 
 function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
   const router = useRouter();
+  const questionHelpId = useId();
   const request = useRef<AbortController | null>(null);
   const [answer, setAnswer] = useState<ReviewAnswer | null>(null);
   const [answeredQuestion, setAnsweredQuestion] = useState("");
@@ -79,6 +80,14 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
     } catch (cause) {
       // Unmount aborts must not affect the newly selected workspace.
       if (request.current !== controller) return;
+      if (cause instanceof ReviewQuestionError && cause.fieldErrors?.question) {
+        form.setError(
+          "question",
+          { type: "server", message: cause.fieldErrors.question },
+          { shouldFocus: true },
+        );
+        return;
+      }
       if (cause instanceof ReviewQuestionError && cause.code === "AUTHENTICATION_REQUIRED") {
         router.replace(`/login?next=${encodeURIComponent(`/analysis-targets/${targetId}`)}`);
       }
@@ -96,7 +105,7 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
   return (
     <Card className="space-y-4" aria-label="Review questions">
       <h2 className="text-xl font-semibold">Ask ReviewLens</h2>
-      <p className="max-w-prose break-words text-sm text-muted-foreground">
+      <p id={questionHelpId} className="max-w-prose break-words text-sm text-muted-foreground">
         Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
         Maps. Ask questions about this target&apos;s saved reviews.
       </p>
@@ -122,7 +131,7 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
                 <FormLabel>
                   Question <span aria-hidden="true">*</span>
                 </FormLabel>
-                <FormControl>
+                <FormControl aria-describedby={questionHelpId}>
                   <Input
                     {...field}
                     aria-required="true"

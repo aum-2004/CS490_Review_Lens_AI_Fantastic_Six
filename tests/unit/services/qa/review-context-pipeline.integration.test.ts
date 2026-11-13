@@ -152,6 +152,7 @@ describe("production questions route with actual context, orchestration and prov
     OPENAI_QA_MODEL: process.env.OPENAI_QA_MODEL,
   };
   beforeEach(() => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
     process.env.QA_ENABLED = "true";
     process.env.OPENAI_API_KEY = "synthetic-not-live";
     process.env.OPENAI_QA_MODEL = "gpt-4.1-mini";
@@ -304,7 +305,7 @@ describe("production questions route with actual context, orchestration and prov
       if (kind === "unavailable") failReviews();
       if (kind === "oversized") rows[0].review_text = "x".repeat(33000);
       const response = await post();
-      expect(response.status).toBe(kind === "unavailable" ? 503 : 422);
+      expect(response.status).toBe(kind === "unavailable" ? 503 : kind === "empty" ? 409 : 413);
       expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_DB_DIAGNOSTIC");
       expect(fetcher).not.toHaveBeenCalled();
     },
@@ -357,7 +358,24 @@ describe("production questions route with actual context, orchestration and prov
     );
     const response = await post();
     expect(response.status).toBe(503);
+    expect(console.error).toHaveBeenCalledWith("Analysis target child operation failed", {
+      operation: "ask-question",
+      category: "MODEL_UNAVAILABLE",
+    });
     expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_PROVIDER_DIAGNOSTIC");
+  });
+
+  it("returns an unexpected server failure safely and logs only its category", async () => {
+    const { fetcher } = fixture();
+    jest
+      .mocked(createSupabaseServerClient)
+      .mockRejectedValueOnce(new Error("PRIVATE_DATABASE_DIAGNOSTIC"));
+    const response = await post();
+    expect(response.status).toBe(500);
+    expect(
+      JSON.stringify(await response.json()) + JSON.stringify(jest.mocked(console.error).mock.calls),
+    ).not.toContain("PRIVATE_DATABASE_DIAGNOSTIC");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("rejects foreign citations at the actual route", async () => {

@@ -35,6 +35,7 @@ beforeEach(() => {
 it("submits a trimmed question with the active target and displays the answer", async () => {
   render(<ReviewQuestions {...props} />);
   expect(screen.getByText(/Active target:/)).toHaveTextContent("Bakery · Google Maps");
+  expect(screen.getByLabelText(/Question/)).toHaveAccessibleDescription(/Active target: Bakery/);
   submit();
   expect(await screen.findByText(answer.answer)).toBeInTheDocument();
   expect(ask).toHaveBeenCalledWith("target-a", "What do reviewers like?", expect.any(AbortSignal));
@@ -46,6 +47,7 @@ it.each(["   ", "x".repeat(2001)])(
     render(<ReviewQuestions {...props} />);
     submit(question);
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByLabelText(/Question/)).toHaveAccessibleDescription(/Active target: Bakery/);
     expect(ask).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByLabelText(/Question/)).toHaveFocus());
   },
@@ -80,6 +82,19 @@ it("preserves input after a failure and allows retry", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Ask question" }));
   expect(await screen.findByText(answer.answer)).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it("maps safe server validation into the focused inline question error", async () => {
+  const message = "Questions can be up to 2,000 characters.";
+  ask.mockRejectedValueOnce(
+    new ReviewQuestionError("FAILED", "Validation failed", { question: message }),
+  );
+  render(<ReviewQuestions {...props} />);
+  submit();
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  await waitFor(() => expect(screen.getByLabelText(/Question/)).toHaveFocus());
+  expect(screen.getByLabelText(/Question/)).toHaveAttribute("aria-invalid", "true");
+  expect(screen.getByLabelText(/Question/)).toHaveValue("  What do reviewers like?  ");
 });
 
 it("redirects an expired session to sign in with the workspace return URL", async () => {

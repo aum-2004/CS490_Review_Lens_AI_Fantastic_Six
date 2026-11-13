@@ -117,3 +117,20 @@ it("ignores unrecognized error codes and arbitrary server copy", async () => {
     "Please try again later",
   );
 });
+
+it("preserves recognized server field errors for inline display", async () => {
+  const message = "Questions can be up to 2,000 characters.";
+  respond(400, { error: { code: "INVALID_QUESTION", fieldErrors: { question: message } } });
+  await expect(askReviewQuestion("target-a", "Question", signal())).rejects.toMatchObject({
+    fieldErrors: { question: message },
+  });
+});
+
+it("rejects arbitrary field error text from the server", async () => {
+  respond(400, {
+    error: { code: "INVALID_QUESTION", fieldErrors: { question: "PRIVATE_DATABASE_DIAGNOSTIC" } },
+  });
+  await expect(askReviewQuestion("target-a", "Question", signal())).rejects.toMatchObject({
+    fieldErrors: undefined,
+  });
+});

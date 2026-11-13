@@ -9,7 +9,13 @@ import { answerQuestion } from "@/services/qa/answer-question";
 import { buildReviewDatasetContext, ReviewContextError } from "@/services/qa/review-context";
 import { createOpenAiQaModel, QaModelError } from "@/services/qa/openai-qa-client";
 import { QaPromptError } from "@/services/qa/system-prompt";
-import { reviewQuestionSchema } from "@/lib/validation/review-question";
+import { QaBudgetError } from "@/services/qa/token-budget";
+import { QaResponseError } from "@/services/qa/qa-response";
+import {
+  reviewQuestionSchema,
+  QUESTION_REQUIRED_MESSAGE,
+  QUESTION_LENGTH_MESSAGE,
+} from "@/lib/validation/review-question";
 import { readJsonBodyWithLimit } from "../reviews/review-input";
 import { errorResponse, logFailure, successResponse, targetNotFoundResponse } from "../responses";
 
@@ -37,6 +43,15 @@ export async function POST(
         400,
         "INVALID_QUESTION",
         "Enter a question about this target's reviews, using at most 2,000 characters.",
+        parsed && !parsed.success
+          ? {
+              question: parsed.error.issues.some(
+                (issue) => issue.path[0] === "question" && issue.code === "too_big",
+              )
+                ? QUESTION_LENGTH_MESSAGE
+                : QUESTION_REQUIRED_MESSAGE,
+            }
+          : undefined,
       );
     }
     const result = await answerQuestion(targetId, parsed.data.question, {
@@ -49,21 +64,30 @@ export async function POST(
       answer: result.answer,
     });
   } catch (error) {
+    logFailure("ask-question", error);
     if (error instanceof TargetNotFoundError) return targetNotFoundResponse();
     if (error instanceof ReviewContextError) {
       const status =
         error.code === "AUTH_REQUIRED"
           ? 401
-          : error.code === "NO_REVIEW_DATA" || error.code === "REVIEW_CONTEXT_TOO_LARGE"
-            ? 422
-            : 503;
+          : error.code === "NO_REVIEW_DATA"
+            ? 409
+            : error.code === "REVIEW_CONTEXT_TOO_LARGE"
+              ? 413
+              : 503;
       return errorResponse(status, error.code, error.message);
     }
-    if (error instanceof QaPromptError) return errorResponse(422, error.code, error.message);
+    if (error instanceof QaPromptError)
+      return errorResponse(
+        error.code === "REQUEST_TOO_LARGE" ? 413 : 400,
+        error.code,
+        error.message,
+      );
     if (error instanceof QaModelError) return errorResponse(503, error.code, error.message);
-    logFailure("ask-question", error);
+    if (error instanceof QaBudgetError || error instanceof QaResponseError)
+      return errorResponse(503, error.code, error.message);
     return errorResponse(
-      503,
+      500,
       "QA_FAILED",
       "We couldn't answer your question. Please try again later.",
     );
