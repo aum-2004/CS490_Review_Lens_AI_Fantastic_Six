@@ -16,6 +16,7 @@ export const MAX_OPENAI_RESPONSE_BYTES = 262_144;
 
 export type QaModelErrorCode =
   | "QA_DISABLED"
+  | "API_KEY_NOT_CONFIGURED"
   | "MODEL_NOT_CONFIGURED"
   | "MODEL_TIMEOUT"
   | "MODEL_UNAVAILABLE"
@@ -28,6 +29,7 @@ export type QaModelErrorCode =
 
 const MESSAGES: Record<QaModelErrorCode, string> = {
   QA_DISABLED: "Review Q&A is not enabled.",
+  API_KEY_NOT_CONFIGURED: "Review Q&A is not configured.",
   MODEL_NOT_CONFIGURED: "Review Q&A is not configured.",
   MODEL_TIMEOUT: "The answer took too long. Please try again.",
   MODEL_UNAVAILABLE: "The answer service is unavailable. Please try again later.",
@@ -41,7 +43,14 @@ const MESSAGES: Record<QaModelErrorCode, string> = {
 
 /** Provider failure. Messages are user-safe and never include provider bodies or review text. */
 export class QaModelError extends Error {
-  constructor(readonly code: QaModelErrorCode) {
+  /**
+   * @param detail Operator-facing explanation for server logs (for example, which environment
+   *   variable is missing). Never contains secrets; never show it to end users.
+   */
+  constructor(
+    readonly code: QaModelErrorCode,
+    readonly detail?: string,
+  ) {
     super(MESSAGES[code]);
     this.name = "QaModelError";
   }
@@ -57,10 +66,19 @@ export type QaEnv = Readonly<Record<string, string | undefined>>;
 
 /** Paid model calls stay off unless QA_ENABLED is exactly "true" (same rule as ingestion). */
 export function readOpenAiQaConfig(env: QaEnv = process.env): OpenAiQaConfig {
-  if (env.QA_ENABLED !== "true") throw new QaModelError("QA_DISABLED");
+  if (env.QA_ENABLED !== "true") {
+    throw new QaModelError("QA_DISABLED", 'QA_ENABLED is not "true"; Q&A is off.');
+  }
   const apiKey = env.OPENAI_API_KEY?.trim();
+  if (!apiKey) throw new QaModelError("API_KEY_NOT_CONFIGURED", "OPENAI_API_KEY is not set.");
+  // No fallback model: the model is a team decision and must be set explicitly.
   const model = env.OPENAI_QA_MODEL?.trim();
-  if (!apiKey || !model) throw new QaModelError("MODEL_NOT_CONFIGURED");
+  if (!model) {
+    throw new QaModelError(
+      "MODEL_NOT_CONFIGURED",
+      "OPENAI_QA_MODEL is not set. There is no default model; set it explicitly.",
+    );
+  }
   return { apiKey, model };
 }
 

@@ -21,6 +21,11 @@
 A failure at any step throws, and nothing unvalidated is returned. Steps 1 and 2 run before any
 model call.
 
+**Integration entry point.** The Q&A route calls `answerQuestion()`. It is built on
+`runGroundedQaRequest()` (`qa-request.ts`, S2-013), which runs steps 1–3 and stops before the model
+call if the context or request builder throws. Do not call `runGroundedQaRequest()` directly from a
+route: it does not validate the reply.
+
 | Error                                       | From          | Meaning                                            |
 | ------------------------------------------- | ------------- | -------------------------------------------------- |
 | `ReviewContextError`, `TargetNotFoundError` | S2-010        | Not signed in, foreign or missing target, no data  |
@@ -39,13 +44,33 @@ rejected, not repaired:
 - `INVALID_MODEL_RESPONSE`: not JSON, an unknown outcome, missing or extra fields, an empty answer,
   an answer over `MAX_ANSWER_CHARACTERS` (8,000), or non-string citations.
 - `UNGROUNDED_ANSWER`:
-  - a cited review ID that was not in the request (invented, or from another target); or
+  - a cited review ID that was not in the request (invented, or from another target), for any
+    outcome; or
   - `outcome: "answered"` with no citations. S2-011 requires answers that are defensibly
     connected to the reviews, so an uncited "answer" is treated as a general-knowledge guess.
+- `UNEXPECTED_CITATIONS`: `insufficient_evidence` or any decline outcome that cites reviews, even
+  valid ones. These outcomes are not answers from the reviews, so citations make the reply
+  contradictory. They are rejected, not silently dropped.
 
-Accepted replies are normalized: the answer is trimmed, and duplicate citations are removed.
-Decline outcomes never carry citations. `insufficient_evidence` may cite reviews for the part of
-the question they do answer (prompt evidence rule 4).
+The citation rules in one table:
+
+| Outcome                  | No citations        | Valid citations        | Unknown citation IDs |
+| ------------------------ | ------------------- | ---------------------- | -------------------- |
+| `answered`               | `UNGROUNDED_ANSWER` | Accepted               | `UNGROUNDED_ANSWER`  |
+| `insufficient_evidence`  | Accepted            | `UNEXPECTED_CITATIONS` | `UNGROUNDED_ANSWER`  |
+| `declined_*` (all three) | Accepted            | `UNEXPECTED_CITATIONS` | `UNGROUNDED_ANSWER`  |
+
+The prompt (`s2-013.v3`) states the same contract: a partial answer uses `answered` with
+citations and says what the reviews do not cover; every other outcome has an empty
+`citedReviewIds`. Accepted replies are normalized: the answer is trimmed, and duplicate citations
+are removed.
+
+### Known limitation: citation support is not verified
+
+The validator confirms that each cited review ID belongs to the active dataset. It does **not**
+confirm that the cited review supports the claim. For example, an invented parking-safety claim
+that cites a food review passes. A test documents this. Semantic support is measured by the
+S2-004 evaluation set, which should include cases where the citation does not support the answer.
 
 ## S2-012: insufficient evidence
 
@@ -86,9 +111,14 @@ harness and the S2-004 evaluation set.
 | ----------------- | --------------------- | ------------------------------------------------------- |
 | `QA_ENABLED`      | Yes, exactly `"true"` | Any other value disables Q&A before any network request |
 | `OPENAI_API_KEY`  | When enabled          | Server-only. Never `NEXT_PUBLIC_`.                      |
-| `OPENAI_QA_MODEL` | When enabled          | Team decision. There is deliberately no default.        |
+| `OPENAI_QA_MODEL` | When enabled          | Team decision. There is no default and no fallback.     |
 
-Configuration is read on every call, so a missing key or a disabled flag fails closed.
+Configuration is read on every call, so a missing key or a disabled flag fails closed before any
+network request. Each case has its own error code (`QA_DISABLED`, `API_KEY_NOT_CONFIGURED`,
+`MODEL_NOT_CONFIGURED`). `QaModelError.detail` names the missing variable for server logs, for
+example "OPENAI_QA_MODEL is not set. There is no default model; set it explicitly." The
+user-facing message stays generic. `.env.example` ships with `QA_ENABLED=false` and an empty
+`OPENAI_QA_MODEL`, and a test checks both.
 
 ### API verification
 
@@ -97,10 +127,43 @@ Checked against the official OpenAI API reference and structured-outputs guide o
 - **Confirmed:** endpoint, method, and auth header; `instructions` as a system/developer message;
   `input` as a string; `max_output_tokens` (minimum 16); `store`; the
   `text.format` json_schema nesting; the message content shapes `output_text` / `refusal`.
-- **Not confirmed from the page:** the full list of top-level `status` values, the `usage` field
-  names, and whether `output_text` appears in the raw REST body. The client is written so that
-  each of these fails closed: only `completed` is accepted, usage is optional, and text is read
-  from `output[]`. Confirm them with one manual call before enabling Q&A.
+- **Confirmed in review (Shawn, PR #79):** the response text and `usage` fields are documented
+  in the [official API reference](https://developers.openai.com/api/reference/resources/responses/methods/create).
+- **Still to check with a live call:** the full set of top-level `status` values. The client fails
+  closed regardless: only `completed` is accepted, `usage` is optional, and the text is read from
+  `output[].content[]`. The planned smoke test with synthetic data will confirm it.
+
+## Running it with synthetic data
+
+No database, network, or API key is needed. Pass a synthetic context builder, and either a fake
+model or the real OpenAI adapter with a fake `fetch`:
+
+```ts
+import { answerQuestion } from "@/services/qa/answer-question";
+import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
+
+const context = {
+  target: { id: "t1", name: "Synthetic Cafe", platform: "google_maps" as const },
+  reviews: [
+    { id: "r1", analysisTargetId: "t1", rating: 2, text: "Slow service.", reviewDate: null },
+  ],
+};
+
+const answer = await answerQuestion("t1", "Any complaints?", {
+  buildReviewDatasetContext: async () => context,
+  // Option A: a fake model that returns a fixed reply.
+  callModel: async () => ({
+    text: JSON.stringify({ outcome: "answered", answer: "Slow service.", citedReviewIds: ["r1"] }),
+  }),
+  // Option B: the real adapter with a fake fetch (inspect the outgoing request body):
+  // callModel: createOpenAiQaModel({ fetcher: fakeFetch, env: { QA_ENABLED: "true",
+  //   OPENAI_API_KEY: "test", OPENAI_QA_MODEL: "test-model" } }),
+});
+```
+
+Run the existing suites with `npx jest tests/unit/services/qa`. The controlled live smoke test
+(real key, synthetic data, spending limit approved) is a separate, manual step that the team
+approves first.
 
 ## Not in this change
 
@@ -110,4 +173,5 @@ Checked against the official OpenAI API reference and structured-outputs guide o
 - **S2-010 wiring:** `buildReviewDatasetContext` is injected because PR #78 is not merged yet.
 - **Live evaluation:** the S2-003 harness and the S2-004 evaluation set measure real model
   behavior. Q&A stays disabled (`QA_ENABLED`) until that run and team review.
-- **Model choice:** `OPENAI_QA_MODEL` is a team decision.
+- **Model choice:** `OPENAI_QA_MODEL` is a team decision. Neel suggested `gpt-6-luna` for the
+  first controlled evaluation, if the API project supports it.

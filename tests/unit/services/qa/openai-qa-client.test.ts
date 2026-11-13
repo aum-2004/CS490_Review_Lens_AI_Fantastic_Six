@@ -73,16 +73,33 @@ describe("readOpenAiQaConfig", () => {
     },
   );
 
-  it.each([
-    { OPENAI_API_KEY: undefined },
-    { OPENAI_API_KEY: "  " },
-    { OPENAI_QA_MODEL: undefined },
-    { OPENAI_QA_MODEL: "" },
-  ])("requires an API key and a model (%j)", (missing) => {
-    expect(() => readOpenAiQaConfig({ ...env, ...missing })).toThrow(
-      expect.objectContaining({ code: "MODEL_NOT_CONFIGURED" }),
-    );
-  });
+  it.each([{ OPENAI_API_KEY: undefined }, { OPENAI_API_KEY: "  " }])(
+    "requires an API key (%j)",
+    (missing) => {
+      expect(() => readOpenAiQaConfig({ ...env, ...missing })).toThrow(
+        expect.objectContaining({
+          code: "API_KEY_NOT_CONFIGURED",
+          detail: "OPENAI_API_KEY is not set.",
+        }),
+      );
+    },
+  );
+
+  it.each([{ OPENAI_QA_MODEL: undefined }, { OPENAI_QA_MODEL: "" }, { OPENAI_QA_MODEL: "  " }])(
+    "requires OPENAI_QA_MODEL with no fallback model (%j)",
+    (missing) => {
+      let thrown: unknown;
+      try {
+        readOpenAiQaConfig({ ...env, ...missing });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toMatchObject({ name: "QaModelError", code: "MODEL_NOT_CONFIGURED" });
+      expect((thrown as QaModelError).detail).toMatch(/OPENAI_QA_MODEL is not set.*no default/);
+      // The user-facing message stays generic; the detail is for server logs only.
+      expect((thrown as Error).message).toBe("Review Q&A is not configured.");
+    },
+  );
 
   it("returns the trimmed configuration", () => {
     expect(readOpenAiQaConfig({ ...env, OPENAI_QA_MODEL: " test-model " })).toEqual({
@@ -99,8 +116,21 @@ describe("createOpenAiQaModel", () => {
     expect(await codeOf(createOpenAiQaModel({ fetcher, env: {} })(request))).toBe("QA_DISABLED");
     expect(
       await codeOf(createOpenAiQaModel({ fetcher, env: { ...env, OPENAI_API_KEY: "" } })(request)),
+    ).toBe("API_KEY_NOT_CONFIGURED");
+    expect(
+      await codeOf(createOpenAiQaModel({ fetcher, env: { ...env, OPENAI_QA_MODEL: "" } })(request)),
     ).toBe("MODEL_NOT_CONFIGURED");
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("sends exactly the configured model, never a substitute", async () => {
+    const fetcher = fakeFetch(jsonResponse(completed()));
+
+    await createOpenAiQaModel({ fetcher, env: { ...env, OPENAI_QA_MODEL: "team-chosen-model" } })(
+      request,
+    );
+
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).model).toBe("team-chosen-model");
   });
 
   it("sends one Responses API request with isolated instructions and input", async () => {

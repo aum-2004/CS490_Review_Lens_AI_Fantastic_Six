@@ -2,12 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import {
-  QA_DECLINE_PRIORITY,
-  QA_OUTCOMES,
-  type QaModelRequest,
-  type QaOutcome,
-} from "@/services/qa/system-prompt";
+import { QA_OUTCOMES, type QaModelRequest, type QaOutcome } from "@/services/qa/system-prompt";
 
 /**
  * S2-011 / S2-012: validates the model's reply before anything reaches the user.
@@ -50,7 +45,8 @@ export interface QaAnswer {
   targetId: string;
 }
 
-export type QaResponseErrorCode = "INVALID_MODEL_RESPONSE" | "UNGROUNDED_ANSWER";
+export type QaResponseErrorCode =
+  "INVALID_MODEL_RESPONSE" | "UNGROUNDED_ANSWER" | "UNEXPECTED_CITATIONS";
 
 const RESPONSE_ERROR_MESSAGE = "We couldn't produce a reliable answer. Please try again.";
 
@@ -61,8 +57,6 @@ export class QaResponseError extends Error {
     this.name = "QaResponseError";
   }
 }
-
-const DECLINE_OUTCOMES: ReadonlySet<QaOutcome> = new Set(QA_DECLINE_PRIORITY);
 
 export function parseQaModelReply(replyText: string, request: QaModelRequest): QaAnswer {
   let json: unknown;
@@ -83,17 +77,24 @@ export function parseQaModelReply(replyText: string, request: QaModelRequest): Q
   }
   const cited = [...new Set(parsed.data.citedReviewIds)];
 
-  // S2-011: an answer must be connected to at least one supplied review.
-  if (outcome === "answered" && cited.length === 0) {
-    throw new QaResponseError("UNGROUNDED_ANSWER");
+  if (outcome === "answered") {
+    // S2-011: an answer must cite at least one review from the active dataset.
+    //
+    // KNOWN LIMITATION: this proves only that each cited ID belongs to the active dataset. It
+    // does NOT prove the cited review supports the claim: an invented parking-safety claim that
+    // cites a food review passes this check. Semantic support is measured by the S2-004
+    // evaluation set, not by this validator.
+    if (cited.length === 0) throw new QaResponseError("UNGROUNDED_ANSWER");
+  } else if (cited.length > 0) {
+    // Declines and insufficient_evidence are not answers from the reviews, so citations make the
+    // reply contradictory. Reject it rather than silently dropping them (prompt: empty list).
+    throw new QaResponseError("UNEXPECTED_CITATIONS");
   }
 
   return {
     outcome,
     answer,
-    // A decline is not an answer from the reviews, so it never shows supporting evidence.
-    // insufficient_evidence may cite reviews for the part it could answer (prompt rule 4).
-    citedReviewIds: DECLINE_OUTCOMES.has(outcome) ? [] : cited,
+    citedReviewIds: cited,
     promptVersion: request.promptVersion,
     targetId: request.targetId,
   };

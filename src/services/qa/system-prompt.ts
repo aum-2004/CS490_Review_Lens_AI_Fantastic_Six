@@ -14,7 +14,7 @@ import type { Review } from "@/services/reviews/review-service";
  * parsing its reply belong to S2-011. Bump the version whenever the prompt text changes so logs
  * and evaluation results can be tied to the exact prompt that produced them.
  */
-export const SYSTEM_PROMPT_VERSION = "s2-013.v2";
+export const SYSTEM_PROMPT_VERSION = "s2-013.v3";
 
 /**
  * Machine-readable outcome the model must report with every reply. The decline outcomes map
@@ -151,7 +151,8 @@ EVIDENCE RULES
    counts or proportions you can verify by counting the supplied reviews.
 4. If the question is about these reviews but the reviews do not contain enough information to
    answer it, say so clearly. Do not guess or fill the gap from general knowledge. If the reviews
-   answer part of the question, answer that part and state what the reviews do not cover.
+   answer part of the question, use "answered" for that part, cite the reviews that support it,
+   and state what the reviews do not cover.
 5. Keep what the reviews say separate from what they do not say. Do not present an absence of
    complaints as proof that something is good.
 
@@ -185,7 +186,8 @@ Reply with only a JSON object, with no surrounding text:
   platform is "declined_other_entity".
 - "answer" is plain text for the user.
 - "citedReviewIds" lists the "id" values of the reviews that support the answer. Use only ids from
-  the REVIEW DATASET. Use an empty list when no review supports the reply.`;
+  the REVIEW DATASET. For "answered", cite at least one review. For every other outcome, it must
+  be an empty list.`;
 }
 
 export function buildQaModelRequest({ target, reviews, question }: QaPromptInput): QaModelRequest {

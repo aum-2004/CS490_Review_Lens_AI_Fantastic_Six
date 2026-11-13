@@ -72,28 +72,61 @@ describe("parseQaModelReply", () => {
     expect(answer.citedReviewIds).toEqual([R2, R1]);
   });
 
-  it("keeps partial-support citations on insufficient_evidence (S2-012)", () => {
+  describe("non-answer outcomes must not cite reviews", () => {
+    const NON_ANSWER_OUTCOMES = [
+      "insufficient_evidence",
+      "declined_general_knowledge",
+      "declined_other_entity",
+      "declined_other_platform",
+    ] as const;
+
+    it.each(NON_ANSWER_OUTCOMES)("accepts %s with an empty citation list", (outcome) => {
+      const answer = parseQaModelReply(
+        reply({ outcome, answer: "The reviews do not cover that.", citedReviewIds: [] }),
+        request,
+      );
+      expect(answer).toMatchObject({ outcome, citedReviewIds: [] });
+    });
+
+    it.each(NON_ANSWER_OUTCOMES)(
+      "rejects %s that cites valid review IDs as UNEXPECTED_CITATIONS",
+      (outcome) => {
+        const error = rejection(
+          reply({ outcome, answer: "The reviews do not cover that.", citedReviewIds: [R1, R2] }),
+        );
+        expect(error).toBeInstanceOf(QaResponseError);
+        expect(error).toMatchObject({ code: "UNEXPECTED_CITATIONS" });
+      },
+    );
+
+    it.each(NON_ANSWER_OUTCOMES)(
+      "rejects %s that cites an invalid review ID as UNGROUNDED_ANSWER",
+      (outcome) => {
+        const error = rejection(
+          reply({
+            outcome,
+            answer: "The reviews do not cover that.",
+            citedReviewIds: ["review-from-another-target"],
+          }),
+        );
+        expect(error).toMatchObject({ name: "QaResponseError", code: "UNGROUNDED_ANSWER" });
+      },
+    );
+  });
+
+  it("KNOWN LIMITATION: accepts an answer whose valid citation does not support the claim", () => {
+    // R1 is a food review in the fixtures used across the QA tests. The validator checks only
+    // that cited IDs belong to the dataset; semantic support is measured by S2-004 evaluations.
     const answer = parseQaModelReply(
       reply({
-        outcome: "insufficient_evidence",
-        answer: "The reviews mention parking once but say nothing about safety at night.",
+        outcome: "answered",
+        answer: "The parking lot is safe at night.",
         citedReviewIds: [R1],
       }),
       request,
     );
-    expect(answer).toMatchObject({ outcome: "insufficient_evidence", citedReviewIds: [R1] });
+    expect(answer.outcome).toBe("answered");
   });
-
-  it.each(["declined_general_knowledge", "declined_other_entity", "declined_other_platform"])(
-    "never shows supporting evidence for %s",
-    (outcome) => {
-      const answer = parseQaModelReply(
-        reply({ outcome, answer: "I can only analyze these reviews.", citedReviewIds: [R1] }),
-        request,
-      );
-      expect(answer.citedReviewIds).toEqual([]);
-    },
-  );
 
   it.each([
     ["not JSON", "Customers like the crust."],

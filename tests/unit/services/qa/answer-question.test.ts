@@ -2,10 +2,17 @@
 
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
 import { answerQuestion, type QaModelCaller } from "@/services/qa/answer-question";
-import { QaModelError } from "@/services/qa/openai-qa-client";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { QaModelError, createOpenAiQaModel } from "@/services/qa/openai-qa-client";
 import type { QaReviewContext } from "@/services/qa/qa-request";
 import { QaResponseError } from "@/services/qa/qa-response";
-import { QaPromptError, type QaModelRequest } from "@/services/qa/system-prompt";
+import {
+  QA_MAX_REQUEST_TOKENS,
+  QaPromptError,
+  type QaModelRequest,
+} from "@/services/qa/system-prompt";
 
 jest.mock("server-only", () => ({}));
 
@@ -171,5 +178,94 @@ describe("answerQuestion with insufficient evidence (S2-012)", () => {
     await expect(answerQuestion(TARGET_ID, PARKING_QUESTION, deps)).rejects.toMatchObject({
       code: "UNGROUNDED_ANSWER",
     });
+  });
+});
+
+describe("provider gating with the real OpenAI adapter", () => {
+  const enabledEnv = {
+    QA_ENABLED: "true",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_QA_MODEL: "test-model",
+  };
+  const completedReply = {
+    status: "completed",
+    output: [
+      {
+        type: "message",
+        content: [
+          {
+            type: "output_text",
+            text: JSON.stringify({
+              outcome: "answered",
+              answer: "Service is slow.",
+              citedReviewIds: ["r-service-1"],
+            }),
+          },
+        ],
+      },
+    ],
+  };
+
+  let globalFetch: jest.SpiedFunction<typeof fetch>;
+  beforeEach(() => {
+    // Any accidental real network call fails the test instead of reaching OpenAI.
+    globalFetch = jest.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network disabled"));
+  });
+  afterEach(() => globalFetch.mockRestore());
+
+  function depsWith(env: Record<string, string | undefined>) {
+    const fetcher = jest.fn<Promise<Response>, Parameters<typeof fetch>>(
+      async () => new Response(JSON.stringify(completedReply), { status: 200 }),
+    );
+    return {
+      fetcher,
+      deps: {
+        buildReviewDatasetContext: jest.fn(async () => context),
+        callModel: createOpenAiQaModel({ fetcher, env }),
+      },
+    };
+  }
+
+  it("calls the provider once when enabled and configured (control case)", async () => {
+    const { fetcher, deps } = depsWith(enabledEnv);
+
+    await expect(answerQuestion(TARGET_ID, "Any complaints?", deps)).resolves.toMatchObject({
+      outcome: "answered",
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("never reaches the provider with an oversized request (budget checked first)", async () => {
+    const { fetcher, deps } = depsWith(enabledEnv);
+    const oversized = "Is the food good? ".repeat(QA_MAX_REQUEST_TOKENS);
+
+    await expect(answerQuestion(TARGET_ID, oversized, deps)).rejects.toMatchObject({
+      name: "QaPromptError",
+      code: "REQUEST_TOO_LARGE",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["QA_ENABLED=false", { ...enabledEnv, QA_ENABLED: "false" }],
+    ["QA_ENABLED unset", { ...enabledEnv, QA_ENABLED: undefined }],
+  ])("never reaches the provider when disabled (%s)", async (_label, env) => {
+    const { fetcher, deps } = depsWith(env);
+
+    await expect(answerQuestion(TARGET_ID, "Any complaints?", deps)).rejects.toMatchObject({
+      name: "QaModelError",
+      code: "QA_DISABLED",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("ships with Q&A disabled and no model chosen in .env.example", () => {
+    const template = readFileSync(path.join(process.cwd(), ".env.example"), "utf8");
+
+    expect(template).toMatch(/^QA_ENABLED=false$/m);
+    expect(template).toMatch(/^OPENAI_QA_MODEL=$/m);
+    expect(template).toMatch(/^OPENAI_API_KEY=$/m);
   });
 });
