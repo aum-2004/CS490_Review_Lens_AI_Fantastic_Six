@@ -129,7 +129,7 @@ describe("request-side assertions", () => {
           },
           targetA,
         ),
-      /missing from the model input/,
+      /Evidence row 3 text/,
     );
   });
 

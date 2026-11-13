@@ -64,7 +64,8 @@ describe("golden runner rejects broken pipelines", () => {
           ? { ...request, reviewIds: [targetAReview.id, ...request.reviewIds] }
           : request,
       ),
-      /step 2: Request reviewIds/,
+      // The stale Target A ID is foreign to Target B, so the leak check names it first.
+      /step 2: Foreign data reached the model request:\n- targetA: "2a000000/,
     ],
     [
       "sends reviewer names to the model",
@@ -76,10 +77,31 @@ describe("golden runner rejects broken pipelines", () => {
       /Reviewer name/,
     ],
     [
+      "corrupts a serialized rating while keeping text and reviewIds",
+      "qa-answer-001",
+      tamperRequest((request) => ({
+        ...request,
+        input: request.input.replace('"rating":5', '"rating":1'),
+      })),
+      /qa-answer-001 step 1: Evidence row 1 rating is 1; expected 5/,
+    ],
+    [
       "drops the system prompt",
       "qa-general-001",
       tamperRequest((request) => ({ ...request, instructions: "" })),
       /System instructions are empty/,
+    ],
+    [
+      "strips the grounding and decline rules from the system prompt",
+      "qa-other-entity-001",
+      tamperRequest((request) => ({
+        ...request,
+        instructions: request.instructions
+          .split("\n")
+          .filter((line) => !/^(Base every answer|Decline )/.test(line))
+          .join("\n"),
+      })),
+      /qa-other-entity-001 step 1: System instructions are missing prompt rules:\n- grounded-in-reviews/,
     ],
     [
       "puts the user question into the system prompt",
