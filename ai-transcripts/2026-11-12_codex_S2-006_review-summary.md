@@ -497,3 +497,44 @@ the following are unrecoverable from the retained context:
   preserved above.
 
 Those unavailable messages are deliberately not fabricated or replaced with invented dialogue.
+
+## 6. Shawn follow-up session — 2026-11-13
+
+### User prompt
+
+> Please address Shawn's latest review feedback on S2-006 PR #80.
+>
+> Branch: feature/S2-006-review-summary
+>
+> First, fetch and inspect the latest origin/main because Melissa's S2-005 PR #81 has already merged.
+>
+> Do not overwrite or modify Melissa's S2-005 implementation.
+>
+> Update ReviewSummaryCard to pass `skippedCount={summary.skippedCount ?? undefined}` to `IngestionStatus`. Add regression tests for partially ingested, fully ingested, unavailable, and missing skipped-count states while keeping the existing count and average rating tests. Verify the earlier security work, update this transcript, and run focused tests, full Jest, lint, typecheck, format, build, and git diff --check. Do not commit, push, merge, or open another PR.
+
+### Codex inspection and decision
+
+> I’ll first attempt to fetch and inspect `origin/main`, then verify the merged S2-005 files without touching them. I’ll make only the `ReviewSummaryCard`/test/transcript changes requested, run every available check, and report any environment limitations without committing or pushing.
+
+`git fetch origin main` was blocked because macOS Git requires unavailable Xcode Command Line Tools. The local `IngestionStatus` still had the pre-S2-005 signature and accepted only `state`. Read-only GitHub cache access also failed with `Cache miss`, so a read-only HTTPS request was used to inspect the merged file. Remote PR metadata confirmed PR #81 is merged. The remote file accepts `skippedCount`, returns `Partially ingested` for succeeded attempts with positive skipped counts, and returns `Status unavailable` for null or invalid counts.
+
+Melissa's local implementation was not modified. The requested prop was added only to [ReviewSummaryCard.tsx](../src/components/reviews/ReviewSummaryCard.tsx), and the four requested cases were added to [ReviewSummaryCard.test.tsx](../tests/unit/components/reviews/ReviewSummaryCard.test.tsx). The earlier aggregate RPC, authorization, API regression tests, and `Refs #57` wording were verified as still present.
+
+### Validation results
+
+```text
+Focused component Jest: failed because the local pre-S2-005 component rendered Ingested for skippedCount=1 and for skippedCount=null.
+Full Jest: failed for the same two component regressions.
+ESLint: passed.
+Prettier --write: passed.
+TypeScript: failed because local IngestionStatus lacks skippedCount.
+Production build: compiled, then failed on the same local prop type error and the unrelated existing ProtectedNewAnalysisTargetPage export.
+git diff --check: unavailable because Git requires missing Xcode Command Line Tools.
+npm run commands: npm was blocked in this environment; repository-local binaries were used where possible.
+```
+
+The new tests are expected to pass once this branch is refreshed from the already-merged
+`origin/main` in an environment where Git is available. The remote S2-005 implementation was not
+copied into the working tree because the user explicitly prohibited modifying Melissa's code.
+No implementation outside the two requested S2-006 files, no shared data, and no GitHub state were
+modified.

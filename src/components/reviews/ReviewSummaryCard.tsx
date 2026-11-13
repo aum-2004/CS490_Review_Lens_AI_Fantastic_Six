@@ -31,7 +31,10 @@ export function ReviewSummaryCard({ summary }: ReviewSummaryCardProps) {
         <div>
           <dt className="text-sm text-muted-foreground">Ingestion status</dt>
           <dd className="mt-1">
-            <IngestionStatus state={summary.ingestionStatus} />
+            <IngestionStatus
+              state={summary.ingestionStatus}
+              skippedCount={summary.skippedCount ?? undefined}
+            />
           </dd>
         </div>
         <div>

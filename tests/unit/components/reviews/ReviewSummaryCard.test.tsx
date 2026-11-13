@@ -40,3 +40,24 @@ it("explains empty ratings and unavailable ingestion details", () => {
   expect(screen.getByText("Status unavailable")).toBeInTheDocument();
   expect(screen.getByText("Unavailable")).toBeInTheDocument();
 });
+
+it.each([
+  ["partially ingested", "succeeded" as const, 1, "Partially ingested"],
+  ["fully ingested", "succeeded" as const, 0, "Ingested"],
+  ["missing ingestion state", null, null, "Status unavailable"],
+  ["missing skipped count", "succeeded" as const, null, "Status unavailable"],
+])(
+  "renders the correct ingestion label for %s",
+  (_caseName, ingestionStatus, skippedCount, label) => {
+    render(
+      <ReviewSummaryCard
+        summary={summary({
+          ingestionStatus,
+          skippedCount,
+        })}
+      />,
+    );
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+  },
+);
