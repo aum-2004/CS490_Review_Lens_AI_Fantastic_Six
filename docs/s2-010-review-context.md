@@ -1,5 +1,11 @@
 # S2-010: Review dataset context for Q&A
 
+> Imported dependency documentation. Historical acceptance/checklist statements
+> below describe the S2-010 branch. The consuming `s2-009` branch now wires the real
+> builder through the production questions route and retains model-aware pre-call
+> budgeting. Current verification is in `docs/s2-009-verification.md`; original
+> approvals do not substitute for current integration/security review.
+
 Issue: [#61](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/61).
 Owner: Shawn. The builder has functional/security approvals and passing CI at
 `c9c7f38`. Service composition with current S2-011 has been verified; production

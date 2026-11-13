@@ -22,7 +22,7 @@ answerQuestion(targetId, question, {
 ```
 
 The real builder independently authenticates and checks ownership before retrieving
-fresh persisted evidence. Browser evidence and owner claims are rejected. Context
+fresh persisted evidence. Browser evidence and owner claims are ignored and excluded from service inputs. Context
 failures stop before model invocation. Replies use private/no-store headers and
 include the target ID; the browser rejects mismatches. Three server `declined_*`
 outcomes map to the UI's `out_of_scope`; answers and insufficient evidence retain
@@ -31,7 +31,9 @@ their meaning. Errors use safe application copy without provider diagnostics.
 With user authorization, existing services/tests/docs were imported from S2-011 at
 `e55c48a` (includes S2-013 prompt and token budget) and S2-010 at `6835c29`. S2-013
 at `14effdf` was inspected; its implementation is already included by S2-011.
-Service source remains unchanged. Integration tests now import actual modules
+Those branch histories are now merged locally into `s2-009`, along with current
+`main` at `9533a69`, so later integration does not encounter copied-file add/add
+conflicts at the checked tips. Service source remains unchanged. Integration tests now import actual modules
 unconditionally, so missing dependencies fail instead of skipping. Their synthetic
 model name was replaced with a tokenizer-supported model; provider I/O remains fake.
 
@@ -48,10 +50,10 @@ adds 256 tokens for protocol overhead and reserves 1,500 output tokens within a
 published provider count. Unsupported models fail closed. Citation validation
 proves ID membership, not semantic support for every claim.
 
-## Test evidence
+## Test evidence from the initial implementation
 
 - Lint, TypeScript, production build and formatting passed.
-- Final full Jest run: 940 tests / 58 suites passed. Focused UI/client/integration
+- Initial full Jest run: 940 tests / 58 suites passed. Focused UI/client/integration
   run: 70 tests passed.
 - Focused coverage of the four new UI/route/client/schema modules: 98.92% lines,
   92.2% branches, 100% functions. This does not certify the team's CI coverage gate.
@@ -74,7 +76,17 @@ npm.cmd run format:check
 ```
 
 Hosted RLS acceptance, live-model evaluation, overhead calibration, CI and current-head
-human review remain team acceptance work. No push, merge, deployment, external
-message or issue closure was performed.
+human review remain team acceptance work. Dependency histories were merged locally;
+no push, protected-branch merge, deployment, external message or issue closure was performed.
+
+## Verification follow-up
+
+See `docs/s2-009-verification.md` for the latest checks and security/dependency
+fixes. The JSON-only route ignores client ownership/evidence claims, returns safe
+structured question errors, logs error categories without request/provider data,
+and uses the documented 409/413 context-error statuses. Shared form descriptions
+retain both help and validation text for assistive technology. The user explicitly
+expanded this task to address existing development dependency advisories; those
+changes are described separately in the verification report and PR draft.
 
 AI transcript: `ai-transcripts/2026-11-13_melissa_S2-009_codex.md`.
