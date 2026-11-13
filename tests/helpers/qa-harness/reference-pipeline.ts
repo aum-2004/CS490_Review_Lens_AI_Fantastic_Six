@@ -49,10 +49,16 @@ const estimateTokens = (text: string): number =>
 function referenceInstructions(dataset: QaFixtureDataset): string {
   const name = JSON.stringify(dataset.target.name);
   const platform = REVIEW_PLATFORM_LABELS[dataset.target.platform];
+  // States each rule in QA_SYSTEM_PROMPT_INVARIANTS once, in its own sentence, like S2-013 does.
   return [
     "[S2-003 reference placeholder prompt; not the S2-013 system prompt]",
-    `Analyze only the ${platform} reviews for ${name} supplied in the user message.`,
-    "Decline general-knowledge, other-entity, and other-platform questions.",
+    `You analyze the ${platform} reviews for ${name} supplied in the user message.`,
+    "Base every answer only on the supplied reviews.",
+    "Do not use outside or general knowledge.",
+    "If the reviews do not contain enough information to answer, say so instead of guessing.",
+    "Decline questions that are not about analyzing these reviews.",
+    `Decline questions about any other entity, business, or product than ${name}.`,
+    `Decline questions about reviews from any other platform than ${platform}.`,
     `Reply with JSON: {"outcome": one of ${QA_OUTCOMES.join(", ")}, "answer", "citedReviewIds"}.`,
   ].join("\n");
 }

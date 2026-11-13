@@ -219,9 +219,10 @@ function checkStep(harness: QaTestHarness, { step, result }: QaGoldenStepRun): v
     const foreign = harness.datasets.filter((candidate) => candidate.key !== active.key);
     const { request } = result.calls[0];
     expectSystemPromptApplied(request, active);
+    // Foreign data first: a leaked row would also fail the context check, but this names the leak.
+    expectNoForeignData(request, foreign);
     expectContextOnlyForTarget(request, active);
     expectNoReviewerIdentity(request, active);
-    expectNoForeignData(request, foreign);
 
     if (result.ok) {
       expectAnswerHasNoForeignData(result.answer, foreign);

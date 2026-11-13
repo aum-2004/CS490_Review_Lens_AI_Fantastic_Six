@@ -1,11 +1,17 @@
 import type { QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
   isDeclineOutcome,
+  QA_EVIDENCE_ROW_FIELDS,
+  QA_INPUT_DATASET_HEADER_PATTERN,
+  QA_SYSTEM_PROMPT_INVARIANTS,
   REVIEW_PLATFORM_LABELS,
   type QaAnswer,
   type QaDeclineOutcome,
+  type QaEvidenceRow,
   type QaModelRequest,
   type QaPipelineErrorShape,
+  type QaPromptInvariant,
+  type QaPromptInvariantId,
 } from "./contract";
 import { applicationSuppliedInput, extractQuestion } from "./fake-model";
 
@@ -25,9 +31,33 @@ function fail(message: string): never {
   throw new QaHarnessAssertionError(message);
 }
 
+/** Whitespace-normalised sentences of a prompt (rules may wrap across lines). */
+function promptSentences(instructions: string): string[] {
+  return instructions
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => sentence.trim() !== "");
+}
+
+function satisfies(invariant: QaPromptInvariant, sentences: readonly string[]): boolean {
+  return invariant.alternatives.some((patterns) =>
+    sentences.some((sentence) => patterns.every((pattern) => pattern.test(sentence))),
+  );
+}
+
+/** IDs of the S2-013 prompt invariants (see `QA_SYSTEM_PROMPT_INVARIANTS`) the prompt lacks. */
+export function missingPromptInvariants(instructions: string): QaPromptInvariantId[] {
+  const sentences = promptSentences(instructions);
+  return QA_SYSTEM_PROMPT_INVARIANTS.filter((invariant) => !satisfies(invariant, sentences)).map(
+    (invariant) => invariant.id,
+  );
+}
+
 /**
- * S2-013: the system prompt is present, names the active target and platform, and keeps
- * untrusted content (review text and the user's question) out of the system instructions.
+ * S2-013: the system prompt is present, names the active target (JSON-encoded) and platform,
+ * states every rule in `QA_SYSTEM_PROMPT_INVARIANTS` (grounding, no outside knowledge,
+ * insufficient evidence, and the three decline rules), and keeps untrusted content (review text
+ * and the user's question) out of the system instructions. It checks meaning, not exact wording.
  */
 export function expectSystemPromptApplied(
   request: QaModelRequest,
@@ -46,6 +76,13 @@ export function expectSystemPromptApplied(
   if (!request.instructions.includes(platform)) {
     fail(`System instructions do not name the review platform "${platform}".`);
   }
+  const missing = missingPromptInvariants(request.instructions);
+  if (missing.length > 0) {
+    const rules = QA_SYSTEM_PROMPT_INVARIANTS.filter((invariant) =>
+      (missing as string[]).includes(invariant.id),
+    ).map((invariant) => `${invariant.id} (${invariant.rule})`);
+    fail(`System instructions are missing prompt rules:\n- ${rules.join("\n- ")}`);
+  }
   if (options.promptVersion !== undefined && request.promptVersion !== options.promptVersion) {
     fail(`Prompt version ${request.promptVersion} is not ${options.promptVersion}.`);
   }
@@ -60,7 +97,56 @@ export function expectSystemPromptApplied(
   }
 }
 
-/** S2-010: the request carries exactly the active dataset's reviews, in persisted order. */
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Parses the S2-013 evidence section of `request.input` (see `QA_INPUT_DATASET_HEADER_PATTERN`)
+ * into rows, failing on any layout or shape problem: missing header, invalid JSON, a declared
+ * count that differs from the rows, or a row whose fields are not exactly id/rating/date/text.
+ */
+export function parseEvidenceRows(request: QaModelRequest): QaEvidenceRow[] {
+  const supplied = applicationSuppliedInput(request).replace(/\n+$/, "");
+  const newline = supplied.indexOf("\n");
+  const header = newline === -1 ? supplied : supplied.slice(0, newline);
+  const match = QA_INPUT_DATASET_HEADER_PATTERN.exec(header);
+  if (!match || newline === -1) fail("Model input does not start with a REVIEW DATASET section.");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(supplied.slice(newline + 1));
+  } catch {
+    fail("The REVIEW DATASET section is not a single valid JSON array.");
+  }
+  if (!Array.isArray(parsed)) fail("The REVIEW DATASET section is not a JSON array.");
+  if (Number(match[1]) !== parsed.length) {
+    fail(`The REVIEW DATASET header declares ${match[1]} reviews but contains ${parsed.length}.`);
+  }
+
+  const expectedKeys = [...QA_EVIDENCE_ROW_FIELDS].sort().join(",");
+  return parsed.map((row: unknown, index): QaEvidenceRow => {
+    const label = `Evidence row ${index + 1}`;
+    if (!isRecord(row)) fail(`${label} is not an object.`);
+    const keys = Object.keys(row).sort().join(",");
+    if (keys !== expectedKeys) fail(`${label} has fields [${keys}]; expected [${expectedKeys}].`);
+    const { id, rating, date, text } = row;
+    if (
+      typeof id !== "string" ||
+      typeof rating !== "number" ||
+      (date !== null && typeof date !== "string") ||
+      typeof text !== "string"
+    ) {
+      fail(`${label} has a field of the wrong type.`);
+    }
+    return { id, rating, date, text };
+  });
+}
+
+/**
+ * S2-010 / S2-013: the request carries exactly the active dataset's evidence. Every row's id,
+ * rating, date and text matches the persisted review at the same position, with nothing dropped,
+ * added or reordered, and `reviewIds` lists the same IDs in the same order.
+ */
 export function expectContextOnlyForTarget(
   request: QaModelRequest,
   dataset: QaFixtureDataset,
@@ -68,18 +154,42 @@ export function expectContextOnlyForTarget(
   if (request.targetId !== dataset.target.id) {
     fail(`Request targetId ${request.targetId} is not ${dataset.target.id} (${dataset.key}).`);
   }
-  const expected = dataset.reviews.map((review) => review.id);
-  if (JSON.stringify(request.reviewIds) !== JSON.stringify(expected)) {
+
+  const rows = parseEvidenceRows(request);
+  const expected: QaEvidenceRow[] = dataset.reviews.map((review) => ({
+    id: review.id,
+    rating: review.rating,
+    date: review.reviewDate,
+    text: review.text,
+  }));
+  if (rows.length !== expected.length) {
+    fail(`Model input has ${rows.length} reviews; ${dataset.key} has ${expected.length}.`);
+  }
+  const sortedIds = (list: readonly QaEvidenceRow[]) =>
+    JSON.stringify(list.map((r) => r.id).sort());
+  if (
+    sortedIds(rows) === sortedIds(expected) &&
+    rows.some((row, index) => row.id !== expected[index].id)
+  ) {
+    fail(`Evidence rows are not in persisted order for ${dataset.key}.`);
+  }
+  for (const [index, row] of rows.entries()) {
+    for (const field of QA_EVIDENCE_ROW_FIELDS) {
+      if (row[field] !== expected[index][field]) {
+        fail(
+          `Evidence row ${index + 1} ${field} is ${JSON.stringify(row[field])}; expected ` +
+            `${JSON.stringify(expected[index][field])} (${dataset.key} review ${expected[index].id}).`,
+        );
+      }
+    }
+  }
+
+  const expectedIds = expected.map((row) => row.id);
+  if (JSON.stringify(request.reviewIds) !== JSON.stringify(expectedIds)) {
     fail(
       `Request reviewIds ${JSON.stringify(request.reviewIds)} are not exactly ` +
-        `${JSON.stringify(expected)} (${dataset.key}).`,
+        `${JSON.stringify(expectedIds)} (${dataset.key}).`,
     );
-  }
-  const supplied = applicationSuppliedInput(request);
-  for (const review of dataset.reviews) {
-    if (!supplied.includes(JSON.stringify(review.text))) {
-      fail(`Review ${review.id} text from ${dataset.key} is missing from the model input.`);
-    }
   }
 }
 

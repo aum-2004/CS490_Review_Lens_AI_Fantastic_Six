@@ -91,6 +91,90 @@ export interface QaAnswer {
  */
 export const QA_INPUT_QUESTION_HEADER = "QUESTION (JSON string):";
 
+/**
+ * Mirror of the S2-013 evidence section that opens `input`:
+ *
+ *   REVIEW DATASET (<n> reviews, JSON array):
+ *   [{"id":…,"rating":…,"date":…,"text":…}, …]
+ *
+ * Each row is exactly this projection of a persisted Review, in persisted order. Reviewer names,
+ * URLs and source metadata are deliberately absent (S2-013 data minimisation).
+ */
+export const QA_INPUT_DATASET_HEADER_PATTERN = /^REVIEW DATASET \((\d+) reviews, JSON array\):$/;
+
+export interface QaEvidenceRow {
+  id: string;
+  rating: number;
+  /** The review's `reviewDate` (ISO 8601) or null. */
+  date: string | null;
+  text: string;
+}
+
+export const QA_EVIDENCE_ROW_FIELDS = [
+  "id",
+  "rating",
+  "date",
+  "text",
+] as const satisfies readonly (keyof QaEvidenceRow)[];
+
+/**
+ * S2-013 system-prompt contract as stable semantic invariants, not exact prose.
+ *
+ * PENDING AGREEMENT (Aryan, S2-013). Each invariant lists alternatives. An alternative is satisfied
+ * when ONE sentence of the whitespace-normalised prompt matches ALL of its patterns, so a rule must
+ * be stated together, not assembled from words scattered across the prompt. Rewording the prompt is
+ * fine as long as each rule is still stated. Until the S2-003 integration PR runs these against the
+ * real S2-013 prompt, CI checks them only against the reference pipeline's placeholder prompt.
+ *
+ * The target name (JSON-encoded) and platform label are checked separately, per target.
+ */
+export interface QaPromptInvariant {
+  readonly id: string;
+  readonly rule: string;
+  readonly alternatives: readonly (readonly RegExp[])[];
+}
+
+export const QA_SYSTEM_PROMPT_INVARIANTS = [
+  {
+    id: "grounded-in-reviews",
+    rule: "Answers are based only on the supplied reviews.",
+    alternatives: [
+      [/\bonly\b/i, /\b(supplied|provided)\b/i, /\breviews?\b/i, /\b(answer|base|evidence)/i],
+    ],
+  },
+  {
+    id: "no-outside-knowledge",
+    rule: "Outside or general knowledge must not be used.",
+    alternatives: [
+      [/\b(do not|don't|never|must not)\b/i, /\b(outside|general|external)\b/i, /\bknowledge\b/i],
+    ],
+  },
+  {
+    id: "insufficient-evidence",
+    rule: "When the reviews lack enough information, say so instead of guessing.",
+    alternatives: [[/\b(not|lack\w*|without)\b/i, /\benough\b/i, /\b(information|evidence)\b/i]],
+  },
+  {
+    id: "decline-out-of-scope",
+    rule: "Questions not about analysing these reviews are declined.",
+    alternatives: [[/\bdecline\b/i, /\bquestions?\b/i, /\b(not about|unrelated|general)\b/i]],
+  },
+  {
+    id: "decline-other-entity",
+    rule: "Questions about another entity, business or product are declined.",
+    alternatives: [
+      [/\bdecline\b/i, /\b(other|another|different)\b/i, /\b(entity|entities|business|product)\b/i],
+    ],
+  },
+  {
+    id: "decline-other-platform",
+    rule: "Questions about reviews from another platform are declined.",
+    alternatives: [[/\bdecline\b/i, /\b(other|another|different)\b/i, /\bplatforms?\b/i]],
+  },
+] as const satisfies readonly QaPromptInvariant[];
+
+export type QaPromptInvariantId = (typeof QA_SYSTEM_PROMPT_INVARIANTS)[number]["id"];
+
 /** Mirror of S2-013 request-budget constants (application budget, not a model limit). */
 export const QA_MAX_REQUEST_TOKENS = 16_000;
 export const QA_RESERVED_OUTPUT_TOKENS = 1_500;
