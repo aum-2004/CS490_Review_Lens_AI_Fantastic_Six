@@ -2,15 +2,22 @@ import "server-only";
 
 import type { QaModelCaller, QaModelReply } from "@/services/qa/answer-question";
 import { QA_REPLY_JSON_SCHEMA } from "@/services/qa/qa-response";
-import { enforceModelInputBudget, type QaTokenBudget } from "@/services/qa/token-budget";
+import {
+  assertCountableSize,
+  enforceTokenBudget,
+  parseInputTokenCount,
+  type QaTokenBudget,
+} from "@/services/qa/token-budget";
 import type { QaModelRequest } from "@/services/qa/system-prompt";
 
 /**
- * S2-011: OpenAI Responses API adapter (POST /v1/responses), called with fetch so no SDK
- * dependency is added. Checked against the official API reference on 2026-11-12; see
- * docs/s2-011-answers.md for which response fields were confirmed.
+ * S2-011: OpenAI Responses API adapter, called with fetch (no SDK). Each question makes two calls:
+ * POST /v1/responses/input_tokens to count the request, then POST /v1/responses to generate,
+ * only if the count fits the budget. Checked against the official API reference and
+ * token-counting guide; see docs/s2-011-answers.md for which fields were confirmed.
  */
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+export const OPENAI_INPUT_TOKENS_URL = "https://api.openai.com/v1/responses/input_tokens";
 export const OPENAI_TIMEOUT_MS = 30_000;
 /** A Q&A reply is small; never buffer more than this from the provider. */
 export const MAX_OPENAI_RESPONSE_BYTES = 262_144;
@@ -147,11 +154,50 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-function errorForStatus(status: number): QaModelError {
-  if (status === 429) return new QaModelError("MODEL_RATE_LIMITED");
-  if (status === 401 || status === 403) return new QaModelError("MODEL_AUTH");
-  if (status >= 400 && status < 500 && status !== 408) return new QaModelError("MODEL_REJECTED");
-  return new QaModelError("MODEL_UNAVAILABLE");
+type ProviderStage = "token count" | "generation";
+
+function errorForStatus(status: number, stage: ProviderStage): QaModelError {
+  const detail = `OpenAI ${stage} request failed with HTTP ${status}.`;
+  if (status === 429) return new QaModelError("MODEL_RATE_LIMITED", detail);
+  if (status === 401 || status === 403) return new QaModelError("MODEL_AUTH", detail);
+  if (status >= 400 && status < 500 && status !== 408) {
+    return new QaModelError("MODEL_REJECTED", detail);
+  }
+  return new QaModelError("MODEL_UNAVAILABLE", detail);
+}
+
+/** One provider POST with the shared timeout, error mapping, and bounded JSON read. */
+async function postJson(
+  url: string,
+  payload: unknown,
+  apiKey: string,
+  stage: ProviderStage,
+  fetcher: typeof fetch = fetch,
+): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await fetcher(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new QaModelError(
+      isTimeoutError(error) ? "MODEL_TIMEOUT" : "MODEL_UNAVAILABLE",
+      `OpenAI ${stage} request could not be completed.`,
+    );
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    throw errorForStatus(response.status, stage);
+  }
+  return readBoundedJson(response);
 }
 
 type Json = Record<string, unknown>;
@@ -184,6 +230,16 @@ export function extractReply(body: unknown): QaModelReply {
     : { text };
 }
 
+/**
+ * Body for POST /v1/responses/input_tokens: the same model, instructions, input, and
+ * structured-output format as the generation request, so the count covers everything that
+ * becomes input. Output-only settings (`max_output_tokens`, `store`) do not change input size and
+ * are not confirmed for this endpoint, so they are omitted.
+ */
+export function buildInputTokenCountBody(body: ReturnType<typeof buildOpenAiRequestBody>) {
+  return { model: body.model, instructions: body.instructions, input: body.input, text: body.text };
+}
+
 export interface OpenAiQaModelOptions {
   fetcher?: typeof fetch;
   env?: QaEnv;
@@ -194,6 +250,9 @@ export interface OpenAiQaModelOptions {
 /**
  * Production QaModelCaller. Configuration is read on every call, so turning QA_ENABLED off takes
  * effect without a restart and a missing key fails closed before any network request.
+ *
+ * Order: config → build body → size ceiling (no network) → OpenAI token count → budget check →
+ * generation. Any failure before the last step throws, so the generation request is never sent.
  */
 export function createOpenAiQaModel({
   fetcher,
@@ -203,34 +262,17 @@ export function createOpenAiQaModel({
   return async (request) => {
     const { apiKey, model } = readOpenAiQaConfig(env);
     const body = buildOpenAiRequestBody(request, model);
-    // Full-request budget, counted on exactly what is sent. Throws before any network request.
-    const inputTokens = enforceModelInputBudget(
-      { instructions: body.instructions, input: body.input, responseFormat: body.text.format },
-      model,
-      budget,
+    const countBody = buildInputTokenCountBody(body);
+
+    assertCountableSize(countBody);
+    const inputTokens = parseInputTokenCount(
+      await postJson(OPENAI_INPUT_TOKENS_URL, countBody, apiKey, "token count", fetcher),
     );
+    enforceTokenBudget(inputTokens, budget);
 
-    let response: Response;
-    try {
-      response = await (fetcher ?? fetch)(OPENAI_RESPONSES_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(body),
-        cache: "no-store",
-        signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
-      });
-    } catch (error) {
-      throw new QaModelError(isTimeoutError(error) ? "MODEL_TIMEOUT" : "MODEL_UNAVAILABLE");
-    }
-
-    if (!response.ok) {
-      await response.body?.cancel().catch(() => {});
-      throw errorForStatus(response.status);
-    }
-    return { ...extractReply(await readBoundedJson(response)), countedInputTokens: inputTokens };
+    const reply = extractReply(
+      await postJson(OPENAI_RESPONSES_URL, body, apiKey, "generation", fetcher),
+    );
+    return { ...reply, countedInputTokens: inputTokens };
   };
 }

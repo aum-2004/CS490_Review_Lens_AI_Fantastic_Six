@@ -83,8 +83,7 @@ drop or reject `citedReviewIds` values that were not in the request's `reviewIds
   ownership checks in S2-010.
 
 `REQUEST_TOO_LARGE` is no longer thrown by `buildQaModelRequest`. It is thrown by the S2-011
-pre-call budget check (see below), where the configured model, and therefore its tokenizer, is
-known.
+pre-generation budget check (see below), which needs the configured model.
 
 ### Request size budget
 
@@ -95,7 +94,7 @@ known.
 | Of which, reply | `QA_RESERVED_OUTPUT_TOKENS` = 1,500, sent to the provider as the output cap |
 
 These constants live here; enforcement lives in S2-011's `qa/token-budget.ts`. It counts the
-full model input with the model's tokenizer immediately before the provider call. See
+full model input with OpenAI's token-count endpoint before the generation call. See
 `docs/s2-011-answers.md` → "Request budget". The earlier UTF-8 bytes ÷ 3 estimate was removed
 because it undercounts dense JSON and IDs. These are application budgets for cost and latency, not
 the model's context window. Change the budget only through `QA_MAX_REQUEST_TOKENS`.
@@ -150,8 +149,8 @@ Other safeguards:
     the question only in the user message, never concatenated into the system message.
   - Response validation: unknown outcomes, malformed JSON, and `citedReviewIds` outside the
     request's `reviewIds` are rejected before anything reaches the user.
-  - Full request-size limits: now enforced by S2-011 with exact token counting before the
-    provider call; the smoke test confirms the overhead allowance against reported usage.
+  - Full request-size limits: now enforced by S2-011 using OpenAI's token-count endpoint
+    before the generation call; the smoke test confirms the count matches reported usage.
 - The S2-BR rule text was not available in the repository when this was written. The prompt was
   written from the S2-013, S2-011, S2-012, S2-014, S2-015, and S2-020 issue guidance and should be
   checked against the business rules document.

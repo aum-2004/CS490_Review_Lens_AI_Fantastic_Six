@@ -1,7 +1,5 @@
 import "server-only";
 
-import { isWithinTokenLimit } from "gpt-tokenizer";
-
 import {
   QA_MAX_REQUEST_TOKENS,
   QA_RESERVED_OUTPUT_TOKENS,
@@ -9,67 +7,23 @@ import {
 } from "@/services/qa/system-prompt";
 
 /**
- * S2-011: model-aware request budget, enforced immediately before the provider call.
+ * S2-011: request budget, enforced before the generation call.
  *
- * Counted input = tokens(instructions) + tokens(input) + tokens(JSON of the structured-output
- * format) + QA_MODEL_OVERHEAD_TOKENS. The request may be sent only if
- * counted input + QA_RESERVED_OUTPUT_TOKENS <= QA_MAX_REQUEST_TOKENS (16,000 by default).
- *
- * Tokens are counted with gpt-tokenizer's `o200k_base`, the encoding its documentation lists for
- * the GPT-5, GPT-4.1, GPT-4o, and o-series model families. Any other model fails safely: no
- * provider call is made until its encoding is confirmed and added to QA_MODEL_ENCODINGS.
+ * The authoritative input size is OpenAI's own count: POST /v1/responses/input_tokens with the
+ * same model, instructions, input, and structured-output format as the generation request. Per
+ * the official token-counting guide, that count "includes formatting tokens used to represent
+ * request structure, such as message roles and boundaries", so no local overhead allowance is
+ * needed. Generation is allowed only if input_tokens + QA_RESERVED_OUTPUT_TOKENS <=
+ * QA_MAX_REQUEST_TOKENS (16,000 by default). Any counting failure fails closed.
  */
-
-/** Model families whose tokenizer is `o200k_base` (gpt-tokenizer 4.1.0 documentation). */
-export const QA_MODEL_ENCODINGS: ReadonlyArray<{ pattern: RegExp; encoding: "o200k_base" }> = [
-  { pattern: /^gpt-5(?:[.-]|$)/, encoding: "o200k_base" },
-  { pattern: /^gpt-4\.1(?:-|$)/, encoding: "o200k_base" },
-  { pattern: /^gpt-4o(?:-|$)/, encoding: "o200k_base" },
-  { pattern: /^o[134](?:-|$)/, encoding: "o200k_base" },
-];
 
 /**
- * Allowance for tokens the provider adds that are not in the request text: message framing
- * (role and separator tokens for the system and user messages, and reply priming, a few tokens
- * each) and the formatting the provider wraps around the structured-output schema. The schema
- * JSON itself is counted exactly. OpenAI does not publish the exact framing, so this is a
- * deliberately generous allowance; check it against `usage.input_tokens` in the smoke test.
+ * Hard ceiling checked before any network call, so an absurdly large request is never sent to the
+ * provider, even for counting. 128 KiB is about 4× S2-010's 32 KiB evidence limit plus the prompt;
+ * a request this large would need more than 9 bytes per token to fit 14,500 tokens, far above
+ * real review text. Exceeding it is treated as REQUEST_TOO_LARGE (fails closed).
  */
-export const QA_MODEL_OVERHEAD_TOKENS = 256;
-
-/** Review text is untrusted: count special-token strings like "<|endoftext|>" as plain text. */
-const COUNT_OPTIONS = { disallowedSpecial: new Set<string>() };
-
-export class QaBudgetError extends Error {
-  /** @param detail Operator-facing explanation for server logs; never shown to users. */
-  constructor(
-    readonly code: "MODEL_BUDGET_UNSUPPORTED" | "BUDGET_CHECK_FAILED",
-    readonly detail: string,
-  ) {
-    super("Review Q&A is not available for this configuration.");
-    this.name = "QaBudgetError";
-  }
-}
-
-export function resolveTokenEncoding(model: string): "o200k_base" {
-  const match = QA_MODEL_ENCODINGS.find(({ pattern }) => pattern.test(model));
-  if (!match) {
-    throw new QaBudgetError(
-      "MODEL_BUDGET_UNSUPPORTED",
-      `No token encoding is registered for OPENAI_QA_MODEL="${model}". Confirm its tokenizer and ` +
-        "add it to QA_MODEL_ENCODINGS before enabling Q&A with this model.",
-    );
-  }
-  return match.encoding;
-}
-
-/** Every piece of text the provider turns into input tokens. */
-export interface ModelInputParts {
-  instructions: string;
-  input: string;
-  /** The exact structured-output format object sent to the provider. */
-  responseFormat: unknown;
-}
+export const MAX_COUNTABLE_REQUEST_BYTES = 131_072;
 
 export interface QaTokenBudget {
   maxRequestTokens: number;
@@ -81,41 +35,54 @@ export const QA_TOKEN_BUDGET: QaTokenBudget = {
   reservedOutputTokens: QA_RESERVED_OUTPUT_TOKENS,
 };
 
-/**
- * Counts the model input against the budget. Returns the counted input tokens, or throws:
- * QaPromptError("REQUEST_TOO_LARGE") when over budget, QaBudgetError when the model is unsupported
- * or counting fails. Counting stops early once a part exceeds what remains, so an oversized
- * question is never fully tokenized.
- */
-export function enforceModelInputBudget(
-  parts: ModelInputParts,
-  model: string,
-  budget: QaTokenBudget = QA_TOKEN_BUDGET,
-): number {
-  resolveTokenEncoding(model);
-
-  const texts = [parts.instructions, parts.input, JSON.stringify(parts.responseFormat)];
-  let remaining = budget.maxRequestTokens - budget.reservedOutputTokens - QA_MODEL_OVERHEAD_TOKENS;
-  let counted = QA_MODEL_OVERHEAD_TOKENS;
-
-  for (const text of texts) {
-    let tokens: number | false;
-    try {
-      tokens = remaining < 0 ? false : isWithinTokenLimit(text, remaining, COUNT_OPTIONS);
-    } catch {
-      throw new QaBudgetError(
-        "BUDGET_CHECK_FAILED",
-        "The request could not be tokenized; it was not sent.",
-      );
-    }
-    if (tokens === false) {
-      throw new QaPromptError(
-        "REQUEST_TOO_LARGE",
-        "This question is too long to analyze with these reviews. Try a shorter question.",
-      );
-    }
-    remaining -= tokens;
-    counted += tokens;
+/** The token count could not be trusted. The generation request is never sent. */
+export class QaBudgetError extends Error {
+  /** @param detail Operator-facing explanation for server logs; never shown to users. */
+  constructor(
+    readonly code: "BUDGET_CHECK_FAILED",
+    readonly detail: string,
+  ) {
+    super("We couldn't check the size of this question. Please try again.");
+    this.name = "QaBudgetError";
   }
-  return counted;
+}
+
+function tooLarge(): QaPromptError {
+  return new QaPromptError(
+    "REQUEST_TOO_LARGE",
+    "This question is too long to analyze with these reviews. Try a shorter question.",
+  );
+}
+
+/** Rejects a request whose serialized payload exceeds MAX_COUNTABLE_REQUEST_BYTES. */
+export function assertCountableSize(payload: unknown): void {
+  const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+  if (bytes > MAX_COUNTABLE_REQUEST_BYTES) throw tooLarge();
+}
+
+/**
+ * Reads `{"object": "response.input_tokens", "input_tokens": <integer>}` strictly. Anything else
+ * (wrong object type, missing, negative, fractional, non-numeric, or unsafe counts) fails closed.
+ */
+export function parseInputTokenCount(body: unknown): number {
+  const count =
+    typeof body === "object" && body !== null && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : undefined;
+  if (count?.object !== "response.input_tokens") {
+    throw new QaBudgetError("BUDGET_CHECK_FAILED", "Token count response had an unexpected shape.");
+  }
+  const tokens = count.input_tokens;
+  if (typeof tokens !== "number" || !Number.isSafeInteger(tokens) || tokens < 0) {
+    throw new QaBudgetError("BUDGET_CHECK_FAILED", "Token count response had an invalid count.");
+  }
+  return tokens;
+}
+
+/** Throws REQUEST_TOO_LARGE unless inputTokens + reserved output fits the cap. */
+export function enforceTokenBudget(
+  inputTokens: number,
+  budget: QaTokenBudget = QA_TOKEN_BUDGET,
+): void {
+  if (inputTokens + budget.reservedOutputTokens > budget.maxRequestTokens) throw tooLarge();
 }

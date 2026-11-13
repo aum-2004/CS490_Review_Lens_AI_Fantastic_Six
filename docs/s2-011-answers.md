@@ -30,7 +30,7 @@ route: it does not validate the reply.
 | ------------------------------------------- | ------------- | -------------------------------------------------------------------------- |
 | `ReviewContextError`, `TargetNotFoundError` | S2-010        | Not signed in, foreign or missing target, no data                          |
 | `QaPromptError`                             | S2-013        | Empty question, mismatched data; `REQUEST_TOO_LARGE` from the budget check |
-| `QaBudgetError`                             | Budget check  | Model without a confirmed tokenizer, or counting failed                    |
+| `QaBudgetError`                             | Budget check  | OpenAI token-count response was invalid (fails closed)                     |
 | `QaModelError`                              | OpenAI client | Disabled, not configured, provider failure                                 |
 | `QaResponseError`                           | Validation    | Malformed or ungrounded reply                                              |
 
@@ -108,47 +108,49 @@ harness and the S2-004 evaluation set.
 
 ### Request budget (`token-budget.ts`)
 
-`enforceModelInputBudget()` runs inside the adapter after the request body is built and **before
-`fetch()`**. It counts exactly what is sent:
+Each question makes up to two OpenAI calls, in this order:
 
-```
-counted input = tokens(instructions) + tokens(input: reviews + question)
-              + tokens(JSON of text.format: the structured-output schema)
-              + QA_MODEL_OVERHEAD_TOKENS (256)
+1. **Size ceiling (no network).** If the serialized count request exceeds
+   `MAX_COUNTABLE_REQUEST_BYTES` (128 KiB), the result is `REQUEST_TOO_LARGE` and nothing is sent to
+   OpenAI. Real requests are far below this (S2-010 caps evidence at 32 KiB); it only stops
+   absurd payloads from leaving the server.
+2. **Token count:** `POST /v1/responses/input_tokens` with the same `model`, `instructions`,
+   `input`, and `text.format` (structured-output schema) as the generation request.
+3. **Budget check:** generation is allowed only if
+   `input_tokens + QA_RESERVED_OUTPUT_TOKENS (1,500) <= QA_MAX_REQUEST_TOKENS (16,000)`, that is,
+   at most 14,500 input tokens.
+4. **Generation:** `POST /v1/responses`, still with `max_output_tokens: 1500`.
 
-send only if  counted input + QA_RESERVED_OUTPUT_TOKENS (1,500) <= QA_MAX_REQUEST_TOKENS (16,000)
-```
+**Why OpenAI's count:** the official token-counting guide says the endpoint returns "the exact
+count the model will receive" and "includes formatting tokens used to represent request
+structure, such as message roles and boundaries". That removes the need for a guessed overhead
+allowance and works for any configured model, with no local tokenizer dependency.
 
-`max_output_tokens: 1500` is still sent on every request.
+**Fail closed.** No generation call is made if:
 
-- **Counting method:** [`gpt-tokenizer`](https://github.com/niieani/gpt-tokenizer) 4.1.0 (MIT, no
-  dependencies, pinned exactly) with `o200k_base`. That package documents `o200k_base` for the
-  GPT-5, GPT-4.1, GPT-4o, and o-series families, which are listed in `QA_MODEL_ENCODINGS`.
-  Special-token strings such as `<|endoftext|>` in review text are counted as plain text instead of
-  making the tokenizer throw. Counting stops as soon as a part exceeds what is left, so an
-  oversized question is never fully tokenized.
-- **Fail safely:** a model that is not in `QA_MODEL_ENCODINGS` (for example `gpt-6-luna`, until
-  its tokenizer is confirmed) gets `QaBudgetError("MODEL_BUDGET_UNSUPPORTED")`. If the tokenizer
-  throws, the error is `QaBudgetError("BUDGET_CHECK_FAILED")`. An over-budget request gets
-  `QaPromptError("REQUEST_TOO_LARGE")`. All three happen before any network request. Tests confirm
-  zero provider calls.
-- **Why not bytes ÷ 3:** a test shows that dense JSON and IDs tokenize to more than UTF-8 bytes ÷
-  3, so the old estimate could let an over-budget request through.
-- **Tests:** exact counts for dense JSON/IDs, Unicode (emoji, CJK, accents, RTL, ZWJ sequences),
-  special-token strings, and schema overhead; a request exactly at the limit is sent once, and
-  one token over is never sent; S2-010's largest allowed evidence plus a 2,000-character question
-  fits under the default budget.
+- the count request fails (HTTP error, timeout, or network failure → the usual `QaModelError`
+  codes, with a log-only `detail` naming the "token count" stage);
+- the count response is not exactly `{"object": "response.input_tokens", "input_tokens": <safe
+non-negative integer>}` (`QaBudgetError("BUDGET_CHECK_FAILED")`);
+- the count is over budget (`QaPromptError("REQUEST_TOO_LARGE")`).
+
+**Tests (mocked endpoints, no real calls):** a count of 14,500 allows generation, and 14,501
+blocks it. Every invalid count shape and every count-request failure makes zero generation calls,
+and a payload over the size ceiling makes no calls at all. Both requests carry the same model,
+instructions, input, and format. S2-010's largest allowed evidence plus a 2,000-character question
+passes the size ceiling.
 
 **Limitations**
 
-- **Overhead is an allowance, not a measured value.** The schema JSON is counted exactly, but
-  OpenAI does not publish how it frames messages or wraps the schema. `QA_MODEL_OVERHEAD_TOKENS`
-  (256) is a deliberately generous allowance for that. The smoke test should confirm that
-  `usage.input_tokens` ≤ `countedInputTokens`.
-- **The encoding table must be maintained.** A new model needs its tokenizer confirmed and one
-  `QA_MODEL_ENCODINGS` entry. Until then it fails closed.
-- **Reasoning models:** reasoning tokens count against `max_output_tokens`. If a reply runs out,
-  it ends as `RESPONSE_INCOMPLETE`; it never exceeds the budget.
+- **Not yet verified live.** These fields were checked against the docs: the count body omits
+  `max_output_tokens` and `store`, because they don't affect input size and aren't documented for
+  that endpoint. The docs did not confirm that the top-level `text.format` is accepted by the count
+  endpoint. If it is rejected, counting fails closed. The smoke test must confirm that the endpoint
+  accepts this body and that `input_tokens` matches the generation response's `usage.input_tokens`.
+- **Billing and rate limits** of the count endpoint were not stated in the docs read. Each
+  question makes one extra API call.
+- **Reasoning models:** reasoning tokens count against `max_output_tokens`. A reply that runs out
+  ends as `RESPONSE_INCOMPLETE`; it never exceeds the budget.
 - **Only the OpenAI adapter enforces the budget.** A fake `callModel` in tests does not.
 
 ### Configuration
@@ -173,6 +175,10 @@ Checked against the official OpenAI API reference and structured-outputs guide o
 - **Confirmed:** endpoint, method, and auth header; `instructions` as a system/developer message;
   `input` as a string; `max_output_tokens` (minimum 16); `store`; the
   `text.format` json_schema nesting; the message content shapes `output_text` / `refusal`.
+- **Token counting:** `POST /v1/responses/input_tokens` and its response
+  `{"object": "response.input_tokens", "input_tokens": N}` are confirmed in the official
+  [token-counting guide](https://developers.openai.com/api/docs/guides/token-counting) and API
+  reference.
 - **Confirmed in review (Shawn, PR #79):** the response text and `usage` fields are documented
   in the [official API reference](https://developers.openai.com/api/reference/resources/responses/methods/create).
 - **Still to check with a live call:** the full set of top-level `status` values. The client fails
