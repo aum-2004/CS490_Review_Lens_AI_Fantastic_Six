@@ -203,9 +203,25 @@ checks the system prompt, that only the active target's reviews were sent, that 
 names were sent, and that no other dataset's data reached the request or the answer. Assertions
 cover behaviour and structure, never exact model wording.
 
+**What the context and prompt checks verify.**
+
+- `expectContextOnlyForTarget` parses the `REVIEW DATASET` JSON in the model input. Every row's
+  `id`, `rating`, `date` and `text` must match the persisted review at the same position, with
+  nothing dropped, added or reordered, and no extra fields.
+- `expectSystemPromptApplied` checks the JSON-encoded target name, the platform label, and the
+  named rules in `QA_SYSTEM_PROMPT_INVARIANTS` (`contract.ts`): grounded in the supplied reviews,
+  no outside knowledge, say so when evidence is insufficient, and decline out-of-scope,
+  other-entity and other-platform questions. Each rule must be stated within one sentence, but
+  any wording is accepted.
+
 **Pipeline.** Until the S2-010/S2-011 Q&A services are merged, golden cases run against a small
 test-only _contract reference pipeline_ (`reference-pipeline.ts`). When they are merged, pass the
 real orchestration as `pipeline` so the same cases run against production code.
+
+> **Limitation:** until that integration lands, CI checks the prompt contract and evidence layout
+> against the reference pipeline's placeholder prompt, **not** the real S2-013 prompt. The
+> invariants are pending agreement with the S2-013 owner, and passing these tests is not S2-003
+> end-to-end acceptance.
 
 ### Run database tests
 
