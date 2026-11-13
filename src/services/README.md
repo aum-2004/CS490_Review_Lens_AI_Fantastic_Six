@@ -215,3 +215,12 @@ not a fifth ingestion outcome.
 Database/API guidance checked against
 [Supabase database functions](https://supabase.com/docs/guides/database/functions)
 and [PostgreSQL security-invoker views](https://www.postgresql.org/docs/16/sql-createview.html).
+
+## S2-011 review Q&A
+
+`qa/answer-question.ts` runs the Q&A pipeline: S2-010 review context → S2-013 model request →
+model call → reply validation (`qa/qa-response.ts`). Both the context builder and the model caller
+are injected, so tests run without a database or a paid model call. The production model caller is
+`createOpenAiQaModel()` (`qa/openai-qa-client.ts`). It is disabled unless the server-side
+`QA_ENABLED` environment variable is exactly `"true"`, and it needs `OPENAI_API_KEY` and
+`OPENAI_QA_MODEL`. See `docs/s2-011-answers.md`.
