@@ -2,7 +2,7 @@
 
 Issue: [#61](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/61).
 Owner: Shawn. Status: context implementation with a typed S2-013 handoff;
-S2-011 caller integration, human/security review and PR CI remain pending.
+The builder has functional and independent security approvals plus CI at c9c7f38; production-route, full-budget and manual integration acceptance remain pending.
 
 ## Scope and architectural decision
 
@@ -202,7 +202,7 @@ Completion follow-up on 2026-11-12:
 - [x] Interoperability with the actual S2-013 snapshot (not a copied prompt fixture).
 - [x] Local configured checks and available original AI dialogue retained.
 - [ ] Author reviews the final implementation before opening the PR.
-- [ ] Normal and independent security reviews; published-head CI.
+- [x] Normal and independent security reviews; published-head CI for #78 at c9c7f38. New integration changes require separate review/CI.
 - [ ] S2-011 calls this builder in the running application and enforces the complete
       model-request token budget; integrated model-boundary/manual acceptance.
 - [ ] Merge and update the issue/board after acceptance.
@@ -229,3 +229,11 @@ API references checked during implementation:
 [Supabase select/count](https://supabase.com/docs/reference/javascript/select),
 [Supabase limit](https://supabase.com/docs/reference/javascript/using-modifiers-limit),
 and installed Next.js 16.4.3's `01-app/02-guides/data-security.md`.
+
+## Subsequent service integration
+
+See [S2-010/S2-011 integration](s2-010-011-integration.md) for the concrete
+answerActiveTargetQuestion entry point, real-builder/model-boundary tests, exact
+parent snapshots and remaining route/token-budget acceptance gates. This supersedes
+the earlier unavailable-orchestrator status; it does not claim a production route
+or configured-model evaluation now exists.
