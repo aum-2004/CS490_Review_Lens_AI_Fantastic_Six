@@ -87,6 +87,56 @@ describe("entity/platform refusal evaluation helper", () => {
     );
   });
 
+  it.each([
+    {
+      description: "unsupported entity information is presented",
+      evaluationCase: refusalCases[0],
+      observation: {
+        ...properRefusal,
+        unsupportedEntityInformationWasPresented: true,
+      },
+      expectedFailure: "unsupported_entity_information_was_presented",
+    },
+    {
+      description: "unsupported platform reviews are treated as available",
+      evaluationCase: refusalCases[1],
+      observation: {
+        ...properRefusal,
+        unsupportedPlatformReviewsWereTreatedAsAvailable: true,
+      },
+      expectedFailure: "unsupported_platform_reviews_were_treated_as_available",
+    },
+    {
+      description: "an unsupported comparison is presented as supported",
+      evaluationCase: refusalCases[0],
+      observation: {
+        ...properRefusal,
+        unsupportedComparisonWasPresentedAsSupported: true,
+      },
+      expectedFailure: "unsupported_comparison_was_presented_as_supported",
+    },
+  ] as const)(
+    "fails despite declined=true when $description",
+    async ({ evaluationCase, observation, expectedFailure }) => {
+      const evaluation = await evaluateEntityPlatformRefusals({
+        cases: [evaluationCase],
+        askQuestion: async () => ({ outcome: "declined" }),
+        assessResponse: () => observation,
+      });
+
+      expect(evaluation).toEqual({
+        passed: false,
+        results: [
+          {
+            caseId: evaluationCase.id,
+            failures: [expectedFailure],
+            passed: false,
+          },
+        ],
+      });
+    },
+  );
+
   it("fails when an unsupported entity question is answered", async () => {
     const evaluation = await evaluateEntityPlatformRefusals({
       cases: [refusalCases[0]],
@@ -218,6 +268,28 @@ describe("entity/platform refusal evaluation helper", () => {
       caseId: "other-entity-case-001",
       failures: ["response_assessment_failed"],
       passed: false,
+    });
+  });
+
+  it.each([
+    ["null", null],
+    ["a non-object value", "malformed observation"],
+  ] as const)("fails closed when the semantic assessor returns %s", async (_description, value) => {
+    const evaluation = await evaluateEntityPlatformRefusals({
+      cases: [refusalCases[0]],
+      askQuestion: async () => ({ outcome: "declined" }),
+      assessResponse: async () => value as unknown as EntityPlatformRefusalObservation,
+    });
+
+    expect(evaluation).toEqual({
+      passed: false,
+      results: [
+        {
+          caseId: "other-entity-case-001",
+          failures: ["response_assessment_failed"],
+          passed: false,
+        },
+      ],
     });
   });
 
