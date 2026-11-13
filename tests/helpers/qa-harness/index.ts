@@ -53,7 +53,9 @@ export interface QaTestHarnessOptions {
   readonly fallback?: QaReplySpec | "fail";
   /**
    * The orchestration under test. Default: the contract reference pipeline over `datasets`.
-   * S2-003 PR 2 passes an adapter around the real `answerActiveTargetQuestion`.
+   * S2-003 PR 2 passes an adapter that calls the real
+   * `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })` with the REAL
+   * S2-010 builder over a fake Supabase client and fake verified session (never a fake builder).
    */
   readonly pipeline?: QaPipeline;
 }

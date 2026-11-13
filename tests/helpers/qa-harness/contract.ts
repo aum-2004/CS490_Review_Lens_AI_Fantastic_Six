@@ -9,16 +9,23 @@
  * `main` independently:
  *
  * - `QaModelRequest`, `QA_OUTCOMES`, `QA_DECLINE_PRIORITY`, input format, budget constants:
- *   Aryan, S2-013 (`src/services/qa/system-prompt.ts`, PR #76).
- * - `QaModelReply`, `QaModelCaller`, `QaAnswer`, reply validation rules: Aryan, S2-011
+ *   Aryan, S2-013 (`src/services/qa/system-prompt.ts`, PR #76, as carried by #79).
+ * - `QaModelReply`, `QaModelCaller`, `QaAnswer`, reply validation rules, and the entry point
+ *   `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })`: Aryan, S2-011
  *   (`src/services/qa/answer-question.ts`, `qa-response.ts`, PR #79).
- * - Context errors and `answerActiveTargetQuestion(targetId, question, { callModel })`: Shawn,
- *   S2-010 (`src/services/qa/review-context.ts`, PR #78 / #82).
+ * - `buildReviewDatasetContext(targetId)` and its errors: Shawn, S2-010
+ *   (`src/services/qa/review-context.ts`, PR #78).
  *
- * Every item below mirrors those files as of PR #82 head `9261b86` (2026-11-12). When they merge,
- * the S2-003 follow-up PR adds compile-time checks that these copies are assignable to and from
- * the real types, then replaces each copy with a re-export. Do not extend this file with new
+ * Every item below mirrors PR #79 head `e55c48a` and PR #78 head `6835c29` (2026-11-13). PR #82
+ * was closed and consolidated into #78; nothing here depends on it. When #78 and #79 merge, the
+ * S2-003 follow-up PR adds compile-time checks that these copies are assignable to and from the
+ * real types, then replaces each copy with a re-export. Do not extend this file with new
  * production behaviour; propose changes to the owning story instead.
+ *
+ * Integration plan (PR 2): call the real `answerQuestion` with the REAL
+ * `buildReviewDatasetContext`, so its authentication and ownership checks stay under test. Mock
+ * only the infrastructure beneath it: a fake Supabase client (persisted rows), a fake verified
+ * auth session for the actor, and the fake model as `callModel`. Never pass a fake builder.
  */
 
 /** Mirror of S2-013 `QA_OUTCOMES`. */
@@ -55,7 +62,6 @@ export interface QaModelRequest {
   input: string;
   /** IDs of the reviews included in `input`. */
   reviewIds: string[];
-  estimatedInputTokens: number;
   maxOutputTokens: number;
 }
 
@@ -63,6 +69,8 @@ export interface QaModelRequest {
 export interface QaModelReply {
   text: string;
   usage?: { inputTokens: number; outputTokens: number };
+  /** Input tokens counted by S2-011's pre-call budget check (`token-budget.ts`). */
+  countedInputTokens?: number;
 }
 
 /** Mirror of S2-011 `QaModelCaller`: the single model seam the harness replaces. */
@@ -175,10 +183,16 @@ export const QA_SYSTEM_PROMPT_INVARIANTS = [
 
 export type QaPromptInvariantId = (typeof QA_SYSTEM_PROMPT_INVARIANTS)[number]["id"];
 
-/** Mirror of S2-013 request-budget constants (application budget, not a model limit). */
+/**
+ * Mirror of S2-013 request-budget constants (application budget, not a model limit).
+ *
+ * In #79 the budget is enforced inside the OpenAI adapter (`createOpenAiQaModel` →
+ * `token-budget.ts`), i.e. BELOW the `callModel` seam. With a fake `callModel`, the real pipeline
+ * therefore does not reject an oversized question before the model call. See the open question in
+ * `reference-pipeline.ts` and the `qa-edge-long-question` golden case.
+ */
 export const QA_MAX_REQUEST_TOKENS = 16_000;
 export const QA_RESERVED_OUTPUT_TOKENS = 1_500;
-export const ESTIMATED_BYTES_PER_TOKEN = 3;
 
 /** Mirror of S2-013 `REVIEW_PLATFORM_LABELS`. */
 export const REVIEW_PLATFORM_LABELS = { google_maps: "Google Maps" } as const;
@@ -196,6 +210,8 @@ export const QA_PIPELINE_ERRORS = {
   requestTooLarge: { name: "QaPromptError", code: "REQUEST_TOO_LARGE" },
   invalidModelResponse: { name: "QaResponseError", code: "INVALID_MODEL_RESPONSE" },
   ungroundedAnswer: { name: "QaResponseError", code: "UNGROUNDED_ANSWER" },
+  /** #79: any outcome other than "answered" that carries citations is rejected, not repaired. */
+  unexpectedCitations: { name: "QaResponseError", code: "UNEXPECTED_CITATIONS" },
   modelTimeout: { name: "QaModelError", code: "MODEL_TIMEOUT" },
   modelUnavailable: { name: "QaModelError", code: "MODEL_UNAVAILABLE" },
   modelRateLimited: { name: "QaModelError", code: "MODEL_RATE_LIMITED" },
@@ -211,9 +227,12 @@ export interface QaActor {
 }
 
 /**
- * Harness-defined orchestration entry point. The harness calls whatever implements this:
- * the contract reference pipeline in PR 1, and in PR 2 an adapter that sets the fake verified
- * session for `actor` and calls `answerActiveTargetQuestion(targetId, question, { callModel })`.
+ * Harness-defined orchestration entry point. The harness calls whatever implements this: the
+ * contract reference pipeline in PR 1, and in PR 2 an adapter that installs a fake verified auth
+ * session for `actor` and a fake Supabase client holding the fixture rows, then calls
+ * `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })` with the REAL
+ * S2-010 `buildReviewDatasetContext`, so authentication and ownership remain under test. Only the
+ * infrastructure under the builder and the model are faked; the builder itself never is.
  */
 export interface QaPipelineInput {
   readonly actor: QaActor;
