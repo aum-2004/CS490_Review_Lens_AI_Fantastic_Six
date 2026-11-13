@@ -16,6 +16,7 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --runInBand",
+    "test:qa": "jest --runInBand tests/unit/qa-harness",
     "test:e2e": "playwright test",
     "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
     "test:db": "bash tests/db/run.sh"
