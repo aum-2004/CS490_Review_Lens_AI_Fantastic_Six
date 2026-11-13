@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
+import { buildOpenAiRequestBody } from "@/services/qa/openai-qa-client";
 import {
   runGroundedQaRequest,
   toPromptContext,
@@ -13,6 +14,7 @@ import {
   buildSystemPrompt,
   type QaModelRequest,
 } from "@/services/qa/system-prompt";
+import { enforceModelInputBudget } from "@/services/qa/token-budget";
 
 jest.mock("server-only", () => ({}));
 
@@ -231,16 +233,6 @@ describe("runGroundedQaRequest", () => {
       expect((error as Error).message).not.toContain("TARGET_B_MARKER");
       expect(deps.invokeModel).not.toHaveBeenCalled();
     });
-
-    it("S2-013 REQUEST_TOO_LARGE when the question overflows the total budget", async () => {
-      const { deps } = setup(defaultContext);
-      const hugeQuestion = "Is the food good? ".repeat(QA_MAX_REQUEST_TOKENS);
-
-      const error = await captureRejection(runGroundedQaRequest(TARGET_ID, hugeQuestion, deps));
-
-      expect(error).toMatchObject({ name: "QaPromptError", code: "REQUEST_TOO_LARGE" });
-      expect(deps.invokeModel).not.toHaveBeenCalled();
-    });
   });
 
   it("fits S2-010's largest allowed evidence plus a 2,000-character question in the budget", async () => {
@@ -264,9 +256,13 @@ describe("runGroundedQaRequest", () => {
 
     await runGroundedQaRequest(TARGET_ID, "q".repeat(2_000), deps);
 
+    // Count exactly what the OpenAI adapter would send, with the real tokenizer.
     const request = deps.invokeModel.mock.calls[0][0];
-    expect(request.estimatedInputTokens + request.maxOutputTokens).toBeLessThanOrEqual(
-      QA_MAX_REQUEST_TOKENS,
+    const body = buildOpenAiRequestBody(request, "gpt-5-mini");
+    const counted = enforceModelInputBudget(
+      { instructions: body.instructions, input: body.input, responseFormat: body.text.format },
+      "gpt-5-mini",
     );
+    expect(counted + request.maxOutputTokens).toBeLessThanOrEqual(QA_MAX_REQUEST_TOKENS);
   });
 });

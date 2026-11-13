@@ -19,7 +19,6 @@ const request: QaModelRequest = {
   instructions: "rules",
   input: "dataset",
   reviewIds: [R1, R2],
-  estimatedInputTokens: 10,
   maxOutputTokens: 1_500,
 };
 

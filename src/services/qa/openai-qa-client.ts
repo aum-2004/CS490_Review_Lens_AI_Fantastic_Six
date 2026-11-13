@@ -2,6 +2,7 @@ import "server-only";
 
 import type { QaModelCaller, QaModelReply } from "@/services/qa/answer-question";
 import { QA_REPLY_JSON_SCHEMA } from "@/services/qa/qa-response";
+import { enforceModelInputBudget, type QaTokenBudget } from "@/services/qa/token-budget";
 import type { QaModelRequest } from "@/services/qa/system-prompt";
 
 /**
@@ -186,15 +187,28 @@ export function extractReply(body: unknown): QaModelReply {
 export interface OpenAiQaModelOptions {
   fetcher?: typeof fetch;
   env?: QaEnv;
+  /** Tests only. Production always uses QA_TOKEN_BUDGET (16,000 total, 1,500 reserved output). */
+  budget?: QaTokenBudget;
 }
 
 /**
  * Production QaModelCaller. Configuration is read on every call, so turning QA_ENABLED off takes
  * effect without a restart and a missing key fails closed before any network request.
  */
-export function createOpenAiQaModel({ fetcher, env }: OpenAiQaModelOptions = {}): QaModelCaller {
+export function createOpenAiQaModel({
+  fetcher,
+  env,
+  budget,
+}: OpenAiQaModelOptions = {}): QaModelCaller {
   return async (request) => {
     const { apiKey, model } = readOpenAiQaConfig(env);
+    const body = buildOpenAiRequestBody(request, model);
+    // Full-request budget, counted on exactly what is sent. Throws before any network request.
+    const inputTokens = enforceModelInputBudget(
+      { instructions: body.instructions, input: body.input, responseFormat: body.text.format },
+      model,
+      budget,
+    );
 
     let response: Response;
     try {
@@ -205,7 +219,7 @@ export function createOpenAiQaModel({ fetcher, env }: OpenAiQaModelOptions = {})
           "Content-Type": "application/json",
           Accept: "application/json",
         },
-        body: JSON.stringify(buildOpenAiRequestBody(request, model)),
+        body: JSON.stringify(body),
         cache: "no-store",
         signal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
       });
@@ -217,6 +231,6 @@ export function createOpenAiQaModel({ fetcher, env }: OpenAiQaModelOptions = {})
       await response.body?.cancel().catch(() => {});
       throw errorForStatus(response.status);
     }
-    return extractReply(await readBoundedJson(response));
+    return { ...extractReply(await readBoundedJson(response)), countedInputTokens: inputTokens };
   };
 }

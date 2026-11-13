@@ -185,7 +185,7 @@ describe("provider gating with the real OpenAI adapter", () => {
   const enabledEnv = {
     QA_ENABLED: "true",
     OPENAI_API_KEY: "test-key",
-    OPENAI_QA_MODEL: "test-model",
+    OPENAI_QA_MODEL: "gpt-5-mini",
   };
   const completedReply = {
     status: "completed",

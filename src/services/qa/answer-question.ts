@@ -8,8 +8,13 @@ import type { QaModelRequest } from "@/services/qa/system-prompt";
 export interface QaModelReply {
   /** The model's text output; expected to be the S2-013 JSON reply. */
   text: string;
-  /** Provider-reported token usage, when available. Compare with `estimatedInputTokens`. */
+  /** Provider-reported token usage, when available. */
   usage?: { inputTokens: number; outputTokens: number };
+  /**
+   * Input tokens counted by the pre-call budget check (qa/token-budget.ts). It should be at least
+   * `usage.inputTokens`; log both to verify the overhead allowance.
+   */
+  countedInputTokens?: number;
 }
 
 /** Calls a model provider. Production: `createOpenAiQaModel()`. Tests: a deterministic fake. */
@@ -26,8 +31,9 @@ export interface AnswerQuestionDependencies {
  *
  * Order: authorized review context (S2-010) → model request (S2-013) → model call → reply
  * validation. A failure at any step throws and nothing unvalidated is returned. Errors are
- * ReviewContextError / TargetNotFoundError (S2-010), QaPromptError (request), QaModelError
- * (provider), or QaResponseError (reply).
+ * ReviewContextError / TargetNotFoundError (S2-010), QaPromptError (request, including
+ * REQUEST_TOO_LARGE from the pre-call budget check), QaBudgetError (unsupported model or
+ * counting failure), QaModelError (provider), or QaResponseError (reply).
  */
 export async function answerQuestion(
   targetId: unknown,

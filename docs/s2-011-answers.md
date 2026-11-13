@@ -26,12 +26,13 @@ model call.
 call if the context or request builder throws. Do not call `runGroundedQaRequest()` directly from a
 route: it does not validate the reply.
 
-| Error                                       | From          | Meaning                                            |
-| ------------------------------------------- | ------------- | -------------------------------------------------- |
-| `ReviewContextError`, `TargetNotFoundError` | S2-010        | Not signed in, foreign or missing target, no data  |
-| `QaPromptError`                             | S2-013        | Empty question, mismatched data, request too large |
-| `QaModelError`                              | OpenAI client | Disabled, not configured, provider failure         |
-| `QaResponseError`                           | Validation    | Malformed or ungrounded reply                      |
+| Error                                       | From          | Meaning                                                                    |
+| ------------------------------------------- | ------------- | -------------------------------------------------------------------------- |
+| `ReviewContextError`, `TargetNotFoundError` | S2-010        | Not signed in, foreign or missing target, no data                          |
+| `QaPromptError`                             | S2-013        | Empty question, mismatched data; `REQUEST_TOO_LARGE` from the budget check |
+| `QaBudgetError`                             | Budget check  | Model without a confirmed tokenizer, or counting failed                    |
+| `QaModelError`                              | OpenAI client | Disabled, not configured, provider failure                                 |
+| `QaResponseError`                           | Validation    | Malformed or ungrounded reply                                              |
 
 Every error message is user-safe. None includes review text, model output, provider bodies, or
 the API key.
@@ -100,10 +101,55 @@ harness and the S2-004 evaluation set.
 - **Response handling:** only `status: "completed"` is accepted. `incomplete` becomes
   `RESPONSE_INCOMPLETE`, and a `refusal` content part becomes `MODEL_REFUSED`. The text is read
   from `output[].content[]` parts of type `output_text`. Bodies are capped at 256 KiB.
-  `usage.input_tokens` / `output_tokens` are returned when present, so the byte-based token
-  estimate can be compared with real usage.
+  `usage.input_tokens` / `output_tokens` are returned when present, together with
+  `countedInputTokens` from the budget check, so the two can be compared.
 - **HTTP errors:** 429 → `MODEL_RATE_LIMITED`; 401 / 403 → `MODEL_AUTH`; other 4xx (except 408) →
   `MODEL_REJECTED`; 408 / 5xx / network → `MODEL_UNAVAILABLE`; timeout → `MODEL_TIMEOUT`.
+
+### Request budget (`token-budget.ts`)
+
+`enforceModelInputBudget()` runs inside the adapter after the request body is built and **before
+`fetch()`**. It counts exactly what is sent:
+
+```
+counted input = tokens(instructions) + tokens(input: reviews + question)
+              + tokens(JSON of text.format: the structured-output schema)
+              + QA_MODEL_OVERHEAD_TOKENS (256)
+
+send only if  counted input + QA_RESERVED_OUTPUT_TOKENS (1,500) <= QA_MAX_REQUEST_TOKENS (16,000)
+```
+
+`max_output_tokens: 1500` is still sent on every request.
+
+- **Counting method:** [`gpt-tokenizer`](https://github.com/niieani/gpt-tokenizer) 4.1.0 (MIT, no
+  dependencies, pinned exactly) with `o200k_base`. That package documents `o200k_base` for the
+  GPT-5, GPT-4.1, GPT-4o, and o-series families, which are listed in `QA_MODEL_ENCODINGS`.
+  Special-token strings such as `<|endoftext|>` in review text are counted as plain text instead of
+  making the tokenizer throw. Counting stops as soon as a part exceeds what is left, so an
+  oversized question is never fully tokenized.
+- **Fail safely:** a model that is not in `QA_MODEL_ENCODINGS` (for example `gpt-6-luna`, until
+  its tokenizer is confirmed) gets `QaBudgetError("MODEL_BUDGET_UNSUPPORTED")`. If the tokenizer
+  throws, the error is `QaBudgetError("BUDGET_CHECK_FAILED")`. An over-budget request gets
+  `QaPromptError("REQUEST_TOO_LARGE")`. All three happen before any network request. Tests confirm
+  zero provider calls.
+- **Why not bytes ÷ 3:** a test shows that dense JSON and IDs tokenize to more than UTF-8 bytes ÷
+  3, so the old estimate could let an over-budget request through.
+- **Tests:** exact counts for dense JSON/IDs, Unicode (emoji, CJK, accents, RTL, ZWJ sequences),
+  special-token strings, and schema overhead; a request exactly at the limit is sent once, and
+  one token over is never sent; S2-010's largest allowed evidence plus a 2,000-character question
+  fits under the default budget.
+
+**Limitations**
+
+- **Overhead is an allowance, not a measured value.** The schema JSON is counted exactly, but
+  OpenAI does not publish how it frames messages or wraps the schema. `QA_MODEL_OVERHEAD_TOKENS`
+  (256) is a deliberately generous allowance for that. The smoke test should confirm that
+  `usage.input_tokens` ≤ `countedInputTokens`.
+- **The encoding table must be maintained.** A new model needs its tokenizer confirmed and one
+  `QA_MODEL_ENCODINGS` entry. Until then it fails closed.
+- **Reasoning models:** reasoning tokens count against `max_output_tokens`. If a reply runs out,
+  it ends as `RESPONSE_INCOMPLETE`; it never exceeds the budget.
+- **Only the OpenAI adapter enforces the budget.** A fake `callModel` in tests does not.
 
 ### Configuration
 

@@ -1,7 +1,6 @@
 /** @jest-environment node */
 
 import {
-  ESTIMATED_BYTES_PER_TOKEN,
   QA_DECLINE_PRIORITY,
   QA_MAX_REQUEST_TOKENS,
   QA_OUTCOMES,
@@ -10,7 +9,6 @@ import {
   SYSTEM_PROMPT_VERSION,
   buildQaModelRequest,
   buildSystemPrompt,
-  estimateTokens,
   resolveDeclineOutcome,
   type PromptReview,
   type PromptTarget,
@@ -258,55 +256,15 @@ describe("decline outcome priority", () => {
 });
 
 describe("request size budget", () => {
-  it("estimates tokens from UTF-8 bytes", () => {
-    expect(estimateTokens("")).toBe(0);
-    expect(estimateTokens("abc")).toBe(1);
-    expect(estimateTokens("abcd")).toBe(2);
-    // Multi-byte characters count by bytes, not characters.
-    expect(estimateTokens("é".repeat(3))).toBe(Math.ceil(6 / ESTIMATED_BYTES_PER_TOKEN));
+  it("keeps the application budget constants and sends the reserved output limit", () => {
+    expect(QA_MAX_REQUEST_TOKENS).toBe(16_000);
+    expect(QA_RESERVED_OUTPUT_TOKENS).toBe(1_500);
+    expect(buildRequest().maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
   });
 
-  it("reports the estimated input size and reserved output on every request", () => {
-    const request = buildRequest();
-
-    expect(request.estimatedInputTokens).toBe(
-      estimateTokens(request.instructions) + estimateTokens(request.input),
-    );
-    expect(request.maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
-  });
-
-  it("counts the prompt template, evidence, question, and reserved output together", () => {
-    const base = buildRequest({ question: "q" });
-    // Leave exactly enough room for the remaining question bytes, then go one token over.
-    const spareTokens =
-      QA_MAX_REQUEST_TOKENS - QA_RESERVED_OUTPUT_TOKENS - base.estimatedInputTokens;
-    const fits = "q".repeat(1 + spareTokens * ESTIMATED_BYTES_PER_TOKEN - 2);
-    const tooBig = "q".repeat(1 + (spareTokens + 1) * ESTIMATED_BYTES_PER_TOKEN);
-
-    const accepted = buildRequest({ question: fits });
-    expect(accepted.estimatedInputTokens + QA_RESERVED_OUTPUT_TOKENS).toBeLessThanOrEqual(
-      QA_MAX_REQUEST_TOKENS,
-    );
-    expect(() => buildRequest({ question: tooBig })).toThrow(
-      expect.objectContaining({ name: "QaPromptError", code: "REQUEST_TOO_LARGE" }),
-    );
-  });
-
-  it("rejects oversized evidence even when the question is short", () => {
-    const bulky = Array.from({ length: 20 }, (_, i) => ({
-      ...reviews[0],
-      id: `bulk-${i}`,
-      text: "x".repeat(QA_MAX_REQUEST_TOKENS),
-    }));
-
-    let thrown: unknown;
-    try {
-      buildRequest({ reviews: bulky });
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toBeInstanceOf(QaPromptError);
-    expect(thrown).toMatchObject({ code: "REQUEST_TOO_LARGE" });
-    expect((thrown as Error).message).not.toContain("xxxx");
+  it("leaves size enforcement to the model-aware pre-call check", () => {
+    // Exact, model-compatible counting happens in qa/token-budget.ts before the provider call.
+    const request = buildRequest({ question: "q".repeat(QA_MAX_REQUEST_TOKENS * 4) });
+    expect(request).not.toHaveProperty("estimatedInputTokens");
   });
 });

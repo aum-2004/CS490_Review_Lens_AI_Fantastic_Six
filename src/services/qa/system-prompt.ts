@@ -57,27 +57,17 @@ export function resolveDeclineOutcome(applicable: Iterable<QaDeclineOutcome>): Q
 
 /**
  * Request-size budget. QA_MAX_REQUEST_TOKENS is the single configurable cap on one model request:
- * system prompt + review evidence + question + reserved output must fit inside it. S2-010's
- * 100-review / 32 KiB evidence limit is one part of this budget and is enforced there first.
- * These are application budgets for cost and latency, not the model's context window.
+ * system prompt + review evidence + question + structured-output schema + provider overhead +
+ * reserved output must fit inside it. S2-010's 100-review / 32 KiB evidence limit is one part of
+ * this budget and is enforced there first. The full budget is enforced with model-compatible
+ * token counting immediately before the provider call (`qa/token-budget.ts`), because the exact
+ * count depends on the configured model. These are application budgets for cost and latency, not
+ * the model's context window.
  */
 export const QA_MAX_REQUEST_TOKENS = 16_000;
 
 /** Output tokens reserved for the reply. S2-011 must send this as the provider's output limit. */
 export const QA_RESERVED_OUTPUT_TOKENS = 1_500;
-
-/**
- * Conservative UTF-8 bytes per token used to estimate size without a tokenizer dependency.
- * English prose averages about 4 bytes per token, so this overestimates prose. Dense JSON and IDs
- * can tokenize worse; check the estimate against the provider's reported input tokens in S2-011.
- */
-export const ESTIMATED_BYTES_PER_TOKEN = 3;
-
-const utf8 = new TextEncoder();
-
-export function estimateTokens(text: string): number {
-  return Math.ceil(utf8.encode(text).length / ESTIMATED_BYTES_PER_TOKEN);
-}
 
 /** Human-readable platform names. A Record keeps this exhaustive when a platform is added. */
 export const REVIEW_PLATFORM_LABELS: Record<ReviewPlatform, string> = {
@@ -111,8 +101,6 @@ export interface QaModelRequest {
   input: string;
   /** IDs of the reviews included in `input`, so callers and tests can audit the context. */
   reviewIds: string[];
-  /** Estimated tokens for `instructions` + `input`. */
-  estimatedInputTokens: number;
   /** Output limit to send to the provider (QA_RESERVED_OUTPUT_TOKENS). */
   maxOutputTokens: number;
 }
@@ -223,23 +211,14 @@ ${JSON.stringify(dataset)}
 QUESTION (JSON string):
 ${JSON.stringify(trimmedQuestion)}`;
 
-  const instructions = buildSystemPrompt(target);
-  const estimatedInputTokens = estimateTokens(instructions) + estimateTokens(input);
-  // Total request budget: prompt template + evidence + question + reserved output.
-  if (estimatedInputTokens + QA_RESERVED_OUTPUT_TOKENS > QA_MAX_REQUEST_TOKENS) {
-    throw new QaPromptError(
-      "REQUEST_TOO_LARGE",
-      "This question is too long to analyze with these reviews. Try a shorter question.",
-    );
-  }
-
+  // The total request budget is enforced with model-compatible token counting immediately before
+  // the provider call (qa/token-budget.ts), where the configured model is known.
   return {
     promptVersion: SYSTEM_PROMPT_VERSION,
     targetId: target.id,
-    instructions,
+    instructions: buildSystemPrompt(target),
     input,
     reviewIds: dataset.map((review) => review.id),
-    estimatedInputTokens,
     maxOutputTokens: QA_RESERVED_OUTPUT_TOKENS,
   };
 }

@@ -15,7 +15,7 @@
 | `QaPromptError`             | Thrown when a request cannot be built safely. The caller must not call the model.              |
 | `QA_DECLINE_PRIORITY`       | Which decline outcome wins when more than one applies.                                         |
 | `resolveDeclineOutcome`     | Returns the winning decline outcome; used to label multi-category evaluation cases.            |
-| `QA_MAX_REQUEST_TOKENS`     | The single configurable cap on one model request, in estimated tokens.                         |
+| `QA_MAX_REQUEST_TOKENS`     | The single configurable cap on one model request, in tokens (enforced by S2-011, see below).   |
 | `QA_RESERVED_OUTPUT_TOKENS` | Output tokens reserved for the reply; sent to the provider as `maxOutputTokens`.               |
 | `runGroundedQaRequest`      | (`qa-request.ts`) Builds the S2-010 context, then the request, then calls the injected model.  |
 
@@ -81,21 +81,24 @@ drop or reject `citedReviewIds` values that were not in the request's `reviewIds
 - `REVIEW_TARGET_MISMATCH`: any review's `analysisTargetId` differs from the active target. This
   is a final check against wrong-target or stale context (S2-016, S2-019); it does not replace
   ownership checks in S2-010.
-- `REQUEST_TOO_LARGE`: the estimated system prompt + review evidence + question, plus
-  `QA_RESERVED_OUTPUT_TOKENS`, exceeds `QA_MAX_REQUEST_TOKENS` (see below).
+
+`REQUEST_TOO_LARGE` is no longer thrown by `buildQaModelRequest`. It is thrown by the S2-011
+pre-call budget check (see below), where the configured model, and therefore its tokenizer, is
+known.
 
 ### Request size budget
 
 | Part            | Limit                                                                       |
 | --------------- | --------------------------------------------------------------------------- |
 | Review evidence | S2-010: at most 100 reviews and 32 KiB of evidence JSON (checked first)     |
-| Whole request   | `QA_MAX_REQUEST_TOKENS` = 16,000 estimated tokens                           |
+| Whole request   | `QA_MAX_REQUEST_TOKENS` = 16,000 tokens                                     |
 | Of which, reply | `QA_RESERVED_OUTPUT_TOKENS` = 1,500, sent to the provider as the output cap |
 
-Tokens are estimated as UTF-8 bytes / `ESTIMATED_BYTES_PER_TOKEN` (3), with no tokenizer
-dependency. A test checks that S2-010's largest allowed evidence plus a 2,000-character question
-fits. These are application budgets for cost and latency, not the model's context window. Change
-the budget only through `QA_MAX_REQUEST_TOKENS`.
+These constants live here; enforcement lives in S2-011's `qa/token-budget.ts`. It counts the
+full model input with the model's tokenizer immediately before the provider call. See
+`docs/s2-011-answers.md` → "Request budget". The earlier UTF-8 bytes ÷ 3 estimate was removed
+because it undercounts dense JSON and IDs. These are application budgets for cost and latency, not
+the model's context window. Change the budget only through `QA_MAX_REQUEST_TOKENS`.
 
 ### Wiring to S2-010
 
@@ -147,8 +150,8 @@ Other safeguards:
     the question only in the user message, never concatenated into the system message.
   - Response validation: unknown outcomes, malformed JSON, and `citedReviewIds` outside the
     request's `reviewIds` are rejected before anything reaches the user.
-  - Full request-size limits: the byte-based estimate matches the provider's reported input
-    tokens for realistic datasets, and `maxOutputTokens` is actually sent.
+  - Full request-size limits: now enforced by S2-011 with exact token counting before the
+    provider call; the smoke test confirms the overhead allowance against reported usage.
 - The S2-BR rule text was not available in the repository when this was written. The prompt was
   written from the S2-013, S2-011, S2-012, S2-014, S2-015, and S2-020 issue guidance and should be
   checked against the business rules document.
