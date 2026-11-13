@@ -142,6 +142,7 @@ createServer(async (request, response) => {
         query_kind: "source_url",
         expected_place_id: null,
         identity_basis: "provider_resolved",
+        skipped_count: url.searchParams.get("partial") === "true" ? 2 : 0,
         verified_identity: { placeId: "ChIJSynthetic", businessName: "Provider coffee shop" },
       });
     return send(200, {});

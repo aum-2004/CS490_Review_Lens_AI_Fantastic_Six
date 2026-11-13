@@ -18,6 +18,7 @@
   --destructive-foreground: #ffffff;
   --success: #166534;
   --info: #1e40af;
+  --warning: #92400e;
 }
 
 @theme inline {
@@ -38,6 +39,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-info: var(--info);
+  --color-warning: var(--warning);
   --font-sans: var(--font-inter);
   --font-mono: ui-monospace, monospace;
 }
@@ -61,6 +63,7 @@
     --destructive-foreground: #450a0a;
     --success: #86efac;
     --info: #93c5fd;
+    --warning: #fcd34d;
   }
 }
 

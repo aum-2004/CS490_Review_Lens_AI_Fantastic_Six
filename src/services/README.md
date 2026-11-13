@@ -208,8 +208,15 @@ reconciliation. No in-process background task is relied upon after a response.
 The owner-scoped `analysis_target_ingestion_status` view explicitly emits
 `not_ingested` for targets with no attempt. Missing/truncated/unavailable response
 rows remain unavailable in the app. S1-017 cards and the S1-018 workspace use the
-same four-state `IngestionStatus` component. Unavailable status is separate text,
-not a fifth ingestion outcome.
+same `IngestionStatus` component. S2-005 distinguishes a persisted `succeeded`
+attempt with a positive `skipped_count` as **Partially ingested** (amber warning),
+separate from **Ingesting** (blue info) and **Ingested** (green success). Other
+labels remain **Not ingested** (gray) and **Failed** (red). The database still has
+four states; partial completion is derived from its persisted status and count.
+`skippedCount` is a required badge prop. Missing, negative, non-integer, or
+non-finite counts display **Status unavailable**, as does unavailable state.
+Unavailable status is separate text, not an ingestion outcome. Skipped records
+are never included in the saved count or active review dataset.
 
 Database/API guidance checked against
 [Supabase database functions](https://supabase.com/docs/guides/database/functions)

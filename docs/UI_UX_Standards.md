@@ -132,12 +132,19 @@ Errors that appear after an action use role="alert" so screen readers announce t
 4. **Never leave the user wondering:** Any action that takes more than 500 ms shows a visible processing state and the UI never shows stale success while a new request is running.
 5. **Ingestion status model:** IngestionStatus is the single component that renders Ingestion state, using the same badge everywhere (target card, workspace header, ingestion panel):
 
-| State                     | Badge label  | Color        | Panel behavior                                                                                                                        |
-| :------------------------ | :----------- | :----------- | :------------------------------------------------------------------------------------------------------------------------------------ |
-| No ingestion has occurred | Not ingested | Neutral gray | Shows "Start ingestion" as the primary action and a one-line explanation.                                                             |
-| Processing                | Ingesting    | Blue         | "Start ingestion" is disabled; text states which target and source are being processed; status refreshes automatically until it ends. |
-| Succeeded                 | Ingested     | Green        | Shows the number of reviews saved; ReviewList shows the persisted reviews                                                             |
-| Failed                    | Failed       | Red          | Shows the ErrorAlert from 4.4 and a "Try again" button, prior data must remain                                                        |
+| State                          | Badge label        | Color        | Panel behavior                                                                                                                                  |
+| :----------------------------- | :----------------- | :----------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| No ingestion has occurred      | Not ingested       | Neutral gray | Shows "Start ingestion" as the primary action and a one-line explanation.                                                                       |
+| Processing                     | Ingesting          | Blue         | "Start ingestion" is disabled; text states which target and source are being processed; status refreshes automatically until it ends.           |
+| Succeeded                      | Ingested           | Green        | Shows the number of reviews saved; ReviewList shows the persisted reviews                                                                       |
+| Succeeded with skipped records | Partially ingested | Amber        | Shows saved and skipped counts, explains that only saved reviews enter the dataset, and retains the existing completed-run action restrictions. |
+| Failed                         | Failed             | Red          | Shows the ErrorAlert from 4.4 and a "Try again" button, prior data must remain                                                                  |
+
+Partial completion is derived from persisted `succeeded` status with a positive
+`skipped_count`; it does not introduce a new database state. The badge requires
+`skippedCount` explicitly. Missing, negative, non-integer, or non-finite counts
+display "Status unavailable" rather than suggesting complete success. Unavailable
+state also displays "Status unavailable" and never implies "Not ingested".
 
 6. **Processing context:** While ingesting, the panel states the active target and source ("Collecting reviews for {target name} from Google Maps…") so the user knows what is happening and where results will go.
 7. **Navigating away:** Leaving the workspace during ingestion does not cancel it. Returning shows the current state fetched from the server.
@@ -174,16 +181,17 @@ Errors that appear after an action use role="alert" so screen readers announce t
 **Line height:** Use Tailwind defaults paired with each size. Body text maximum line width about 70 characters. Exactly one h1 per page, with headings in order and never skipped for styling reasons.
 
 7.2 Color tokens  
-Use only the semantic tokens defined in the Tailwind theme (the shadcn/ui defaults plus success and info).
+Use only the semantic tokens defined in the Tailwind theme (the shadcn/ui defaults plus success, info, and warning).
 
-| Token                       | Purpose                                                      |
-| :-------------------------- | :----------------------------------------------------------- |
-| Primary                     | Primary buttons, links, focus accents                        |
-| foreground/muted-foreground | Body and secondary text                                      |
-| background/card/border      | Surfaces and dividers                                        |
-| destructive                 | Errors, failed state                                         |
-| success                     | Succeeded state (a custom token defined in the theme, green) |
-| info                        | Processing state (blue)                                      |
+| Token                       | Purpose                                                                                        |
+| :-------------------------- | :--------------------------------------------------------------------------------------------- |
+| Primary                     | Primary buttons, links, focus accents                                                          |
+| foreground/muted-foreground | Body and secondary text                                                                        |
+| background/card/border      | Surfaces and dividers                                                                          |
+| destructive                 | Errors, failed state                                                                           |
+| success                     | Succeeded state (a custom token defined in the theme, green)                                   |
+| info                        | Processing state (blue)                                                                        |
+| warning                     | Partial ingestion (amber), distinct from processing blue; dark-mode value defined in the theme |
 
 Text and interactive elements must meet WCAG AA contrast for user accessibility.  
 7.3 Spacing
@@ -197,17 +205,17 @@ Rule: Check for an existing component before creating one, and reuse rather than
 
 8.1 Inventory
 
-| Component             | Responsibility                                                          | Used by                                      |
-| :-------------------- | :---------------------------------------------------------------------- | :------------------------------------------- |
-| AppShell              | Protected layout: top bar, skip link, content container                 | All protected pages                          |
-| Navigation            | Top bar links, "New Target", account menu                               | AppShell                                     |
-| PageHeader            | Breadcrumb, h1, description, primary action                             | All protected pages                          |
-| AuthForm              | Sign in and register with provider error mapping                        | /login                                       |
-| TargetForm            | Create-target fields and validation (shared schema)                     | /analysis-targets/new                        |
-| TargetCard            | Name, platform badge, truncated source URL, status badge, "Open" link   | My Targets                                   |
-| IngestionPanel        | Start/retry ingestion action, processing text, errors, last-run counts  | Target Workspace                             |
-| IngestionStatus       | The one status badge for the four ingestion states                      | TargetCard, workspace header, IngestionPanel |
-| ReviewList            | Persisted reviews: rating, review text, optional reviewer name and date | Target Workspace                             |
-| EmptyState            | Icon, explanation, single action                                        | Any empty list                               |
-| ErrorState/ErrorAlert | Full-page and inline errors by category (as per section 4.3)            | Everywhere                                   |
-| Spinner/Skeleton      | Loading indicators(as per section 5\)                                   | Everywhere                                   |
+| Component             | Responsibility                                                                          | Used by                                      |
+| :-------------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------- |
+| AppShell              | Protected layout: top bar, skip link, content container                                 | All protected pages                          |
+| Navigation            | Top bar links, "New Target", account menu                                               | AppShell                                     |
+| PageHeader            | Breadcrumb, h1, description, primary action                                             | All protected pages                          |
+| AuthForm              | Sign in and register with provider error mapping                                        | /login                                       |
+| TargetForm            | Create-target fields and validation (shared schema)                                     | /analysis-targets/new                        |
+| TargetCard            | Name, platform badge, truncated source URL, status badge, "Open" link                   | My Targets                                   |
+| IngestionPanel        | Start/retry ingestion action, processing text, errors, last-run counts                  | Target Workspace                             |
+| IngestionStatus       | Shared badge for persisted ingestion states, partial completion, and unavailable status | TargetCard, workspace header, IngestionPanel |
+| ReviewList            | Persisted reviews: rating, review text, optional reviewer name and date                 | Target Workspace                             |
+| EmptyState            | Icon, explanation, single action                                                        | Any empty list                               |
+| ErrorState/ErrorAlert | Full-page and inline errors by category (as per section 4.3)                            | Everywhere                                   |
+| Spinner/Skeleton      | Loading indicators(as per section 5\)                                                   | Everywhere                                   |

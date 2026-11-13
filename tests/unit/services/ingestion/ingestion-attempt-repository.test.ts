@@ -56,6 +56,17 @@ it("does not invent no-ingestion for missing or truncated rows", async () => {
   const result = await getTargetIngestionSummaries(db.client, "user-a", ["target-a", "target-b"]);
   expect(result.has("target-b")).toBe(false);
 });
+it("maps persisted skipped_count into skippedCount for target-card summaries", async () => {
+  const db = database([{ ...row, state: "succeeded", saved_count: 3, skipped_count: 2 }]);
+  const summaries = await getTargetIngestionSummaries(db.client, "user-a", ["target-a"]);
+  expect(summaries.get("target-a")).toMatchObject({
+    state: "succeeded",
+    savedCount: 3,
+    skippedCount: 2,
+  });
+  const selection = db.calls.find(([operation]) => operation === "select");
+  expect(String(selection?.[1]).split(", ")).toContain("skipped_count");
+});
 it("rejects a failed read rather than confirming an empty attempt history", async () => {
   await expect(
     getTargetIngestionSummaries(database(null, { message: "private SQL" }).client, "user-a", [
