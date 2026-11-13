@@ -156,6 +156,8 @@ describe("scope-guard evaluation fixture", () => {
 
       if (evaluationCase.expectedCategory === "answer_from_active_reviews") {
         expect(cited.length).toBeGreaterThan(0);
+      } else {
+        expect(cited).toHaveLength(0);
       }
     }
   });
