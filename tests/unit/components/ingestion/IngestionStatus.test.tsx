@@ -31,3 +31,27 @@ it("uses the same partial result badge on the target card", () => {
   expect(screen.getByText("Partially ingested")).toBeInTheDocument();
   expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
 });
+
+it.each([undefined, null, -1, NaN, Infinity, -Infinity, 0.5])(
+  "shows unavailable instead of success for an invalid skipped count (%s)",
+  (skippedCount) => {
+    // Exercise malformed runtime data as well as the required TypeScript prop.
+    render(<IngestionStatus state="succeeded" skippedCount={skippedCount as number | undefined} />);
+    expect(screen.getByText("Status unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText("Partially ingested")).not.toBeInTheDocument();
+  },
+);
+
+it("requires skippedCount and safely handles a caller that omits it at runtime", () => {
+  // @ts-expect-error skippedCount is required even when the caller has no count.
+  render(<IngestionStatus state="succeeded" />);
+  expect(screen.getByText("Status unavailable")).toBeInTheDocument();
+});
+
+it("uses an amber warning token for partial completion and blue info for processing", () => {
+  const { rerender } = render(<IngestionStatus state="succeeded" skippedCount={2} />);
+  expect(screen.getByText("Partially ingested")).toHaveClass("bg-warning/10", "text-warning");
+  rerender(<IngestionStatus state="processing" skippedCount={0} />);
+  expect(screen.getByText("Ingesting")).toHaveClass("bg-info/10", "text-info");
+});

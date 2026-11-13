@@ -10,16 +10,22 @@ const STATES: Record<IngestionState, { label: string; className: string }> = {
 /** Null means unavailable, never 'no ingestion'. */
 export function IngestionStatus({
   state,
-  skippedCount = 0,
+  skippedCount,
 }: {
   state: IngestionState | null;
-  skippedCount?: number;
+  skippedCount: number | undefined;
 }) {
-  if (!state) return <span className="text-sm text-muted-foreground">Status unavailable</span>;
+  if (
+    !state ||
+    typeof skippedCount !== "number" ||
+    !Number.isSafeInteger(skippedCount) ||
+    skippedCount < 0
+  )
+    return <span className="text-sm text-muted-foreground">Status unavailable</span>;
   // Sprint 1 persists usable results with skipped records as a succeeded attempt.
   const status =
     state === "succeeded" && skippedCount > 0
-      ? { label: "Partially ingested", className: "bg-info/10 text-info" }
+      ? { label: "Partially ingested", className: "bg-warning/10 text-warning" }
       : STATES[state];
   return (
     <span

@@ -127,6 +127,9 @@ test("restores partial results after reload and distinguishes failed ingestion w
       );
       await page.screenshot({ path: `test-results/s2-005-partial-${width}.png`, fullPage: true });
     }
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({ path: "test-results/s2-005-partial-375-dark.png", fullPage: true });
+    await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/analysis-targets");
     await expect(page.getByText("Partially ingested", { exact: true })).toHaveCount(1);
     await page.getByRole("link", { name: "Open A bookstore" }).click();
