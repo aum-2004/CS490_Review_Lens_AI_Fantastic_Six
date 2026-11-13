@@ -22,7 +22,14 @@ export interface ReviewStore {
   /** True only if the target exists and belongs to `userId`. */
   isTargetOwnedBy(targetId: string, userId: string): Promise<boolean>;
   insertReviews(targetId: string, reviews: NormalizedReview[]): Promise<Review[]>;
+  aggregateReviews(targetId: string): Promise<ReviewAggregate>;
   listReviews(targetId: string): Promise<Review[]>;
+}
+
+/** Exact metrics returned by the database aggregate; no review content is loaded. */
+export interface ReviewAggregate {
+  reviewCount: number;
+  averageRating: number | null;
 }
 
 /** Larger metadata is dropped (the review is kept), so one record cannot bloat the table. */

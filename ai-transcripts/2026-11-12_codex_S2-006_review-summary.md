@@ -259,6 +259,94 @@ repository and are the authoritative record of the accepted code.
 > - TypeScript: passed.
 > - Production build: blocked only because the environment could not download the existing Google-hosted Inter font.
 
+## 4. Follow-up review-feedback session — 2026-11-13
+
+### User prompt
+
+> I need to address review feedback from Melissa and Shawn on my existing S2-006 PR #80.
+>
+> Repository: CS490_Review_Lens_AI_Fantastic_Six
+>
+> Branch: feature/S2-006-review-summary
+>
+> PR: [redacted GitHub URL]
+>
+> Important: Work on my existing branch. Do not create a new branch or PR. Do not modify Melissa's workspace integration files.
+>
+> Read the current implementation, related repository services, existing test conventions, and the two reviewers' feedback before making changes.
+>
+> Shawn's required security fix was to replace loading every full Review object with an owner-authorized PostgreSQL/Supabase aggregate returning exact review count and average rating. The aggregate must not retrieve review text, reviewer names, or metadata, must preserve authentication, ownership, and RLS, and must not use service-role credentials or an unsafe SECURITY DEFINER function. If a migration is needed, include version-controlled SQL tests and document that deployment is required.
+>
+> Melissa's required tests were a real GET-handler Jest test covering unauthenticated requests, successful authorized requests, identical 404 behavior for missing and foreign targets, sanitized ownership/aggregate/ingestion failures, authenticated identity enforcement, foreign-user denial, private no-store headers, exact large-dataset counts, empty datasets, and numeric averages.
+>
+> Update the existing summary-service tests for the aggregate implementation, preserve the response contract and ingestion-attempt behavior, read the AI-assisted-development transcript requirements, run focused and full validation, and do not commit, push, merge, or open a PR.
+
+### Codex inspection response
+
+> I’ll inspect the existing S2-006 code, database migrations/RLS, tests, and PR #80’s reviewer feedback before editing. I’ll stay on `feature/S2-006-review-summary`, avoid Melissa’s workspace files, and make only the aggregate/security/test/documentation changes required.
+
+### Meaningful inspection result
+
+The repository inspection confirmed that the prior summary path called the paginated full-review loader and calculated count/average in application memory. The review store’s full-review columns include review text, reviewer name, URLs, dates, metadata, and other fields. Existing migrations showed target-owner RLS on `reviews`, and the prior write RPC used a fixed search path and restricted execution. Existing database tests run every migration and every `tests/db/*.test.sql` file.
+
+The PR page could not be retrieved from the available web cache (`Internal Error: Cache miss`), and search results did not expose the exact PR comments. Shawn’s and Melissa’s requirements in the user prompt were therefore treated as the authoritative review feedback. No credentials or shared database data were accessed.
+
+### Codex design decision
+
+> The safe design is a narrowly scoped, authenticated `SECURITY INVOKER` PostgreSQL function exposed only to `authenticated`. The function will validate `auth.uid()` owns the target, aggregate `count(*)`/`avg(rating)` in PostgreSQL, and return no review columns. The API will retain its existing ownership guard, while the service will independently enforce ownership before invoking the aggregate.
+
+### Implementation and correction responses
+
+> The implementation and database test fixtures are now in place. The aggregate RPC is invoker-secured, authenticated-only, ownership-checked, and returns only `count`/`avg`; the route tests cover auth, target indistinguishability, sanitized failures, identity override attempts, caching, and empty/exact aggregate behavior. I’m formatting and validating before reviewing any failures.
+
+The first service test update still asserted a failure on `listReviews`, which the new summary path no longer calls. That assertion was corrected to reject `aggregateReviews`; an additional regression test verifies that the summary invokes the aggregate and never invokes the full-review loader. No implementation files outside the requested review-summary path were changed.
+
+### Files and security changes recorded in this follow-up
+
+```text
+supabase/migrations/20261113000000_create_review_summary.sql
+tests/db/review-summary.test.sql
+tests/unit/app/api/analysis-targets/[targetId]/review-summary/route.test.ts
+tests/unit/services/reviews/review-summary.test.ts
+tests/unit/services/reviews/review-service.test.ts
+tests/unit/services/reviews/supabase-review-store.test.ts
+src/services/reviews/errors.ts
+src/services/reviews/review-service.ts
+src/services/reviews/review-summary.ts
+src/services/reviews/supabase-review-store.ts
+docs/s2-006-review-summary.md
+```
+
+The SQL function is `SECURITY INVOKER`, fixes `search_path`, grants execution only to
+`authenticated`, checks ownership through `auth.uid()`, and returns only `review_count` and
+`average_rating`. The service preserves the existing owner check and ingestion-attempt lookup.
+The migration is version controlled but was not deployed to shared Supabase.
+
+### Validation results recorded in this follow-up
+
+```text
+Focused Jest: 3 suites passed, 26 tests passed.
+Full Jest: 50 suites passed, 669 tests passed.
+ESLint: passed.
+TypeScript: passed.
+Database SQL suite: could not run; `createdb` is unavailable in the execution environment.
+```
+
+Prettier initially reported an existing formatting issue in the modified review-service test;
+that file was formatted and the final repository-wide check passed. The default Turbopack build
+was blocked by the execution environment's inability to create a worker process. The Webpack
+variant compiled successfully, then failed in Next's generated type validation on the unrelated
+existing `ProtectedNewAnalysisTargetPage` export. The earlier Google-hosted Inter download error
+was an environmental network restriction; the shared font configuration was not changed.
+
+### Transcript availability limitation
+
+The original session retained the user prompts, Codex responses, meaningful validation results,
+and the key implementation decisions above. Raw complete outputs from every source-inspection
+command, the complete original patch payload, and the exact reviewer-comment bodies were not
+available in the retained session context. They are not reconstructed or invented here. The PR
+URL and local paths were redacted where necessary; no credentials or secrets are included.
+
 ## 4. Final code review and correction
 
 ### Original user prompt

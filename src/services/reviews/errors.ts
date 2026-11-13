@@ -14,9 +14,14 @@ export class InvalidReviewError extends Error {
 export class ReviewPersistenceError extends Error {
   readonly code = "REVIEW_PERSISTENCE_FAILED";
 
-  constructor(operation: "save" | "load", options?: { cause?: unknown }) {
+  constructor(operation: "save" | "load" | "summary", options?: { cause?: unknown }) {
     // The message is safe to show; database details stay on `cause` for server-side logging.
-    super(`Could not ${operation} the reviews.`, options);
+    super(
+      operation === "summary"
+        ? "Could not load the review summary."
+        : `Could not ${operation} the reviews.`,
+      options,
+    );
     this.name = "ReviewPersistenceError";
   }
 }

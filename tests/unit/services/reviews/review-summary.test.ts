@@ -32,6 +32,16 @@ function storeFor(targetOwners: Record<string, string>, rows: Review[]): ReviewS
   return {
     isTargetOwnedBy: async (targetId, userId) => targetOwners[targetId] === userId,
     insertReviews: jest.fn(),
+    aggregateReviews: async (targetId) => {
+      const targetRows = rows.filter((row) => row.analysisTargetId === targetId);
+      return {
+        reviewCount: targetRows.length,
+        averageRating:
+          targetRows.length === 0
+            ? null
+            : targetRows.reduce((sum, row) => sum + row.rating, 0) / targetRows.length,
+      };
+    },
     listReviews: async (targetId) => rows.filter((row) => row.analysisTargetId === targetId),
   };
 }
@@ -88,21 +98,36 @@ describe("getReviewSummary", () => {
 
   it("rejects unauthorized access before reading reviews or ingestion records", async () => {
     const store = storeFor({ [targetA]: userA }, [review("a1", targetA, 5)]);
-    const listReviews = jest.spyOn(store, "listReviews");
+    const aggregateReviews = jest.spyOn(store, "aggregateReviews");
 
     await expect(getReviewSummary(store, database(null), userB, targetA)).rejects.toBeInstanceOf(
       TargetNotFoundError,
     );
-    expect(listReviews).not.toHaveBeenCalled();
+    expect(aggregateReviews).not.toHaveBeenCalled();
   });
 
   it("propagates a review database failure instead of reporting zero reviews", async () => {
     const store = storeFor({ [targetA]: userA }, []);
-    jest.spyOn(store, "listReviews").mockRejectedValue(new Error("database unavailable"));
+    jest.spyOn(store, "aggregateReviews").mockRejectedValue(new Error("database unavailable"));
 
     await expect(getReviewSummary(store, database(null), userA, targetA)).rejects.toThrow(
       "database unavailable",
     );
+  });
+
+  it("uses the exact database aggregate instead of loading full reviews", async () => {
+    const store = storeFor({ [targetA]: userA }, []);
+    const aggregateReviews = jest
+      .spyOn(store, "aggregateReviews")
+      .mockResolvedValue({ reviewCount: 1001, averageRating: 3.25 });
+    const listReviews = jest.spyOn(store, "listReviews");
+
+    await expect(getReviewSummary(store, database(null), userA, targetA)).resolves.toMatchObject({
+      reviewCount: 1001,
+      averageRating: 3.25,
+    });
+    expect(aggregateReviews).toHaveBeenCalledWith(targetA);
+    expect(listReviews).not.toHaveBeenCalled();
   });
 
   it("propagates an ingestion-status database failure instead of returning an incomplete summary", async () => {

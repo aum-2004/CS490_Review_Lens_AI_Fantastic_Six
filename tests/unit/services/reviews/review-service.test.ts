@@ -40,6 +40,16 @@ function createInMemoryStore(targetOwners: Record<string, string>) {
 
       return created;
     },
+    async aggregateReviews(targetId) {
+      const targetReviews = rows.filter((row) => row.analysisTargetId === targetId);
+      return {
+        reviewCount: targetReviews.length,
+        averageRating:
+          targetReviews.length === 0
+            ? null
+            : targetReviews.reduce((sum, review) => sum + review.rating, 0) / targetReviews.length,
+      };
+    },
     async listReviews(targetId) {
       return rows.filter((row) => row.analysisTargetId === targetId);
     },
