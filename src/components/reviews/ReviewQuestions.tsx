@@ -69,7 +69,8 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
     if (request.current || !reviewsAvailable) return;
     const controller = new AbortController();
     request.current = controller;
-    const timeout = setTimeout(() => controller.abort(), 30_000);
+    // The provider now has separate 30s counting and generation deadlines.
+    const timeout = setTimeout(() => controller.abort(), 75_000);
     setAnswer(null);
     setError(null);
     try {

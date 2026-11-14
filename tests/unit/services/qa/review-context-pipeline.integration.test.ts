@@ -95,30 +95,43 @@ function setup() {
   jest.mocked(createSupabaseServerClient).mockResolvedValue(db);
   jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: USER, email: "PRIVATE_ACCOUNT_EMAIL" });
   const outgoing: Record<string, unknown>[] = [];
-  const fetcher = jest.fn(async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    const payload = JSON.parse(String(init?.body));
-    outgoing.push(payload);
-    const reviews = JSON.parse(payload.input.split("\n")[1]);
-    return new Response(
-      JSON.stringify({
-        status: "completed",
-        output: [
-          {
-            type: "message",
-            content: [
-              {
-                type: "output_text",
-                text: JSON.stringify({
-                  outcome: "answered",
-                  answer: reviews[0].text,
-                  citedReviewIds: [reviews[0].id],
-                }),
-              },
-            ],
-          },
-        ],
-      }),
-    );
+  const generationFetcher = jest.fn(
+    async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body));
+      outgoing.push(payload);
+      const reviews = JSON.parse(payload.input.split("\n")[1]);
+      return new Response(
+        JSON.stringify({
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    outcome: "answered",
+                    answer: reviews[0].text,
+                    citedReviewIds: [reviews[0].id],
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      );
+    },
+  );
+  const countRequests: Record<string, unknown>[] = [];
+  let inputTokens = 100;
+  const fetcher = jest.fn(async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (String(url).endsWith("/input_tokens")) {
+      countRequests.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({ object: "response.input_tokens", input_tokens: inputTokens }),
+      );
+    }
+    return generationFetcher(url, init);
   });
   const deps = {
     buildReviewDatasetContext,
@@ -136,6 +149,11 @@ function setup() {
     reads,
     outgoing,
     fetcher,
+    generationFetcher,
+    countRequests,
+    setInputTokens: (tokens: number) => {
+      inputTokens = tokens;
+    },
     deps,
     failReviews: () => {
       failReviews = true;
@@ -317,7 +335,7 @@ describe("production questions route with actual context, orchestration and prov
     "declined_other_entity",
     "declined_other_platform",
   ])("projects %s into a distinct UI outcome", async (outcome) => {
-    const { fetcher } = fixture();
+    const { generationFetcher: fetcher } = fixture();
     fetcher.mockImplementation(
       async () =>
         new Response(
@@ -379,7 +397,7 @@ describe("production questions route with actual context, orchestration and prov
   });
 
   it("rejects foreign citations at the actual route", async () => {
-    const { fetcher } = fixture();
+    const { generationFetcher: fetcher } = fixture();
     jest.spyOn(console, "error").mockImplementation(() => {});
     fetcher.mockImplementation(
       async () =>
@@ -526,12 +544,75 @@ describe("actual S2-010/S2-011 integration (required)", () => {
     },
   );
 
-  it("rejects a whole-request token overflow before provider invocation", async () => {
+  it("rejects the serialized request byte ceiling before any provider invocation", async () => {
     const { deps, fetcher } = setup();
-    await expect(answerQuestion(A, "Q ".repeat(20000), deps)).rejects.toMatchObject({
+    await expect(answerQuestion(A, "Q ".repeat(80000), deps)).rejects.toMatchObject({
       code: "REQUEST_TOO_LARGE",
     });
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("counts the same complete input used for generation and excludes previous-target evidence from both calls", async () => {
+    const { deps, countRequests, outgoing } = setup();
+    await answerQuestion(A, "Question", deps);
+    await answerQuestion(B, "Question", deps);
+    expect(countRequests).toHaveLength(2);
+    for (let i = 0; i < 2; i++) {
+      const { model, instructions, input, text } = outgoing[i];
+      expect(countRequests[i]).toEqual({ model, instructions, input, text });
+    }
+    expect(JSON.stringify(countRequests[1])).not.toMatch(
+      /ALPHA_PRIVATE|alpha-review|OTHER_PRIVATE/,
+    );
+    expect(JSON.stringify(countRequests[1])).toContain("BETA_SERVICE_MARKER");
+  });
+
+  it("does not generate after an over-budget count", async () => {
+    const { deps, setInputTokens, generationFetcher, countRequests } = setup();
+    setInputTokens(16000);
+    await expect(answerQuestion(A, "Question", deps)).rejects.toMatchObject({
+      code: "REQUEST_TOO_LARGE",
+    });
+    expect(countRequests).toHaveLength(1);
+    expect(generationFetcher).not.toHaveBeenCalled();
+  });
+
+  it("the actual route fails closed when the token-count provider is unavailable", async () => {
+    const { fetcher, generationFetcher } = setup();
+    const originalFetch = global.fetch;
+    fetcher.mockRejectedValue(new Error("PRIVATE_COUNT_DIAGNOSTIC"));
+    global.fetch = fetcher as typeof fetch;
+    const originalEnabled = process.env.QA_ENABLED;
+    const originalKey = process.env.OPENAI_API_KEY;
+    const originalModel = process.env.OPENAI_QA_MODEL;
+    const log = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      process.env.QA_ENABLED = "true";
+      process.env.OPENAI_API_KEY = "synthetic-not-live";
+      process.env.OPENAI_QA_MODEL = "gpt-4.1-mini";
+      const response = await POST(
+        new NextRequest("http://localhost/api/questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: "Question" }),
+        }),
+        { params: Promise.resolve({ targetId: A }) },
+      );
+      expect(response.status).toBe(503);
+      expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_COUNT_DIAGNOSTIC");
+      expect(generationFetcher).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+      for (const [key, value] of Object.entries({
+        QA_ENABLED: originalEnabled,
+        OPENAI_API_KEY: originalKey,
+        OPENAI_QA_MODEL: originalModel,
+      })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      log.mockRestore();
+    }
   });
 
   it("rejects a foreign citation after real authorization and context construction", async () => {

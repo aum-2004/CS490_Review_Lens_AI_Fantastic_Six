@@ -158,7 +158,7 @@ it("bounds request duration and presents a retryable timeout", async () => {
   try {
     render(<ReviewQuestions {...props} />);
     await act(async () => submit());
-    await act(async () => jest.advanceTimersByTime(30_000));
+    await act(async () => jest.advanceTimersByTime(75_000));
     expect(screen.getByRole("alert")).toHaveTextContent("took too long");
     expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
   } finally {
