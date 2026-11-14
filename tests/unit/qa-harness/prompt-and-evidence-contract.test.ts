@@ -1,6 +1,13 @@
 /** @jest-environment node */
 
-import { getQaDataset } from "../../fixtures/qa/datasets";
+// S2-003 harness preamble: the real Q&A pipeline imports `server-only` modules, and the fake
+// Supabase is injected through this module mock (the context builder has no client seam).
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+
+import { buildSystemPrompt, SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
+
+import { allQaDatasets, getQaDataset } from "../../fixtures/qa/datasets";
 import {
   expectContextOnlyForTarget,
   expectSystemPromptApplied,
@@ -179,26 +186,43 @@ describe("expectContextOnlyForTarget: full evidence projection", () => {
 });
 
 describe("expectSystemPromptApplied: semantic prompt contract", () => {
-  /** Removes every prompt line that states the given rules (the reference prompt has one per line). */
+  /**
+   * Removes every sentence of the (whitespace-normalised) prompt that states one of the given
+   * rules. Sentence-level, because the real S2-013 prompt wraps rules across lines.
+   */
   const strip = (instructions: string, ids: readonly string[]) =>
     instructions
-      .split("\n")
+      .replace(/\s+/g, " ")
+      .split(/(?<=[.!?])\s+/)
       .filter(
-        (line) =>
+        (sentence) =>
           !QA_SYSTEM_PROMPT_INVARIANTS.some(
             (invariant) =>
               ids.includes(invariant.id) &&
               invariant.alternatives.some((patterns) =>
-                patterns.every((pattern) => pattern.test(line)),
+                patterns.every((pattern) => pattern.test(sentence)),
               ),
           ),
       )
-      .join("\n");
+      .join(" ");
 
-  it("the reference pipeline prompt states every rule", async () => {
+  it("the request carries exactly the real S2-013 system prompt, which states every rule", async () => {
     const request = await validRequest();
+    expect(request.instructions).toBe(buildSystemPrompt(targetA.target));
+    expect(request.promptVersion).toBe(SYSTEM_PROMPT_VERSION);
     expect(missingPromptInvariants(request.instructions)).toEqual([]);
-    expect(() => expectSystemPromptApplied(request, targetA)).not.toThrow();
+    expect(() =>
+      expectSystemPromptApplied(request, targetA, { promptVersion: SYSTEM_PROMPT_VERSION }),
+    ).not.toThrow();
+  });
+
+  it("the real S2-013 prompt states every rule for every fixture target", () => {
+    for (const dataset of allQaDatasets()) {
+      expect({
+        key: dataset.key,
+        missing: missingPromptInvariants(buildSystemPrompt(dataset.target)),
+      }).toEqual({ key: dataset.key, missing: [] });
+    }
   });
 
   it("regression: stripping the grounding and decline rules fails, even with target and platform present", async () => {

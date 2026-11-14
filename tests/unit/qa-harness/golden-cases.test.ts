@@ -1,20 +1,27 @@
 /** @jest-environment node */
 
-import { allQaDatasets, getQaDataset } from "../../fixtures/qa/datasets";
+// S2-003 harness preamble: the real Q&A pipeline imports `server-only` modules, and the fake
+// Supabase is injected through this module mock (the context builder has no client seam).
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+import { getQaDataset } from "../../fixtures/qa/datasets";
 import { QA_GOLDEN_CASES, type QaGoldenCase } from "../../fixtures/qa/golden-cases";
 import {
-  createReferencePipeline,
+  realQaPipeline,
   runGoldenCase,
   type QaModelRequest,
   type QaPipeline,
 } from "../../helpers/qa-harness";
 
 /**
- * Runs every golden case through the contract reference pipeline. PR 2 runs the same table
- * against the real `answerQuestion` (with the real S2-010 `buildReviewDatasetContext` over fake
- * Supabase and a fake verified session) by passing that adapter as `pipeline`.
+ * Runs every golden case through the REAL `answerQuestion` with the REAL S2-010
+ * `buildReviewDatasetContext`, over a fake Supabase client and a fake verified session. Only the
+ * model reply is scripted.
  */
-describe("golden Q&A cases (contract reference pipeline)", () => {
+describe("golden Q&A cases (real answerQuestion + real context builder)", () => {
   it.each(QA_GOLDEN_CASES.map((goldenCase) => [goldenCase.id, goldenCase] as const))(
     "%s",
     async (_id, goldenCase) => {
@@ -24,26 +31,26 @@ describe("golden Q&A cases (contract reference pipeline)", () => {
 });
 
 /**
- * Mutation checks: each pipeline below is broken in one specific way. If the golden runner did
- * not reject it, the harness would be giving false confidence.
+ * Mutation checks: each pipeline below wraps the real one and breaks it in one specific way. If
+ * the golden runner did not reject it, the harness would be giving false confidence.
  */
 describe("golden runner rejects broken pipelines", () => {
-  const reference = createReferencePipeline(allQaDatasets());
+  const real = realQaPipeline;
   const byId = (id: string): QaGoldenCase => {
     const found = QA_GOLDEN_CASES.find((goldenCase) => goldenCase.id === id);
     if (!found) throw new Error(`no golden case ${id}`);
     return found;
   };
 
-  /** Wraps the reference pipeline, rewriting each request on its way to the model. */
+  /** Wraps the real pipeline, rewriting each request on its way to the model. */
   const tamperRequest =
     (rewrite: (request: QaModelRequest) => QaModelRequest): QaPipeline =>
     (input) =>
-      reference({ ...input, callModel: (request) => input.callModel(rewrite(request)) });
+      real({ ...input, callModel: (request) => input.callModel(rewrite(request)) });
 
   /** The pre-#79 behaviour: silently repair a non-answer by dropping its citations. */
   const dropCitationsBeforeValidation: QaPipeline = (input) =>
-    reference({
+    real({
       ...input,
       callModel: async (request) => {
         const modelReply = await input.callModel(request);
@@ -112,7 +119,7 @@ describe("golden runner rejects broken pipelines", () => {
         ...request,
         instructions: request.instructions
           .split("\n")
-          .filter((line) => !/^(Base every answer|Decline )/.test(line))
+          .filter((line) => !/^\d+\. (Base every answer|Decline )/.test(line))
           .join("\n"),
       })),
       /qa-other-entity-001 step 1: System instructions are missing prompt rules:\n- grounded-in-reviews/,
@@ -140,7 +147,7 @@ describe("golden runner rejects broken pipelines", () => {
             maxOutputTokens: 0,
           })
           .catch(() => undefined);
-        return reference(input);
+        return real(input);
       },
       /called 1 time\(s\); expected none/,
     ],
@@ -150,7 +157,7 @@ describe("golden runner rejects broken pipelines", () => {
       // Sends a correct request, then returns the model's citations without validating them.
       async (input) => {
         let sent: QaModelRequest | undefined;
-        await reference({
+        await real({
           ...input,
           callModel: async (request) => {
             sent = request;
@@ -164,7 +171,7 @@ describe("golden runner rejects broken pipelines", () => {
             };
           },
         });
-        if (!sent) throw new Error("reference pipeline did not call the model");
+        if (!sent) throw new Error("the real pipeline did not call the model");
         return {
           outcome: "answered",
           answer: "made up",
@@ -179,7 +186,7 @@ describe("golden runner rejects broken pipelines", () => {
       "keeps citations on a decline",
       "qa-other-platform-002",
       async (input) => ({
-        ...(await reference(input)),
+        ...(await real(input)),
         citedReviewIds: [getQaDataset("restaurantA").reviews[0].id],
       }),
       /declined reply carries cited reviews/,
@@ -200,10 +207,36 @@ describe("golden runner rejects broken pipelines", () => {
       "leaks a foreign marker into the answer text",
       "qa-answer-001",
       async (input) => {
-        const answer = await reference(input);
+        const answer = await real(input);
         return { ...answer, answer: `${answer.answer} QA_USER_B_PRIVATE_MARKER` };
       },
       /Foreign data appeared in the answer/,
+    ],
+    [
+      "loads the review context before rejecting an over-long question",
+      "qa-edge-long-question",
+      async (input) => {
+        await input.buildReviewDatasetContext(input.targetId).catch(() => undefined);
+        return real(input);
+      },
+      /qa-edge-long-question step 1: The context builder ran 1 time\(s\) and made 3 Supabase request\(s\); expected none/,
+    ],
+    [
+      "reads a foreign target's reviews before the ownership check denies it",
+      "qa-cross-user-001",
+      async (input) => {
+        const client = await createSupabaseServerClient();
+        await client.from("reviews").select("id").eq("analysis_target_id", String(input.targetId));
+        return real(input);
+      },
+      // Step 1 is allowed to read Target A's reviews; step 2 (User B's target) is not.
+      /qa-cross-user-001 step 2: Review rows were read 1 time\(s\) before targetNotFound/,
+    ],
+    [
+      "reports a stale prompt version on the answer",
+      "qa-answer-001",
+      async (input) => ({ ...(await real(input)), promptVersion: "s2-013.stale" }),
+      /Answer prompt version s2-013.stale is not/,
     ],
   ])("fails a pipeline that %s", async (_label, caseId, pipeline, message) => {
     await expect(runGoldenCase(byId(caseId), { pipeline })).rejects.toThrow(message);

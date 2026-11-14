@@ -1,5 +1,6 @@
 import type { QaDeclineOutcome, QaPipelineErrorKey } from "../../helpers/qa-harness/contract";
 import { reply, type QaReplySpec } from "../../helpers/qa-harness/fake-model";
+import type { FakeAuthMode } from "../../helpers/qa-harness/fake-supabase";
 import { getQaDataset, QA_MISSING_TARGET_ID, type QaDatasetKey, type QaUserKey } from "./datasets";
 
 /**
@@ -12,6 +13,9 @@ import { getQaDataset, QA_MISSING_TARGET_ID, type QaDatasetKey, type QaUserKey }
  * - what it sends: system prompt, exactly the active target's reviews, nothing foreign;
  * - what it does with the reply: grounding checks, decline handling, fail-closed errors;
  * - when it must not call the model at all.
+ *
+ * Every step runs through the REAL `answerQuestion` and the REAL S2-010 context builder over a
+ * fake Supabase and a fake verified session; only the model reply is scripted.
  *
  * They do not prove the real model would choose the scripted outcome. That needs an approved
  * live-model evaluation (S2-004/S2-014/S2-015), which is out of scope for CI.
@@ -26,6 +30,7 @@ export const QA_GOLDEN_SCENARIOS = [
   "general_knowledge",
   "other_entity_or_platform",
   "cross_user_leak",
+  "authorization",
   "target_switch",
   "stale_context",
   "edge_input",
@@ -39,10 +44,19 @@ export type QaGoldenExpectation =
   | { readonly result: "answered" }
   | { readonly result: "insufficient_evidence" }
   | { readonly result: "declined"; readonly outcome: QaDeclineOutcome }
-  | { readonly result: "error"; readonly error: QaPipelineErrorKey; readonly modelCalled: boolean };
+  | {
+      readonly result: "error";
+      readonly error: QaPipelineErrorKey;
+      readonly modelCalled: boolean;
+      /** `false`: the context builder must not run and Supabase must not be touched at all. */
+      readonly contextLoaded?: boolean;
+    };
 
 export interface QaGoldenStep {
-  readonly actor: QaUserKey;
+  /** Who is signed in; `"anonymous"` means no session cookie at all. */
+  readonly actor: QaUserKey | "anonymous";
+  /** How Supabase Auth answers the session token. Default `"valid"`. */
+  readonly auth?: Exclude<FakeAuthMode, "valid">;
   /** Dataset whose target is asked about, or `"missing"` for an ID no dataset uses. */
   readonly target: QaDatasetKey | "missing";
   readonly question: string;
@@ -67,6 +81,8 @@ const reviewIds = (key: QaDatasetKey, ...indexes: number[]): string[] =>
 
 const notCalled = (error: QaPipelineErrorKey) =>
   ({ result: "error", error, modelCalled: false }) as const;
+const rejectedBeforeContext = (error: QaPipelineErrorKey) =>
+  ({ result: "error", error, modelCalled: false, contextLoaded: false }) as const;
 const rejectedAfterCall = (error: QaPipelineErrorKey) =>
   ({ result: "error", error, modelCalled: true }) as const;
 
@@ -213,6 +229,68 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
       },
     ],
   },
+  // --- Authorization (S1-009 session, S2-010) ----------------------------------------------
+  {
+    id: "qa-auth-no-session",
+    scenario: "authorization",
+    title: "No session: AUTH_REQUIRED, no review reads, no model call",
+    steps: [
+      {
+        actor: "anonymous",
+        target: "restaurantA",
+        question: "How do reviewers describe the food at Restaurant A?",
+        expect: notCalled("authRequired"),
+      },
+    ],
+  },
+  {
+    id: "qa-auth-rejected-session",
+    scenario: "authorization",
+    title: "A session Supabase Auth rejects (401) is treated as signed out",
+    steps: [
+      {
+        actor: "userA",
+        auth: "rejected",
+        target: "restaurantA",
+        question: "How do reviewers describe the food at Restaurant A?",
+        expect: notCalled("authRequired"),
+      },
+    ],
+  },
+  {
+    id: "qa-auth-unavailable",
+    scenario: "authorization",
+    title: "Supabase Auth outage: AUTH_UNAVAILABLE, no review reads, no model call",
+    steps: [
+      {
+        actor: "userA",
+        auth: "unavailable",
+        target: "restaurantA",
+        question: "How do reviewers describe the food at Restaurant A?",
+        expect: notCalled("authUnavailable"),
+      },
+    ],
+  },
+  {
+    id: "qa-auth-sign-out-between-questions",
+    scenario: "authorization",
+    title: "After signing out, the previous user's context is not reused",
+    steps: [
+      {
+        actor: "userA",
+        target: "targetA",
+        question: "What do reviewers say about battery life?",
+        reply: reply.answered(reviewIds("targetA", 0)),
+        expect: { result: "answered" },
+      },
+      {
+        actor: "anonymous",
+        target: "targetA",
+        question: "What do reviewers say about battery life?",
+        expect: notCalled("authRequired"),
+      },
+    ],
+  },
   // --- Target switch (S2-018) ------------------------------------------------------------------
   {
     id: "qa-target-switch-001",
@@ -282,13 +360,16 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
   {
     id: "qa-edge-long-question",
     scenario: "edge_input",
-    title: "Question over the request budget never reaches the model",
+    title: "Question over 2,000 characters is rejected before any data is loaded",
     steps: [
       {
         actor: "userA",
         target: "restaurantA",
+        // S2-011 service boundary: QaInputValidationError before the context builder runs. The
+        // provider token budget (QaPromptError/REQUEST_TOO_LARGE) is a separate case in
+        // tests/unit/qa-harness/provider-boundary.test.ts.
         question: "Why is the food good? ".repeat(3_000),
-        expect: notCalled("requestTooLarge"),
+        expect: rejectedBeforeContext("questionTooLong"),
       },
     ],
   },
