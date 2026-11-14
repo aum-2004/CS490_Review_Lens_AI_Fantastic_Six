@@ -1,3 +1,7 @@
+import type { ScopeGuardEvaluationCase } from "../fixtures/scope-guard-evaluation";
+import { expectDeclined } from "./qa-harness/assertions";
+import type { QaAnswer, QaDeclineOutcome } from "./qa-harness/contract";
+
 export const ENTITY_PLATFORM_REFUSAL_CATEGORIES = [
   "decline_other_entity_or_product",
   "decline_other_review_platform",
@@ -5,15 +9,15 @@ export const ENTITY_PLATFORM_REFUSAL_CATEGORIES = [
 
 export type EntityPlatformRefusalCategory = (typeof ENTITY_PLATFORM_REFUSAL_CATEGORIES)[number];
 
-export interface ScopeGuardEvaluationCaseLike {
-  readonly id: string;
-  readonly question: string;
-  readonly expectedCategory: string;
-}
-
-export interface EntityPlatformRefusalCase extends ScopeGuardEvaluationCaseLike {
+export interface EntityPlatformRefusalCase extends ScopeGuardEvaluationCase {
   readonly expectedCategory: EntityPlatformRefusalCategory;
 }
+
+/** The single S2-004 category to S2-013 decline-outcome mapping used by this evaluation. */
+export const ENTITY_PLATFORM_DECLINE_OUTCOMES = {
+  decline_other_entity_or_product: "declined_other_entity",
+  decline_other_review_platform: "declined_other_platform",
+} as const satisfies Record<EntityPlatformRefusalCategory, QaDeclineOutcome>;
 
 /**
  * Semantic facts supplied by the future production integration. The evaluator validates and
@@ -35,6 +39,7 @@ export type EntityPlatformRefusalFailure =
   | "unsupported_entity_information_was_presented"
   | "unsupported_platform_reviews_were_treated_as_available"
   | "unsupported_comparison_was_presented_as_supported"
+  | "structured_decline_contract_failed"
   | "question_execution_failed"
   | "response_assessment_failed";
 
@@ -52,13 +57,13 @@ export interface EntityPlatformRefusalEvaluation {
 const refusalCategorySet = new Set<string>(ENTITY_PLATFORM_REFUSAL_CATEGORIES);
 
 export function isEntityPlatformRefusalCase(
-  evaluationCase: ScopeGuardEvaluationCaseLike,
+  evaluationCase: ScopeGuardEvaluationCase,
 ): evaluationCase is EntityPlatformRefusalCase {
   return refusalCategorySet.has(evaluationCase.expectedCategory);
 }
 
 export function selectEntityPlatformRefusalCases(
-  cases: readonly ScopeGuardEvaluationCaseLike[],
+  cases: readonly ScopeGuardEvaluationCase[],
 ): readonly EntityPlatformRefusalCase[] {
   return cases.filter(isEntityPlatformRefusalCase);
 }
@@ -143,11 +148,11 @@ function collectFailures(
  * Runs existing S2-004 entity/platform cases against a caller-supplied production Q&A boundary.
  * Invocation and assessment errors are isolated per case so every case still produces a result.
  */
-export async function evaluateEntityPlatformRefusals<TResponse>(options: {
+export async function evaluateEntityPlatformRefusals(options: {
   readonly cases: readonly EntityPlatformRefusalCase[];
-  readonly askQuestion: (question: string) => Promise<TResponse>;
+  readonly askQuestion: (question: string) => Promise<QaAnswer>;
   readonly assessResponse: (
-    response: TResponse,
+    response: QaAnswer,
     evaluationCase: EntityPlatformRefusalCase,
   ) => EntityPlatformRefusalObservation | Promise<EntityPlatformRefusalObservation>;
 }): Promise<EntityPlatformRefusalEvaluation> {
@@ -156,7 +161,7 @@ export async function evaluateEntityPlatformRefusals<TResponse>(options: {
   const results: EntityPlatformRefusalResult[] = [];
 
   for (const evaluationCase of options.cases) {
-    let response: TResponse;
+    let response: QaAnswer;
 
     try {
       response = await options.askQuestion(evaluationCase.question);
@@ -169,11 +174,18 @@ export async function evaluateEntityPlatformRefusals<TResponse>(options: {
       continue;
     }
 
+    const structuredFailures: EntityPlatformRefusalFailure[] = [];
+    try {
+      expectDeclined(response, ENTITY_PLATFORM_DECLINE_OUTCOMES[evaluationCase.expectedCategory]);
+    } catch {
+      structuredFailures.push("structured_decline_contract_failed");
+    }
+
     try {
       const observation: unknown = await options.assessResponse(response, evaluationCase);
       if (!isObservation(observation)) throw new Error("Malformed semantic observation");
 
-      const failures = collectFailures(observation);
+      const failures = [...structuredFailures, ...collectFailures(observation)];
       results.push({
         caseId: evaluationCase.id,
         failures,
@@ -182,7 +194,7 @@ export async function evaluateEntityPlatformRefusals<TResponse>(options: {
     } catch {
       results.push({
         caseId: evaluationCase.id,
-        failures: ["response_assessment_failed"],
+        failures: [...structuredFailures, "response_assessment_failed"],
         passed: false,
       });
     }
