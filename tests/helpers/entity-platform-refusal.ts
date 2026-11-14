@@ -1,6 +1,7 @@
+import type { QaAnswer } from "@/services/qa/qa-response";
+import type { QaDeclineOutcome } from "@/services/qa/system-prompt";
 import type { ScopeGuardEvaluationCase } from "../fixtures/scope-guard-evaluation";
 import { expectDeclined } from "./qa-harness/assertions";
-import type { QaAnswer, QaDeclineOutcome } from "./qa-harness/contract";
 
 export const ENTITY_PLATFORM_REFUSAL_CATEGORIES = [
   "decline_other_entity_or_product",

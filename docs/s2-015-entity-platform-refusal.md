@@ -35,12 +35,14 @@ PR #75 (S2-014) currently owns an unmerged exhaustive S2-004-to-S2-013 map. S2-0
 does not copy that broader helper. Once #75 merges, reconcile this two-entry map with the shared
 contract in a normal follow-up.
 
-## Production modules exercised
+## Real S2-011 production-pipeline integration
 
 `tests/unit/services/qa/entity-platform-refusal.integration.test.ts` exercises:
 
 - the real S2-010 `buildReviewDatasetContext()`;
-- the real S2-013 `runGroundedQaRequest()` and request construction;
+- the real S2-013 request construction and `s2-013.v3` system prompt;
+- the real S2-011 `answerQuestion()` orchestration and `parseQaModelReply()` validation;
+- the S2-015 evaluator over the production `QaAnswer`;
 - the production system prompt, prompt version, evidence projection, and decline-priority helper;
 - Deep's S2-003 recording fake model, request assertions, and network guard; and
 - the shared S2-004 Restaurant A target, four persisted Google Maps reviews, and six S2-015 cases.
@@ -48,7 +50,20 @@ contract in a normal follow-up.
 Only the verified session, Supabase HTTP transport beneath the real context builder, and model seam
 are faked. The suite checks that every unchanged question reaches the model boundary with Restaurant
 A, Google Maps, the exact four authorized review rows, and no reviewer/source metadata. The network
-guard prohibits live provider or database calls.
+guard prohibits live provider or database calls. The helper now consumes the actual production
+`QaAnswer` and `QaDeclineOutcome` types instead of the harness-owned mirror types.
+
+Every shared case now completes the full deterministic path:
+
+```text
+mocked verified session + deterministic Supabase transport
+  -> real buildReviewDatasetContext() (S2-010)
+  -> real S2-013 request construction
+  -> real answerQuestion() (S2-011)
+  -> real parseQaModelReply() response validation
+  -> evaluateEntityPlatformRefusals()
+  -> independent recorded semantic assessment
+```
 
 The test-local mixed case, “How does Restaurant A compare with Restaurant B based on Amazon
 reviews?”, verifies S2-013's entity-before-platform priority. It is intentionally not added to the
@@ -61,12 +76,13 @@ The semantic assessor must be a documented human review or approved semantic eva
 assess active-target clarity, active-platform clarity, unsupported entity information, falsely
 available platform reviews, and unsupported comparisons from the actual user-visible response.
 It must not derive success from the expected category, use an exact-text matcher, or classify via a
-business/platform keyword blacklist. A malformed or unavailable assessment fails closed.
+business/platform keyword blacklist. The integration uses explicit recorded human judgments for
+fixed synthetic replies; it does not derive those judgments from the outcome. A malformed or
+unavailable assessment fails closed.
 
-## S2-011-dependent acceptance still pending
+## Completed deterministic acceptance
 
-PR #79 is still unmerged, so this branch does not copy or recreate its production orchestration.
-The following exact acceptance checks remain blocked and are not reported as passing:
+PR #79 is merged. The following formerly blocked checks now run without skips:
 
 1. Each of the three S2-004 other-entity questions passes through real
    `answerQuestion()`, produces `declined_other_entity`, has no citations, and passes independent
@@ -83,17 +99,32 @@ The following exact acceptance checks remain blocked and are not reported as pas
 7. `declined_other_entity` for an other-platform question fails `expectDeclined()`.
 8. Platform-first decline for the mixed question fails the priority assertion.
 9. A decline carrying citations is rejected by real S2-011 validation.
-10. Malformed and unavailable semantic assessments fail closed after a valid production
-    `QaAnswer` is obtained.
+10. A malformed model reply is rejected as `INVALID_MODEL_RESPONSE` without leaking its content.
+11. Independent semantic assessment can still fail a production-valid structured decline for
+    unclear target/platform scope, unsupported entity or platform claims, or an unsupported
+    comparison.
+12. A production parsing failure is isolated per case and does not prevent the next case running.
 
-PR #77 must remain Draft and issue #66 must remain open until those checks and configured-model
-evaluation are complete.
+The Restaurant B, Coffee Shop C, and Product X countertop-blender cases remain specifically
+identified external entities and produce `declined_other_entity`. General open-ended
+recommendations without a specifically identified external business remain
+`declined_general_knowledge`; S2-015 does not relabel them. Multi-category priority remains entity
+before platform before general.
+
+## Remaining acceptance
+
+No separate S2-013 prompt-clarification follow-up was present on `origin/main` after PR #79 merged.
+This branch does not independently modify Aryan's prompt. If that follow-up lands, merge `main`
+normally and rerun this suite against the new prompt version.
+
+PR #77 must remain Draft and issue #66 must remain open until an explicitly approved
+configured-model evaluation runs the same six shared cases and mixed case, requiring the mapped
+outcome, zero citations, and independently assessed scope clarity and claim safety.
 
 ## What deterministic tests do not prove
 
 The fake model is scripted. These tests prove production request construction, authorization,
 evidence isolation, mapping/assertion behavior, and failure detection; they do not prove that a live
-model independently chooses the right refusal. Final acceptance still requires the S2-011
-integration above and an explicitly approved configured-model evaluation of the same cases. No live
-OpenAI or Supabase access, secret-bearing fixture, fake production Q&A route, or keyword blacklist is
-used here.
+model independently chooses the right refusal. Final acceptance still requires the configured-model
+evaluation above. No live OpenAI or Supabase access, secret-bearing fixture, fake production Q&A
+route, or keyword blacklist is used here.
