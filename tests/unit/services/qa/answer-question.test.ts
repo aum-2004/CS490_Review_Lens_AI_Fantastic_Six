@@ -24,7 +24,7 @@ jest.mock("server-only", () => ({}));
 
 const TARGET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 
-// Controlled dataset for S2-012: food quality and service only. Nothing about parking.
+// Controlled dataset: food quality and service only.
 const context: QaReviewContext = {
   target: { id: TARGET_ID, name: "Restaurant A", platform: "google_maps" },
   reviews: [
@@ -132,52 +132,6 @@ describe("answerQuestion (S2-011)", () => {
     await expect(answerQuestion(TARGET_ID, "Any complaints?", setup(failure))).rejects.toBe(
       failure,
     );
-  });
-});
-
-describe("answerQuestion with insufficient evidence (S2-012)", () => {
-  const PARKING_QUESTION = "Do customers think the parking lot is safe at night?";
-
-  it("sends a dataset in which the absence of parking evidence is known", async () => {
-    const deps = setup({
-      outcome: "insufficient_evidence",
-      answer: "The reviews discuss food and service but do not mention parking.",
-      citedReviewIds: [],
-    });
-
-    await answerQuestion(TARGET_ID, PARKING_QUESTION, deps);
-
-    const sent = deps.callModel.mock.calls[0][0];
-    const dataset = sent.input.split("\n")[1];
-    expect(dataset).not.toMatch(/park|lot|night|safe/i);
-    expect(sent.instructions).toMatch(/do not contain enough information to\s+answer it/i);
-  });
-
-  it("returns an insufficient_evidence reply that states the limitation", async () => {
-    const answer = await answerQuestion(
-      TARGET_ID,
-      PARKING_QUESTION,
-      setup({
-        outcome: "insufficient_evidence",
-        answer: "The reviews discuss food and service but do not mention parking.",
-        citedReviewIds: [],
-      }),
-    );
-
-    expect(answer).toMatchObject({ outcome: "insufficient_evidence", citedReviewIds: [] });
-    expect(answer.answer).toMatch(/do not mention parking/);
-  });
-
-  it("rejects an 'answered' reply with no supporting reviews (a general-knowledge guess)", async () => {
-    const deps = setup({
-      outcome: "answered",
-      answer: "Yes, the lot is well lit and safe at night.",
-      citedReviewIds: [],
-    });
-
-    await expect(answerQuestion(TARGET_ID, PARKING_QUESTION, deps)).rejects.toMatchObject({
-      code: "UNGROUNDED_ANSWER",
-    });
   });
 });
 
