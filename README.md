@@ -122,6 +122,7 @@ Stop the server with `Ctrl+C`.
 | `npm run test`          | Runs Jest unit and component tests; no browser is required                                   |
 | `npm run test:watch`    | Re-runs relevant Jest tests while files change                                               |
 | `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
+| `npm run test:qa`       | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)          |
 | `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium                                |
 | `npm run test:e2e:auth` | Runs authentication browser tests against an isolated local test provider                    |
 | `npm run test:db`       | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
@@ -154,6 +155,89 @@ Authentication specifications live under `tests/e2e/auth/` and run separately wi
 The smoke command excludes those tests so it does not require the provider. Neither auth test
 accounts nor live Supabase credentials are needed. Both suites can use an existing supported
 browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they use bundled Chromium.
+
+### Deterministic Q&A test harness (S2-003)
+
+Q&A tests never call OpenAI, the network, or a live Supabase project. The harness swaps the model
+seam (`QaModelCaller`) for a scripted fake, records every request sent to it, and blocks all
+network access while a test runs.
+
+| Path                                   | Contents                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------ |
+| `tests/helpers/qa-harness/`            | Harness: fake model, network guard, assertions, golden-case runner                   |
+| `tests/helpers/qa-harness/contract.ts` | Harness-owned copy of the S2-010/011/013 Q&A types (pending team agreement)          |
+| `tests/fixtures/qa/datasets.ts`        | Synthetic datasets: normal, empty, mixed ratings, Target A/B, User B, malformed rows |
+| `tests/fixtures/qa/golden-cases.ts`    | Table of golden Q&A cases                                                            |
+| `tests/unit/qa-harness/`               | Harness self-tests, golden-case suite, determinism proof                             |
+
+Run it with `npm run test:qa`. It is also part of `npm test`, so CI runs it with no secrets.
+
+**Script a fake model reply.** Rules are checked in order; the first match wins. Matchers:
+`question` (exact), `questionIncludes`, `targetId`, `predicate`. A call that matches no rule fails
+the test unless you set a `fallback`.
+
+```ts
+import { reply, setupQaTestHarness, expectGroundedAnswer } from "../../helpers/qa-harness";
+
+const qa = setupQaTestHarness({
+  script: [
+    { when: { questionIncludes: "pizza" }, then: reply.answered([reviewId]) },
+    { when: { questionIncludes: "weather" }, then: reply.declined("declined_general_knowledge") },
+  ],
+});
+
+it("answers from the reviews", async () => {
+  const result = await qa().ask(targetId, "How is the pizza?");
+  if (!result.ok) throw result.error;
+  expectGroundedAnswer(result.answer, qa().model.lastCall().request);
+});
+```
+
+Other replies: `reply.insufficientEvidence()`, `reply.raw("not json")`, `reply.empty()`,
+`reply.providerError("MODEL_UNAVAILABLE")`, `reply.timeout(ms)` (use Jest fake timers), and
+`reply.echoContext()`, which echoes everything the app sent so leaks show up in the answer.
+
+**Add a golden case.** Append an entry to `QA_GOLDEN_CASES` in `tests/fixtures/qa/golden-cases.ts`
+with one or more steps of `{ actor, target, question, reply, expect }`. The runner automatically
+checks the system prompt, that only the active target's reviews were sent, that no reviewer
+names were sent, and that no other dataset's data reached the request or the answer. Assertions
+cover behaviour and structure, never exact model wording.
+
+**What the context and prompt checks verify.**
+
+- `expectContextOnlyForTarget` parses the `REVIEW DATASET` JSON in the model input. Every row's
+  `id`, `rating`, `date` and `text` must match the persisted review at the same position, with
+  nothing dropped, added or reordered, and no extra fields.
+- `expectSystemPromptApplied` checks the JSON-encoded target name, the platform label, and the
+  named rules in `QA_SYSTEM_PROMPT_INVARIANTS` (`contract.ts`): grounded in the supplied reviews,
+  no outside knowledge, say so when evidence is insufficient, and decline out-of-scope,
+  other-entity and other-platform questions. Each rule must be stated within one sentence, but
+  any wording is accepted.
+
+**Replies with citations.** Following S2-011 (#79), an `answered` reply must cite at least one
+review from the request. Every other outcome (`insufficient_evidence` and the three declines) must
+cite none. A reply that breaks this is rejected (`UNGROUNDED_ANSWER` or `UNEXPECTED_CITATIONS`),
+never repaired by dropping its citations.
+
+**Pipeline.** Until S2-010 (#78) and S2-011 (#79) are merged, golden cases run against a small
+test-only _contract reference pipeline_ (`reference-pipeline.ts`). The follow-up PR replaces it
+with an adapter that calls the real
+`answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })`:
+
+- `buildReviewDatasetContext` is the **real** S2-010 builder, so its authentication and ownership
+  checks stay under test. It is never replaced with a fake.
+- Only the infrastructure beneath it is faked: a fake Supabase client holding the fixture rows
+  and a fake verified auth session for the test user.
+- `callModel` is the harness's fake model.
+
+Open question for that PR: #79 enforces the token budget (`REQUEST_TOO_LARGE`) inside the OpenAI
+adapter, below `callModel`, so with a fake model an oversized question reaches the model. The
+reference pipeline still rejects it before the call, as the `qa-edge-long-question` case expects.
+
+> **Limitation:** until that integration lands, CI checks the prompt contract and evidence layout
+> against the reference pipeline's placeholder prompt, **not** the real S2-013 prompt. The
+> invariants are pending agreement with the S2-013 owner, and passing these tests is not S2-003
+> end-to-end acceptance.
 
 ### Run database tests
 
