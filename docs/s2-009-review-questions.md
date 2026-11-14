@@ -6,7 +6,7 @@ questions, prevents duplicate submission, shows processing, preserves failed inp
 and distinguishes answers, insufficient evidence, scope refusals and service errors.
 Target changes abort requests, clear the form and ignore late responses. Empty or
 unavailable reviews disable questions with an explanation. No persistent chat
-history or schema migration is added.
+history is added. The security follow-up adds a timestamp-only quota migration.
 
 ## Production integration
 
@@ -15,11 +15,20 @@ It authenticates, checks ownership before reading the body, enforces a 16 KiB bo
 limit and 2,000-character trimmed question limit, then calls the actual services:
 
 ```ts
+const provider = createOpenAiQaModel();
 answerQuestion(targetId, question, {
   buildReviewDatasetContext,
-  callModel: createOpenAiQaModel(),
+  callModel: async (request) => {
+    readOpenAiQaConfig();
+    await reserveQuestionQuota(client);
+    return provider(request);
+  },
 });
 ```
+
+The verified session client reserves an account-wide slot only after valid context
+and provider configuration. All production paid entry points must retain this gate;
+direct service calls in deterministic tests use fake providers.
 
 The real builder independently authenticates and checks ownership before retrieving
 fresh persisted evidence. Browser evidence and owner claims are ignored and excluded from service inputs. Context
@@ -31,9 +40,10 @@ their meaning. Errors use safe application copy without provider diagnostics.
 With user authorization, existing services/tests/docs were imported from S2-011 at
 `78c914e` (includes S2-013 prompt and provider-authoritative token counting) and S2-010 at `6835c29`. S2-013
 at `14effdf` was inspected; its implementation is already included by S2-011.
-Those branch histories are now merged locally into `s2-009`, along with current
-`main` at `26f48f7`, so later integration does not encounter copied-file add/add
-conflicts at the checked tips. Service source remains unchanged. Integration tests now import actual modules
+Current `main` at `cd3e69b` contains S2-010/S2-013 and has been reconciled locally
+in `2a622c9`, retaining newer S2-011 prompt/budget behavior. S2-011 still awaits
+merge into main, so final reconciliation remains pending. The context builder
+remains unchanged. Integration tests now import actual modules
 unconditionally, so missing dependencies fail instead of skipping. Their synthetic
 model name was replaced with a tokenizer-supported model; provider I/O remains fake.
 
@@ -42,6 +52,12 @@ model name was replaced with a tokenizer-supported model; provider I/O remains f
 Paid calls require `QA_ENABLED=true`, server-only `OPENAI_API_KEY` and an explicit
 `OPENAI_QA_MODEL`. See `.env.example` and `docs/s2-011-answers.md`. No keys or paid
 calls were used for validation.
+
+Apply the quota migration before enabling paid calls. Each account is limited to
+five durable reservations per rolling 24 hours across all targets. Storage failure
+blocks both provider requests; exhausted quota returns a safe 429. Failed provider
+attempts retain their reservation. See `docs/s2-009-security-followup.md` for the
+security design, team patch decision and latest tests.
 
 The builder rejects datasets above 100 reviews or 32,768 evidence bytes. The adapter
 submits the complete model input/schema to OpenAI's input-token endpoint, then

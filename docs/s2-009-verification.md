@@ -1,5 +1,16 @@
 # S2-009 verification — 2026-11-13
 
+## Latest security follow-up
+
+See `s2-009-security-followup.md` for current evidence at code commit `b079828`:
+durable per-account Q&A limits, local reconciliation with main `cd3e69b`, team
+confirmation to retain deepmerge, and the explicit `QA_DISABLED` browser assertion.
+**1,142 unit tests, the full native PostgreSQL suite (including a 12-session quota
+race), and 12 production-browser tests passed.** The new migration has not been
+applied to hosted Supabase; Q&A remains off by default. #79 merging, final current-head
+security/functional review and hosted/live acceptance remain separate requirements.
+All sections below describe earlier snapshots and their original evidence.
+
 ## Current upstream refresh
 
 The repeated verification fetched newer tips: main `26f48f7` (S2-003 harness) and
