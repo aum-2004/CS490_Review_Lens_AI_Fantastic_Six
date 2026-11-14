@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { ReviewList } from "@/components/reviews/ReviewList";
+import { ReviewSummaryCard } from "@/components/reviews/ReviewSummaryCard";
 import { RetryTargetsButton } from "./RetryTargetsButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requirePageUser } from "@/services/auth/access-control";
@@ -16,6 +17,7 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { createSupabaseReviewStore } from "@/services/reviews/supabase-review-store";
 import type { Review } from "@/services/reviews/review-service";
+import { getReviewSummary, type ReviewSummary } from "@/services/reviews/review-summary";
 import {
   getLatestAttempt,
   summarizeAttempt,
@@ -38,6 +40,8 @@ export async function ProtectedTargetWorkspace({
   let unavailable = false;
   let reviews: Review[] | null = null;
   let ingestion: IngestionSummary | null = null;
+  let reviewSummary: ReviewSummary | null = null;
+  let reviewSummaryUnavailable = false;
   try {
     const client = await createSupabaseServerClient();
     target = await getOwnedTargetOrThrow(client, targetId, user.id);
@@ -50,11 +54,21 @@ export async function ProtectedTargetWorkspace({
       });
     }
     // Child data is never requested before the parent ownership check succeeds.
+    const reviewStore = createSupabaseReviewStore(client);
     try {
-      reviews = await createSupabaseReviewStore(client).listReviews(target.id);
+      reviews = await reviewStore.listReviews(target.id);
     } catch {
       console.error("Workspace operation failed", {
         operation: "reviews",
+        category: "LOAD_FAILED",
+      });
+    }
+    try {
+      reviewSummary = await getReviewSummary(reviewStore, client, user.id, target.id);
+    } catch {
+      reviewSummaryUnavailable = true;
+      console.error("Workspace operation failed", {
+        operation: "review-summary",
         category: "LOAD_FAILED",
       });
     }
@@ -113,6 +127,15 @@ export async function ProtectedTargetWorkspace({
                     : null
             }
           />
+          {reviewSummary ? (
+            <ReviewSummaryCard summary={reviewSummary} />
+          ) : reviewSummaryUnavailable ? (
+            <Card className="space-y-4">
+              <h2 className="text-xl font-semibold">Review summary</h2>
+              <ErrorAlert message="We couldn't load the review summary. Please try again." />
+              <RetryTargetsButton />
+            </Card>
+          ) : null}
           {reviews === null ? (
             <Card className="space-y-4">
               <h2 className="text-xl font-semibold">Reviews</h2>

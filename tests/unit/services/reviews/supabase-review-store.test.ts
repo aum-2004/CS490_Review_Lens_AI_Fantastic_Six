@@ -163,6 +163,56 @@ describe("createSupabaseReviewStore", () => {
     ]);
   });
 
+  test("aggregates through RPC without selecting review columns", async () => {
+    const { client, calls } = createFakeClient({
+      data: [{ review_count: "1001", average_rating: "3.25" }],
+      error: null,
+    });
+
+    await expect(createSupabaseReviewStore(client).aggregateReviews(TARGET_ID)).resolves.toEqual({
+      reviewCount: 1001,
+      averageRating: 3.25,
+    });
+    expect(calls).toEqual([["rpc", "get_review_summary", { p_target_id: TARGET_ID }]]);
+  });
+
+  test("preserves an empty aggregate as zero reviews and a null average", async () => {
+    const { client } = createFakeClient({
+      data: [{ review_count: "0", average_rating: null }],
+      error: null,
+    });
+
+    await expect(createSupabaseReviewStore(client).aggregateReviews(TARGET_ID)).resolves.toEqual({
+      reviewCount: 0,
+      averageRating: null,
+    });
+  });
+
+  test("wraps aggregate failures without exposing database details", async () => {
+    const dbError = { message: 'function "get_review_summary" does not exist' };
+    const { client } = createFakeClient({ data: null, error: dbError });
+
+    await expect(
+      createSupabaseReviewStore(client).aggregateReviews(TARGET_ID),
+    ).rejects.toMatchObject({
+      name: "ReviewPersistenceError",
+      message: expect.not.stringContaining("get_review_summary"),
+      cause: dbError,
+    });
+  });
+
+  test.each([
+    { review_count: "-1", average_rating: "3" },
+    { review_count: "not-a-number", average_rating: "3" },
+    { review_count: "1", average_rating: "not-a-number" },
+  ])("rejects malformed aggregate data: %j", async (data) => {
+    const { client } = createFakeClient({ data: [data], error: null });
+
+    await expect(
+      createSupabaseReviewStore(client).aggregateReviews(TARGET_ID),
+    ).rejects.toBeInstanceOf(ReviewPersistenceError);
+  });
+
   test("lists one target's reviews in a stable order, stopping at an empty page", async () => {
     const { client, calls } = createFakeClient(page([storedRow]), page([]));
 
