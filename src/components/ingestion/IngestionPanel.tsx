@@ -137,8 +137,10 @@ export function IngestionPanel({
       )}
       {summary?.state === "succeeded" && !pending && (
         <p role="status" className="max-w-prose">
-          Last completed run: {summary.savedCount} reviews saved.
-          {summary.skippedCount > 0 && ` ${summary.skippedCount} unusable records were skipped.`}
+          Last completed run: {summary.savedCount} reviews saved.{" "}
+          {summary.skippedCount > 0
+            ? `${summary.skippedCount} unusable records were skipped.`
+            : "0 records were skipped."}
         </p>
       )}
       {summary?.state === "succeeded" && summary.skippedCount > 0 && !pending && (
