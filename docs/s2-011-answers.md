@@ -2,7 +2,7 @@
 
 **Stories:** [#62](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/62) S2-011,
 [#63](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/63) S2-012 |
-**Rules:** S2-BR-008 through S2-BR-015 | **Builds on:** S2-013 (PR #76), S2-010 (PR #78)
+**Rules:** S2-BR-008 through S2-BR-015 | **Builds on:** S2-013 (PR #76, merged), S2-010 (PR #78)
 
 ## Pipeline
 
@@ -76,13 +76,28 @@ S2-004 evaluation set, which should include cases where the citation does not su
 ## S2-012: insufficient evidence
 
 The prompt (S2-013 evidence rules 4–5) tells the model to separate what the reviews support from
-what they do not, and to return `insufficient_evidence` instead of guessing. The tests use a
-controlled dataset with food and service reviews only, and the issue's question: "Do customers
-think the parking lot is safe at night?". They check that:
+what they do not, and to return `insufficient_evidence` instead of guessing. If the reviews cover
+only part of the question, the model answers that part with citations and names what is missing.
 
-- the dataset sent to the model contains no parking evidence;
-- an `insufficient_evidence` reply passes through with its limitation stated;
-- an `answered` reply with no supporting reviews is rejected as `UNGROUNDED_ANSWER`.
+**Controlled datasets with known absence.**
+
+- `answer-question.test.ts`: food and service reviews only, with the issue's question "Do customers
+  think the parking lot is safe at night?".
+- `insufficient-evidence.test.ts`: the team's S2-004 dataset (`tests/fixtures/scope-guard-evaluation.ts`,
+  Restaurant A) and **every** case labeled `insufficient_review_evidence` (outdoor seating, opening
+  hours, parking safety at night). Each case has a list of topic terms, and a test confirms no
+  persisted review mentions them, so the absence is known rather than assumed. A new S2-004
+  insufficient case fails the suite until its terms are added.
+
+For each case, the tests check that:
+
+- the whole active dataset and the question are sent, with evidence rules 4–5 in the instructions;
+- an `insufficient_evidence` reply with no citations is returned as-is;
+- a guessed `answered` reply with no citations is rejected as `UNGROUNDED_ANSWER`;
+- an `answered` reply citing a review outside the dataset is rejected as `UNGROUNDED_ANSWER`;
+- an `insufficient_evidence` reply that cites reviews is rejected as `UNEXPECTED_CITATIONS`;
+- a partial question ("How is the pizza, and does Restaurant A have outdoor seating?") is accepted
+  as `answered` when it cites the pizza review and states that seating is not covered.
 
 These tests check the pipeline with a fake model, not live model judgment. Whether the configured
 model actually returns `insufficient_evidence` for this question is measured with the S2-003
