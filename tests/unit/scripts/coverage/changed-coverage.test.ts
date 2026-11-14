@@ -596,16 +596,30 @@ describe("parseCliArgs", () => {
 });
 
 describe("against a real git repository", () => {
-  const gitEnv = {
-    ...process.env,
-    GIT_CONFIG_GLOBAL: os.devNull,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_AUTHOR_NAME: "Coverage Gate Test",
-    GIT_AUTHOR_EMAIL: "gate@example.invalid",
-    GIT_COMMITTER_NAME: "Coverage Gate Test",
-    GIT_COMMITTER_EMAIL: "gate@example.invalid",
-  };
+  // Isolate git from the developer's own config with a real, empty config file.
+  // os.devNull is not portable here: Git on Windows rejects "\\.\nul" as GIT_CONFIG_GLOBAL.
+  let configDir: string;
+  let gitEnv: NodeJS.ProcessEnv;
   let repo: string;
+
+  beforeAll(() => {
+    configDir = fs.mkdtempSync(path.join(os.tmpdir(), "changed-coverage-gitconfig-"));
+    const emptyGlobalConfig = path.join(configDir, "gitconfig");
+    fs.writeFileSync(emptyGlobalConfig, "");
+    gitEnv = {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: emptyGlobalConfig,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_AUTHOR_NAME: "Coverage Gate Test",
+      GIT_AUTHOR_EMAIL: "gate@example.invalid",
+      GIT_COMMITTER_NAME: "Coverage Gate Test",
+      GIT_COMMITTER_EMAIL: "gate@example.invalid",
+    };
+  });
+
+  afterAll(() => {
+    fs.rmSync(configDir, { recursive: true, force: true });
+  });
 
   const git = (...args: string[]) =>
     execFileSync("git", args, { cwd: repo, env: gitEnv, encoding: "utf8", stdio: "pipe" });
