@@ -231,3 +231,6 @@ are injected, so tests run without a database or a paid model call. The producti
 `createOpenAiQaModel()` (`qa/openai-qa-client.ts`). It is disabled unless the server-side
 `QA_ENABLED` environment variable is exactly `"true"`, and it needs `OPENAI_API_KEY` and
 `OPENAI_QA_MODEL`. See `docs/s2-011-answers.md`.
+
+S2-012 (insufficient review evidence) adds no service code; its controlled-dataset tests are in
+`tests/unit/services/qa/insufficient-evidence.test.ts`. See `docs/s2-012-insufficient-evidence.md`.
