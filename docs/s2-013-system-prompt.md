@@ -44,21 +44,21 @@ The model must reply with only this JSON object:
 { "outcome": "answered", "answer": "plain text", "citedReviewIds": ["<review id>"] }
 ```
 
-| `outcome`                    | Meaning                                                | S2-004 category                       |
-| ---------------------------- | ------------------------------------------------------ | ------------------------------------- |
-| `answered`                   | The reviews contain evidence that answers the question | `answer_from_active_reviews`          |
-| `insufficient_evidence`      | In scope, but the reviews lack the evidence            | `insufficient_review_evidence`        |
-| `declined_general_knowledge` | Not about analyzing these reviews                      | `decline_unrelated_general_knowledge` |
-| `declined_other_entity`      | About a different product, business, or entity         | `decline_other_entity_or_product`     |
-| `declined_other_platform`    | About reviews from a different platform                | `decline_other_review_platform`       |
+| `outcome`                    | Meaning                                                                                       | S2-004 category                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `answered`                   | The reviews contain evidence that answers the question                                        | `answer_from_active_reviews`          |
+| `insufficient_evidence`      | In scope, but the reviews lack the evidence                                                   | `insufficient_review_evidence`        |
+| `declined_general_knowledge` | Not about analyzing these reviews, including open-ended recommendations that name no business | `decline_unrelated_general_knowledge` |
+| `declined_other_entity`      | About a specific, named product, business, or entity other than the target                    | `decline_other_entity_or_product`     |
+| `declined_other_platform`    | About reviews from a different platform                                                       | `decline_other_review_platform`       |
 
 ### Outcome priority
 
 When a question falls under more than one decline outcome, the model must use the first match in
 `QA_DECLINE_PRIORITY`:
 
-1. `declined_other_entity`: the question is about a different product, business, or entity,
-   whatever platform it names.
+1. `declined_other_entity`: the question is about a specific, named product, business, or entity
+   other than the target, whatever platform it names.
 2. `declined_other_platform`: the question is about the active entity, but on another platform.
 3. `declined_general_knowledge`: anything else that is not about analyzing these reviews.
 
@@ -67,6 +67,18 @@ Restaurant A on Google Maps active) is `declined_other_entity`. The prompt text 
 `QA_DECLINE_PRIORITY`, and S2-004 / S2-015 evaluation cases should use `resolveDeclineOutcome` to
 label multi-category questions. Test: `S2-015: labels another entity's reviews on another
 platform as declined_other_entity`.
+
+### General knowledge versus another entity (`s2-013.v4`)
+
+An open-ended recommendation or ranking that names no specific business, such as "What are the
+best restaurants in New York?", is `declined_general_knowledge` (issue #65 lists it as a
+general-knowledge example). A question about a specific, named business, product, or entity other
+than the target, such as "What do customers think about Restaurant B?", is
+`declined_other_entity`. The priority above applies only when a question genuinely falls under
+more than one outcome; an open-ended recommendation does not fall under `declined_other_entity`
+because it names no entity. `s2-013.v3` listed "recommendations for other businesses" under
+general knowledge while also defining `declined_other_entity` as any different business, which
+made this case ambiguous.
 
 S2-011 must validate this reply before showing anything to the user: reject unknown outcomes, and
 drop or reject `citedReviewIds` values that were not in the request's `reviewIds`.

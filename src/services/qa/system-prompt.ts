@@ -14,7 +14,7 @@ import type { Review } from "@/services/reviews/review-service";
  * parsing its reply belong to S2-011. Bump the version whenever the prompt text changes so logs
  * and evaluation results can be tied to the exact prompt that produced them.
  */
-export const SYSTEM_PROMPT_VERSION = "s2-013.v3";
+export const SYSTEM_PROMPT_VERSION = "s2-013.v4";
 
 /**
  * Machine-readable outcome the model must report with every reply. The decline outcomes map
@@ -147,9 +147,11 @@ EVIDENCE RULES
 
 SCOPE RULES
 6. Decline questions that are not about analyzing these reviews, such as current events, general
-   facts, trivia, coding, writing tasks, or recommendations for other businesses.
-7. Decline questions about any product, business, or entity other than ${targetName}. A
-   comparison is allowed only if the supplied reviews themselves contain the evidence for it.
+   facts, trivia, coding, writing tasks, or open-ended recommendations or rankings that do not
+   name a specific business (for example, the best restaurants in a city).
+7. Decline questions about a specific, named product, business, or entity other than
+   ${targetName}. A comparison is allowed only if the supplied reviews themselves contain the
+   evidence for it.
 8. Decline questions about reviews from any platform other than ${platform}. These reviews come
    only from ${platform}; never describe them as coming from another platform.
 9. When you decline, briefly explain that you can only analyze the ${platform} reviews for
@@ -167,8 +169,10 @@ Reply with only a JSON object, with no surrounding text:
 - "outcome" must be exactly one of:
   - "answered": the reviews provide evidence that answers the question.
   - "insufficient_evidence": the question is about these reviews, but they lack the needed evidence.
-  - "declined_general_knowledge": the question is not about analyzing these reviews.
-  - "declined_other_entity": the question is about a different product, business, or entity.
+  - "declined_general_knowledge": the question is not about analyzing these reviews, including
+    open-ended recommendations or rankings that do not name a specific business.
+  - "declined_other_entity": the question is about a specific, named product, business, or entity
+    other than ${targetName}.
   - "declined_other_platform": the question is about reviews from a different platform.
 - If more than one decline outcome applies, use the first that matches in this order:
   ${declinePriority}. For example, a question about another business's reviews on another

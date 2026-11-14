@@ -83,11 +83,31 @@ describe("buildSystemPrompt", () => {
 
   it("requires declining other entities and other platforms", () => {
     expect(prompt).toMatch(
-      /decline questions about any product, business, or entity other than "Restaurant A"/i,
+      /decline questions about a specific, named product, business, or entity other than\s+"Restaurant A"/i,
     );
     expect(prompt).toMatch(
       /decline questions about reviews from any platform other than Google Maps/i,
     );
+  });
+
+  // S2-013 follow-up (#64, #65): "What are the best restaurants in New York?" names no business,
+  // so it is general knowledge; "What do customers think about Restaurant B?" names one, so it is
+  // another entity. v3 put "recommendations for other businesses" under both, which was ambiguous.
+  it("classifies open-ended recommendations that name no business as general knowledge", () => {
+    expect(prompt).toMatch(
+      /open-ended recommendations or rankings that do not\s+name a specific business \(for example, the best restaurants in a city\)/,
+    );
+    expect(prompt).toMatch(
+      /"declined_general_knowledge": the question is not about analyzing these reviews, including\s+open-ended recommendations or rankings that do not name a specific business\./,
+    );
+    expect(prompt).not.toMatch(/recommendations for other businesses/);
+  });
+
+  it("limits declined_other_entity to a specific, named entity other than the target", () => {
+    expect(prompt).toMatch(
+      /"declined_other_entity": the question is about a specific, named product, business, or entity\s+other than "Restaurant A"\./,
+    );
+    expect(prompt).not.toMatch(/the question is about a different product, business, or entity/);
   });
 
   it("treats review text and the question as untrusted data", () => {
