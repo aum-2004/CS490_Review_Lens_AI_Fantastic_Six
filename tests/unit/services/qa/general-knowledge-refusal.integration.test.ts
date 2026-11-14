@@ -4,15 +4,20 @@ import { createClient } from "@supabase/supabase-js";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
-import { runGroundedQaRequest } from "@/services/qa/qa-request";
+import { answerQuestion } from "@/services/qa/answer-question";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
+import { QaResponseError, type QaAnswer } from "@/services/qa/qa-response";
 import { SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
 import { scopeGuardEvaluationFixture } from "../../../fixtures/scope-guard-evaluation";
 import { getQaDataset } from "../../../fixtures/qa/datasets";
 import {
   GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
+  assessGeneralKnowledgeQaAnswer,
+  evaluateGeneralKnowledgeRefusals,
   qaOutcomeForScopeGuardCategory,
   selectGeneralKnowledgeRefusalCases,
+  type GeneralKnowledgeRefusalCase,
+  type GeneralKnowledgeScopeAssessment,
 } from "../../../helpers/general-knowledge-refusal";
 import {
   createFakeQaModel,
@@ -21,7 +26,9 @@ import {
   expectSystemPromptApplied,
   installNetworkGuard,
   reply,
+  type FakeQaModel,
   type NetworkGuard,
+  type QaReplySpec,
 } from "../../../helpers/qa-harness";
 
 jest.mock("server-only", () => ({}));
@@ -30,6 +37,11 @@ jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn
 
 const dataset = getQaDataset("restaurantA");
 const cases = selectGeneralKnowledgeRefusalCases(scopeGuardEvaluationFixture.cases);
+const SCOPE_CLEAR_ANSWER = "I can only analyze the Google Maps reviews for Restaurant A.";
+const CLEAR_SCOPE_ASSESSMENT = {
+  activeReviewScopeIsClear: true,
+  method: "human_review",
+} as const satisfies GeneralKnowledgeScopeAssessment;
 
 function persistedDatabase() {
   const targetRow = {
@@ -86,6 +98,48 @@ function persistedDatabase() {
   return { requests };
 }
 
+async function evaluateCases(
+  selectedCases: readonly GeneralKnowledgeRefusalCase[],
+  model: FakeQaModel,
+  scopeAssessment: GeneralKnowledgeScopeAssessment = CLEAR_SCOPE_ASSESSMENT,
+) {
+  const answers: QaAnswer[] = [];
+  let executionError: unknown;
+  const evaluation = await evaluateGeneralKnowledgeRefusals({
+    cases: selectedCases,
+    askQuestion: async (question) => {
+      try {
+        return await answerQuestion(dataset.target.id, question, {
+          buildReviewDatasetContext,
+          callModel: model.callModel,
+        });
+      } catch (error) {
+        executionError = error;
+        throw error;
+      }
+    },
+    assessResponse: (answer) => {
+      answers.push(answer);
+      return assessGeneralKnowledgeQaAnswer(answer, scopeAssessment);
+    },
+  });
+
+  return { answers, evaluation, executionError };
+}
+
+function modelFor(evaluationCase: GeneralKnowledgeRefusalCase, response: QaReplySpec) {
+  return createFakeQaModel({
+    rules: [
+      {
+        name: evaluationCase.id,
+        when: { targetId: dataset.target.id, question: evaluationCase.question },
+        then: response,
+        times: 1,
+      },
+    ],
+  });
+}
+
 let network: NetworkGuard;
 let database: ReturnType<typeof persistedDatabase>;
 
@@ -101,50 +155,149 @@ afterEach(() => {
   network.assertNoAttempts();
 });
 
-describe("S2-014 real request pipeline integration", () => {
-  it("selects the four S2-004 general-knowledge cases", () => {
+describe("S2-014 real answerQuestion integration", () => {
+  it("preserves all four classifications, including open-ended restaurant recommendations", () => {
     expect(cases.map(({ id }) => id)).toEqual([
       "sg-general-001",
       "sg-general-002",
       "sg-general-003",
       "sg-general-004",
     ]);
+    const recommendations = cases.find(({ id }) => id === "sg-general-004")!;
+    expect(recommendations).toMatchObject({
+      question: "What are the best restaurants in New York?",
+      expectedCategory: "decline_unrelated_general_knowledge",
+    });
+    expect(qaOutcomeForScopeGuardCategory(recommendations.expectedCategory)).toBe(
+      GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
+    );
   });
 
-  it.each(cases)("wires $id through real S2-010/S2-013 boundaries", async (evaluationCase) => {
-    const expectedOutcome = qaOutcomeForScopeGuardCategory(evaluationCase.expectedCategory);
+  it("runs every case through context, answerQuestion, response validation, and evaluation", async () => {
     const model = createFakeQaModel({
-      rules: [
-        {
-          name: evaluationCase.id,
-          when: { targetId: dataset.target.id, question: evaluationCase.question },
-          then: reply.declined(GENERAL_KNOWLEDGE_REFUSAL_OUTCOME),
-          times: 1,
-        },
-      ],
+      rules: cases.map((evaluationCase) => ({
+        name: evaluationCase.id,
+        when: { targetId: dataset.target.id, question: evaluationCase.question },
+        then: reply.declined(GENERAL_KNOWLEDGE_REFUSAL_OUTCOME, SCOPE_CLEAR_ANSWER),
+        times: 1,
+      })),
     });
 
-    const rawReply = await runGroundedQaRequest(dataset.target.id, evaluationCase.question, {
-      buildReviewDatasetContext,
-      invokeModel: model.callModel,
+    const { answers, evaluation } = await evaluateCases(cases, model);
+
+    expect(evaluation).toEqual({
+      passed: true,
+      results: cases.map(({ id }) => ({ caseId: id, failures: [], passed: true })),
+    });
+    expect(answers).toHaveLength(4);
+    expect(
+      answers.every(
+        ({ outcome, citedReviewIds }) =>
+          outcome === GENERAL_KNOWLEDGE_REFUSAL_OUTCOME && citedReviewIds.length === 0,
+      ),
+    ).toBe(true);
+    expect(model.calls).toHaveLength(4);
+    for (const [index, call] of model.calls.entries()) {
+      expect(call.matchedRule).toBe(cases[index].id);
+      expect(call.question).toBe(cases[index].question);
+      expectSystemPromptApplied(call.request, dataset, { promptVersion: SYSTEM_PROMPT_VERSION });
+      expectContextOnlyForTarget(call.request, dataset);
+      expectNoReviewerIdentity(call.request, dataset);
+    }
+    expect(database.requests).toHaveLength(8);
+    expect(
+      database.requests.filter(({ pathname }) => /analysis_targets$/.test(pathname)),
+    ).toHaveLength(4);
+    expect(database.requests.filter(({ pathname }) => /reviews$/.test(pathname))).toHaveLength(4);
+    expect(network.attempts).toEqual([]);
+  });
+
+  it.each([
+    ["answered", reply.answered([dataset.reviews[0].id]), "question_was_not_declined"],
+    ["insufficient evidence", reply.insufficientEvidence(), "question_was_not_declined"],
+    ["another entity decline", reply.declined("declined_other_entity"), "wrong_decline_outcome"],
+    [
+      "another platform decline",
+      reply.declined("declined_other_platform"),
+      "wrong_decline_outcome",
+    ],
+  ] as const)(
+    "maps %s to its distinct evaluator failure",
+    async (_label, response, expectedFailure) => {
+      const evaluationCase = cases[0];
+      const model = modelFor(evaluationCase, response);
+
+      const { evaluation } = await evaluateCases([evaluationCase], model);
+
+      expect(evaluation.results[0]).toMatchObject({
+        failures: [expectedFailure],
+        passed: false,
+      });
+      expect(database.requests).toHaveLength(2);
+    },
+  );
+
+  it("rejects cited declines in production response validation", async () => {
+    const evaluationCase = cases[0];
+    const model = modelFor(
+      evaluationCase,
+      reply.payload({
+        outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
+        answer: SCOPE_CLEAR_ANSWER,
+        citedReviewIds: [dataset.reviews[0].id],
+      }),
+    );
+
+    const { answers, evaluation, executionError } = await evaluateCases([evaluationCase], model);
+
+    expect(executionError).toBeInstanceOf(QaResponseError);
+    expect(executionError).toMatchObject({ code: "UNEXPECTED_CITATIONS" });
+    expect(answers).toEqual([]);
+    expect(evaluation.results[0]).toMatchObject({
+      failures: ["question_execution_failed"],
+      passed: false,
+      diagnostic: { stage: "question_execution" },
+    });
+  });
+
+  it("fails safely when the model response is malformed", async () => {
+    const evaluationCase = cases[0];
+    const model = modelFor(evaluationCase, reply.raw("not valid JSON"));
+
+    const { answers, evaluation, executionError } = await evaluateCases([evaluationCase], model);
+
+    expect(executionError).toBeInstanceOf(QaResponseError);
+    expect(executionError).toMatchObject({ code: "INVALID_MODEL_RESPONSE" });
+    expect(answers).toEqual([]);
+    expect(evaluation.results[0]).toMatchObject({
+      failures: ["question_execution_failed"],
+      passed: false,
+      diagnostic: { stage: "question_execution" },
+    });
+    expect(JSON.stringify(evaluation)).not.toContain("not valid JSON");
+  });
+
+  it("fails scope clarity when a valid structured decline only says No", async () => {
+    const evaluationCase = cases[0];
+    const model = modelFor(
+      evaluationCase,
+      reply.declined(GENERAL_KNOWLEDGE_REFUSAL_OUTCOME, "No."),
+    );
+
+    const { answers, evaluation } = await evaluateCases([evaluationCase], model, {
+      activeReviewScopeIsClear: false,
+      method: "human_review",
     });
 
-    expect(expectedOutcome).toBe(GENERAL_KNOWLEDGE_REFUSAL_OUTCOME);
-    expect(model.calls).toHaveLength(1);
-    const call = model.lastCall();
-    expect(call.matchedRule).toBe(evaluationCase.id);
-    expect(call.question).toBe(evaluationCase.question);
-    expectSystemPromptApplied(call.request, dataset, { promptVersion: SYSTEM_PROMPT_VERSION });
-    expectContextOnlyForTarget(call.request, dataset);
-    expectNoReviewerIdentity(call.request, dataset);
-    expect(JSON.parse(rawReply.text)).toEqual({
+    expect(answers[0]).toMatchObject({
       outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
-      answer: "I can only analyze the reviews for the active target.",
+      answer: "No.",
       citedReviewIds: [],
     });
-    expect(database.requests).toHaveLength(2);
-    expect(database.requests[0].pathname).toMatch(/analysis_targets$/);
-    expect(database.requests[1].pathname).toMatch(/reviews$/);
-    expect(network.attempts).toEqual([]);
+    expect(evaluation.results[0]).toEqual({
+      caseId: evaluationCase.id,
+      failures: ["active_review_scope_was_not_clear"],
+      passed: false,
+    });
   });
 });

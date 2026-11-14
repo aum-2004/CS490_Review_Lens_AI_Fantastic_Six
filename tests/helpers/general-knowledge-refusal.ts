@@ -1,10 +1,11 @@
+import type { QaAnswer } from "@/services/qa/qa-response";
 import type { QaOutcome } from "@/services/qa/system-prompt";
 
 import type {
   ScopeGuardEvaluationCase,
   ScopeGuardExpectedCategory,
 } from "../fixtures/scope-guard-evaluation";
-import { expectDeclined, QaHarnessAssertionError, type QaAnswer } from "./qa-harness";
+import { expectDeclined, isDeclineOutcome, QaHarnessAssertionError } from "./qa-harness";
 
 export const GENERAL_KNOWLEDGE_REFUSAL_CATEGORY = "decline_unrelated_general_knowledge" as const;
 
@@ -37,7 +38,8 @@ export type GeneralKnowledgeRefusalCase = ScopeGuardEvaluationCase & {
  * infer refusal behavior from keywords in either the question or response.
  */
 export interface GeneralKnowledgeRefusalObservation {
-  readonly declined: boolean;
+  readonly refusalStatus:
+    "valid" | "not_declined" | "wrong_decline_outcome" | "invalid_decline_response";
   readonly activeReviewScopeIsClear: boolean;
   readonly scopeAssessmentMethod: "human_review" | "approved_semantic_evaluator";
 }
@@ -54,6 +56,8 @@ export interface GeneralKnowledgeScopeAssessment {
 
 export type GeneralKnowledgeRefusalFailure =
   | "question_was_not_declined"
+  | "wrong_decline_outcome"
+  | "invalid_decline_response"
   | "active_review_scope_was_not_clear"
   | "question_execution_failed"
   | "response_assessment_failed";
@@ -93,7 +97,19 @@ export function assessGeneralKnowledgeQaAnswer(
   answer: QaAnswer,
   scopeAssessment: GeneralKnowledgeScopeAssessment,
 ): GeneralKnowledgeRefusalObservation {
-  let declined = true;
+  try {
+    expectDeclined(answer);
+  } catch (error) {
+    if (!(error instanceof QaHarnessAssertionError)) {
+      throw error;
+    }
+
+    return {
+      refusalStatus: isDeclineOutcome(answer.outcome) ? "invalid_decline_response" : "not_declined",
+      activeReviewScopeIsClear: scopeAssessment.activeReviewScopeIsClear,
+      scopeAssessmentMethod: scopeAssessment.method,
+    };
+  }
 
   try {
     expectDeclined(answer, GENERAL_KNOWLEDGE_REFUSAL_OUTCOME);
@@ -101,11 +117,16 @@ export function assessGeneralKnowledgeQaAnswer(
     if (!(error instanceof QaHarnessAssertionError)) {
       throw error;
     }
-    declined = false;
+
+    return {
+      refusalStatus: "wrong_decline_outcome",
+      activeReviewScopeIsClear: scopeAssessment.activeReviewScopeIsClear,
+      scopeAssessmentMethod: scopeAssessment.method,
+    };
   }
 
   return {
-    declined,
+    refusalStatus: "valid",
     activeReviewScopeIsClear: scopeAssessment.activeReviewScopeIsClear,
     scopeAssessmentMethod: scopeAssessment.method,
   };
@@ -142,7 +163,10 @@ function isObservation(value: unknown): value is GeneralKnowledgeRefusalObservat
 
   const observation = value as Partial<GeneralKnowledgeRefusalObservation>;
   return (
-    typeof observation.declined === "boolean" &&
+    (observation.refusalStatus === "valid" ||
+      observation.refusalStatus === "not_declined" ||
+      observation.refusalStatus === "wrong_decline_outcome" ||
+      observation.refusalStatus === "invalid_decline_response") &&
     typeof observation.activeReviewScopeIsClear === "boolean" &&
     (observation.scopeAssessmentMethod === "human_review" ||
       observation.scopeAssessmentMethod === "approved_semantic_evaluator")
@@ -207,8 +231,16 @@ export async function evaluateGeneralKnowledgeRefusals<TResponse>(options: {
 
     const failures: GeneralKnowledgeRefusalFailure[] = [];
 
-    if (!observation.declined) {
-      failures.push("question_was_not_declined");
+    switch (observation.refusalStatus) {
+      case "not_declined":
+        failures.push("question_was_not_declined");
+        break;
+      case "wrong_decline_outcome":
+        failures.push("wrong_decline_outcome");
+        break;
+      case "invalid_decline_response":
+        failures.push("invalid_decline_response");
+        break;
     }
 
     if (!observation.activeReviewScopeIsClear) {

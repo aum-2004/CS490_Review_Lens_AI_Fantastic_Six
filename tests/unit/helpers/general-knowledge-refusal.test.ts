@@ -1,5 +1,7 @@
 /** @jest-environment node */
 
+import type { QaAnswer } from "@/services/qa/qa-response";
+import type { QaOutcome } from "@/services/qa/system-prompt";
 import { scopeGuardEvaluationFixture } from "../../fixtures/scope-guard-evaluation";
 import {
   GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
@@ -11,7 +13,6 @@ import {
   type GeneralKnowledgeRefusalCase,
   type GeneralKnowledgeRefusalObservation,
 } from "../../helpers/general-knowledge-refusal";
-import type { QaAnswer, QaOutcome } from "../../helpers/qa-harness";
 
 const generalKnowledgeCases = selectGeneralKnowledgeRefusalCases(scopeGuardEvaluationFixture.cases);
 
@@ -63,20 +64,29 @@ describe("general-knowledge refusal evaluation helper", () => {
 
   it("reuses expectDeclined for the correct general-knowledge outcome", () => {
     expect(assessGeneralKnowledgeQaAnswer(qaAnswer(), clearScope)).toEqual({
-      declined: true,
+      refusalStatus: "valid",
       activeReviewScopeIsClear: true,
       scopeAssessmentMethod: "human_review",
     });
   });
 
-  it.each<QaOutcome>([
-    "answered",
-    "insufficient_evidence",
-    "declined_other_entity",
-    "declined_other_platform",
-  ])("fails the refusal criterion for outcome %s", (outcome) => {
-    expect(assessGeneralKnowledgeQaAnswer(qaAnswer({ outcome }), clearScope).declined).toBe(false);
-  });
+  it.each<QaOutcome>(["answered", "insufficient_evidence"])(
+    "reports non-decline outcome %s as question_was_not_declined",
+    (outcome) => {
+      const observation = assessGeneralKnowledgeQaAnswer(qaAnswer({ outcome }), clearScope);
+
+      expect(observation.refusalStatus).toBe("not_declined");
+    },
+  );
+
+  it.each<QaOutcome>(["declined_other_entity", "declined_other_platform"])(
+    "reports decline outcome %s as the wrong category",
+    (outcome) => {
+      const observation = assessGeneralKnowledgeQaAnswer(qaAnswer({ outcome }), clearScope);
+
+      expect(observation.refusalStatus).toBe("wrong_decline_outcome");
+    },
+  );
 
   it("fails the refusal criterion when a decline carries citations", () => {
     const assessment = assessGeneralKnowledgeQaAnswer(
@@ -84,7 +94,7 @@ describe("general-knowledge refusal evaluation helper", () => {
       clearScope,
     );
 
-    expect(assessment.declined).toBe(false);
+    expect(assessment.refusalStatus).toBe("invalid_decline_response");
   });
 
   it("keeps scope clarity independent from the machine-readable outcome", () => {
@@ -94,14 +104,14 @@ describe("general-knowledge refusal evaluation helper", () => {
     });
 
     expect(assessment).toEqual({
-      declined: true,
+      refusalStatus: "valid",
       activeReviewScopeIsClear: false,
       scopeAssessmentMethod: "human_review",
     });
   });
 
   it("passes only when every real case is declined and independently explains the scope", async () => {
-    const askQuestion = jest.fn(async (_question: string) => qaAnswer());
+    const askQuestion = jest.fn<Promise<QaAnswer>, [string]>(async () => qaAnswer());
 
     await expect(
       evaluateGeneralKnowledgeRefusals({
@@ -124,41 +134,43 @@ describe("general-knowledge refusal evaluation helper", () => {
     );
   });
 
-  it("reports refusal and scope-clarity failures independently", async () => {
-    const cases = generalKnowledgeCases.slice(0, 2);
-    const observations: GeneralKnowledgeRefusalObservation[] = [
-      {
-        declined: false,
+  it.each([
+    ["not_declined", "question_was_not_declined"],
+    ["wrong_decline_outcome", "wrong_decline_outcome"],
+    ["invalid_decline_response", "invalid_decline_response"],
+  ] as const)("maps %s to the distinct %s failure", async (refusalStatus, expectedFailure) => {
+    const evaluation = await evaluateGeneralKnowledgeRefusals({
+      cases: generalKnowledgeCases.slice(0, 1),
+      askQuestion: async () => qaAnswer(),
+      assessResponse: (): GeneralKnowledgeRefusalObservation => ({
+        refusalStatus,
         activeReviewScopeIsClear: true,
         scopeAssessmentMethod: "human_review",
-      },
-      {
-        declined: true,
-        activeReviewScopeIsClear: false,
-        scopeAssessmentMethod: "approved_semantic_evaluator",
-      },
-    ];
-
-    const evaluation = await evaluateGeneralKnowledgeRefusals({
-      cases,
-      askQuestion: async () => qaAnswer(),
-      assessResponse: () => observations.shift()!,
+      }),
     });
 
-    expect(evaluation).toEqual({
+    expect(evaluation.results[0]).toEqual({
+      caseId: generalKnowledgeCases[0].id,
+      failures: [expectedFailure],
       passed: false,
-      results: [
-        {
-          caseId: cases[0].id,
-          failures: ["question_was_not_declined"],
-          passed: false,
-        },
-        {
-          caseId: cases[1].id,
-          failures: ["active_review_scope_was_not_clear"],
-          passed: false,
-        },
-      ],
+    });
+  });
+
+  it("reports unclear scope independently from a valid structured refusal", async () => {
+    const evaluation = await evaluateGeneralKnowledgeRefusals({
+      cases: generalKnowledgeCases.slice(0, 1),
+      askQuestion: async () => qaAnswer(),
+      assessResponse: () => ({
+        refusalStatus: "valid" as const,
+        activeReviewScopeIsClear: false,
+        scopeAssessmentMethod: "approved_semantic_evaluator" as const,
+      }),
+    });
+
+    expect(evaluation.results[0]).toEqual({
+      caseId: generalKnowledgeCases[0].id,
+      failures: ["active_review_scope_was_not_clear"],
+      passed: false,
     });
   });
 
@@ -209,9 +221,9 @@ describe("general-knowledge refusal evaluation helper", () => {
   it.each([
     undefined,
     {},
-    { declined: true, activeReviewScopeIsClear: true },
+    { refusalStatus: "valid", activeReviewScopeIsClear: true },
     {
-      declined: "yes",
+      refusalStatus: "unexpected",
       activeReviewScopeIsClear: true,
       scopeAssessmentMethod: "human_review",
     },
