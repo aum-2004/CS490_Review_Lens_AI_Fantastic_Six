@@ -133,8 +133,22 @@ function setup() {
   jest.mocked(createSupabaseServerClient).mockResolvedValue(db);
   jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: USER, email: "PRIVATE_ACCOUNT_EMAIL" });
   const outgoing: Record<string, unknown>[] = [];
+  const countRequests: Record<string, unknown>[] = [];
+  let inputTokens = 1000;
+  let failCount = false;
   const fetcher = jest.fn(async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const payload = JSON.parse(String(init?.body));
+    if (String(_input) === "https://api.openai.com/v1/responses/input_tokens") {
+      countRequests.push(payload);
+      return failCount
+        ? new Response("PRIVATE_COUNT_DIAGNOSTIC", { status: 503 })
+        : new Response(
+            JSON.stringify({ object: "response.input_tokens", input_tokens: inputTokens }),
+          );
+    }
+    if (String(_input) !== "https://api.openai.com/v1/responses") {
+      throw new Error("Unexpected provider endpoint in deterministic fixture.");
+    }
     outgoing.push(payload);
     const reviews = JSON.parse(payload.input.split("\n")[1]);
     return new Response(
@@ -173,8 +187,15 @@ function setup() {
     rows,
     reads,
     outgoing,
+    countRequests,
     fetcher,
     deps,
+    setInputTokens: (value: number) => {
+      inputTokens = value;
+    },
+    failCount: () => {
+      failCount = true;
+    },
     failReviews: () => {
       failReviews = true;
     },
@@ -184,7 +205,7 @@ beforeEach(() => jest.resetAllMocks());
 
 describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)", () => {
   it("passes the actual authenticated builder through actual answer/prompt/provider serialization", async () => {
-    const { deps, outgoing } = setup();
+    const { deps, outgoing, countRequests } = setup();
     const answer = await answerQuestion(A, "What do the reviews say?", deps);
     expect(answer.targetId).toBe(A);
     expect(answer.citedReviewIds).toEqual(["alpha-review"]);
@@ -195,14 +216,20 @@ describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)"
     );
     expect(outgoing[0]).toMatchObject({ store: false, max_output_tokens: reservedOutputTokens() });
     expect(outgoing[0].instructions).not.toContain("ALPHA_PRIVATE_REVIEW_MARKER");
+    const { model, instructions, input, text } = outgoing[0];
+    expect(countRequests).toEqual([{ model, instructions, input, text }]);
   });
 
   it("excludes the previous target from both the entire outgoing provider body and returned answer", async () => {
-    const { deps, outgoing } = setup();
+    const { deps, outgoing, countRequests } = setup();
     await answerQuestion(A, "Question", deps);
     const answer = await answerQuestion(B, "Question", deps);
     expect(JSON.stringify(outgoing[1])).toContain("BETA_SERVICE_MARKER");
     expect(JSON.stringify(outgoing[1]) + JSON.stringify(answer)).not.toMatch(
+      /ALPHA_PRIVATE_REVIEW_MARKER|alpha-review|Alpha bakery|OTHER_PRIVATE/,
+    );
+    expect(JSON.stringify(countRequests[1])).toContain("BETA_SERVICE_MARKER");
+    expect(JSON.stringify(countRequests[1])).not.toMatch(
       /ALPHA_PRIVATE_REVIEW_MARKER|alpha-review|Alpha bakery|OTHER_PRIVATE/,
     );
   });
@@ -290,13 +317,47 @@ describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)"
     },
   );
 
-  it("rejects an estimated whole-request overflow before provider invocation", async () => {
+  it("rejects the serialized request ceiling before counting or generation", async () => {
     const { deps, fetcher } = setup();
-    await expect(answerQuestion(A, "Q".repeat(60000), deps)).rejects.toMatchObject({
+    await expect(answerQuestion(A, "Q".repeat(140000), deps)).rejects.toMatchObject({
       code: "REQUEST_TOO_LARGE",
     });
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it.each([14_500, 14_501])("checks provider input count %i before generation", async (tokens) => {
+    const { deps, setInputTokens, countRequests, outgoing, fetcher } = setup();
+    setInputTokens(tokens);
+    if (tokens === 14_500) {
+      await expect(answerQuestion(A, "Question", deps)).resolves.toMatchObject({ targetId: A });
+      expect(outgoing).toHaveLength(1);
+      expect(outgoing[0].max_output_tokens).toBe(1500);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } else {
+      await expect(answerQuestion(A, "Question", deps)).rejects.toMatchObject({
+        code: "REQUEST_TOO_LARGE",
+      });
+      expect(outgoing).toEqual([]);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    }
+    expect(countRequests).toHaveLength(1);
+  });
+
+  it.each(["unavailable", "invalid"])(
+    "does not generate when the provider count is %s",
+    async (kind) => {
+      const { deps, failCount, setInputTokens, countRequests, outgoing, fetcher } = setup();
+      if (kind === "unavailable") failCount();
+      else setInputTokens(Number.NaN);
+      await expect(answerQuestion(A, "Question", deps)).rejects.toMatchObject({
+        code: kind === "unavailable" ? "MODEL_UNAVAILABLE" : "BUDGET_CHECK_FAILED",
+        message: expect.not.stringContaining("PRIVATE_COUNT_DIAGNOSTIC"),
+      });
+      expect(countRequests).toHaveLength(1);
+      expect(outgoing).toEqual([]);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("rejects a foreign citation after real authorization and context construction", async () => {
     const { deps } = setup();

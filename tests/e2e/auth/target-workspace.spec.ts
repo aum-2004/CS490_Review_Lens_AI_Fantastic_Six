@@ -91,13 +91,58 @@ test("shows provider-resolved URL identity without claiming an independent match
     await expect(
       page.getByText(/The review service identified this business as Provider coffee shop/),
     ).toContainText("has not been independently matched to the saved link");
-    await expect(page.getByText("Ingested", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("Ingested", { exact: true })).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
     await expect(page.getByText(/Further collection is unavailable/)).toBeVisible();
     await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
       "Saved review for A coffee shop",
     );
     await page.screenshot({ path: "test-results/s1-019-url-provenance.png", fullPage: true });
+  } finally {
+    await request.get("http://127.0.0.1:54329/fixture/url-completion-off");
+  }
+});
+
+test("restores partial results after reload and distinguishes failed ingestion with saved reviews", async ({
+  page,
+  request,
+}) => {
+  await request.get("http://127.0.0.1:54329/fixture/url-completion-on?partial=true");
+  try {
+    await login(page);
+    await page.goto("/analysis-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1");
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
+    await expect(page.getByText("Partially ingested", { exact: true })).toHaveCount(2);
+    await expect(page.getByText(/Last completed run/)).toContainText(
+      "1 reviews saved. 2 unusable records were skipped.",
+    );
+    await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
+      "Saved review for A coffee shop",
+    );
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      await page.screenshot({ path: `test-results/s2-005-partial-${width}.png`, fullPage: true });
+    }
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.screenshot({ path: "test-results/s2-005-partial-375-dark.png", fullPage: true });
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/analysis-targets");
+    await expect(page.getByText("Partially ingested", { exact: true })).toHaveCount(1);
+    await page.getByRole("link", { name: "Open A bookstore" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bookstore");
+    await expect(page.getByRole("main").getByText("Failed", { exact: true })).toHaveCount(2);
+    await expect(page.getByRole("main").getByRole("alert")).toContainText("usage limit");
+    await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
+      "Saved review for A bookstore",
+    );
+    await expect(
+      page.getByRole("main").getByText("Partially ingested", { exact: true }),
+    ).toHaveCount(0);
+    await page.screenshot({ path: "test-results/s2-005-failed-375.png", fullPage: true });
   } finally {
     await request.get("http://127.0.0.1:54329/fixture/url-completion-off");
   }

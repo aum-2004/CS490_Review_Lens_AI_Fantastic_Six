@@ -11,6 +11,7 @@ Planned folders (created by the stories that need them):
 | `analysis-targets/` | Create, list, and authorize AnalysisTargets        | S1-012, S1-014 – S1-018 |
 | `ingestion/`        | Fetch reviews from the source URL, record attempts | S1-019, S1-020, S1-023  |
 | `reviews/`          | Normalize and persist Reviews                      | S1-013, S1-021, S1-022  |
+| `qa/`               | Review Q&A prompt and orchestration                | S2-010, S2-011–S2-013   |
 
 Every service that touches user-owned data must take the authenticated user's identity as input
 and enforce ownership itself (S1-BR-007 through S1-BR-010).
@@ -208,8 +209,15 @@ reconciliation. No in-process background task is relied upon after a response.
 The owner-scoped `analysis_target_ingestion_status` view explicitly emits
 `not_ingested` for targets with no attempt. Missing/truncated/unavailable response
 rows remain unavailable in the app. S1-017 cards and the S1-018 workspace use the
-same four-state `IngestionStatus` component. Unavailable status is separate text,
-not a fifth ingestion outcome.
+same `IngestionStatus` component. S2-005 distinguishes a persisted `succeeded`
+attempt with a positive `skipped_count` as **Partially ingested** (amber warning),
+separate from **Ingesting** (blue info) and **Ingested** (green success). Other
+labels remain **Not ingested** (gray) and **Failed** (red). The database still has
+four states; partial completion is derived from its persisted status and count.
+`skippedCount` is a required badge prop. Missing, negative, non-integer, or
+non-finite counts display **Status unavailable**, as does unavailable state.
+Unavailable status is separate text, not an ingestion outcome. Skipped records
+are never included in the saved count or active review dataset.
 
 Database/API guidance checked against
 [Supabase database functions](https://supabase.com/docs/guides/database/functions)

@@ -1,9 +1,11 @@
 # S2-010: Review dataset context for Q&A
 
 Issue: [#61](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/61).
-Owner: Shawn. The builder has functional/security approvals and passing CI at
-`c9c7f38`. Service composition with current S2-011 has been verified; production
-route, full-budget and manual acceptance remain pending. See the
+Owner: Shawn. The builder had functional/security approvals and passing CI at
+`c9c7f38`; reviewer reconfirmation is needed after subsequent test/docs changes.
+Production-path integration is now verified with S2-011 `78c914e` and S2-009
+`2a138d7`, including the provider-authoritative token budget. Merge and final
+team/manual acceptance remain pending. See the
 [integration handoff](s2-010-011-integration.md) for current evidence and gates.
 
 ## Scope and architectural decision
@@ -30,9 +32,11 @@ On 2026-11-12 Shawn delegated the architectural decision for this story to this
 implementation; the bounded complete-dataset strategy and limits above are the
 chosen initial policy. This does not claim that Aryan selected a specific model
 or that a provider's entire context window is available for review evidence.
-**Bytes are not tokens.** S2-011 must validate its complete outgoing request against
-the chosen model's token budget, including system instructions, question, evidence,
-message overhead and reserved output. Reduce this budget or add a reviewed
+**Bytes are not tokens.** S2-011 at `78c914e` counts the complete outgoing input
+through the provider's input-token endpoint, including instructions, question,
+evidence and output schema. Only input at or below 14,500 tokens may generate,
+with 1,500 output tokens reserved against the 16,000-token application cap. Count
+failures prevent generation. Reduce the evidence budget or add a reviewed
 selection strategy if necessary; do not silently slice the serialized evidence.
 
 ## Server-side contract
@@ -94,7 +98,7 @@ const request = buildQaModelRequest({
   reviews: context.reviews,
   question,
 });
-// S2-011 validates the complete request budget before invoking its model adapter.
+// S2-011's provider adapter validates the complete input count before generation.
 ```
 
 `evidenceJson`/`evidenceBytes` describe the complete bounded dataset for auditing;
@@ -206,13 +210,14 @@ Completion follow-up on 2026-11-12:
 - [ ] Author reviews the final documentation/test consolidation.
 - [x] Normal and independent security reviews; published-head CI at `c9c7f38`.
 - [ ] Current-head CI and reviewer reconfirmation for subsequent changes.
-- [ ] S2-011 calls this builder in the running application and enforces the complete
-      model-request token budget; integrated model-boundary/manual acceptance.
+- [x] S2-009 at `2a138d7` wires the actual builder through S2-011 at `78c914e`;
+      deterministic actual-route tests verify the provider-counted input budget.
+- [ ] Final team/manual integration acceptance; hosted/live-model claims are separate.
 - [ ] Merge and update the issue/board after acceptance.
 
-The context implementation is ready for review/integration. This checklist keeps
-unavailable downstream wiring and human/remote acceptance visible; it does not
-represent the entire story as already Done or authorize closing #61.
+The context implementation and deterministic production-path integration are ready
+for final review. This checklist keeps human/remote acceptance visible; it does
+not represent the entire story as already Done or authorize closing #61.
 
 The later [integration handoff](s2-010-011-integration.md) supersedes the historical
 unavailable-orchestrator checkpoint above. The useful combined-branch scenarios

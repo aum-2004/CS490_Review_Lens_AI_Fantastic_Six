@@ -38,16 +38,21 @@ It calls the actual context builder, ownership helper/repository, prompt,
 orchestrator, response validator and provider serializer. Only authentication,
 database HTTP and provider I/O are mocked. No real key or paid request is needed.
 
-The 12 cases cover complete outgoing provider-body projection, active-target and
+The 16 cases cover complete outgoing provider-body projection, active-target and
 cross-user isolation, consecutive targets/users, indistinguishable foreign/missing
 denials before review reads, authentication/storage/empty/size failures preventing
-provider invocation, estimated prompt overflow and foreign-citation rejection.
+provider invocation, the serialized request ceiling and foreign-citation rejection.
+The fixture handles the real count-then-generate protocol. Count and generation
+must carry the same model, instructions, input and schema, with no previous-target
+evidence in either request. A count of 14,500 permits generation; 14,501, an invalid
+count or an unavailable count endpoint prevents generation. Counting itself is a
+provider request, so these checks distinguish no generation from no network call.
 Test-local structural types are not new shared production interfaces.
 
 ### Explicit dependency gate
 
 This branch does not contain S2-011 yet. The integration suite therefore reports
-**12 skipped cases**, rather than replacing the missing pipeline with a fake or
+**16 skipped cases**, rather than replacing the missing pipeline with a fake or
 importing unmerged production modules. The original 42 builder tests still run.
 Once the real `answer-question.ts` exists in the consuming checkout, the suite
 loads the actual modules; missing/broken transitive dependencies fail normally.
@@ -69,7 +74,46 @@ For Neel/Deep's model-boundary evaluations, inject `callModel` through the exist
 Capture the entire request, not only the displayed answer. Inject the provider
 adapter's fake fetcher when checking the final HTTP envelope, including schema.
 
-## Verified snapshots
+## Current integration status (2026-11-13)
+
+- S2-013 #76 is merged into main at `ed686a26`.
+- S2-011 #79 at `78c914e` uses the provider-authoritative input-token count and
+  rejects counting failures, invalid counts and input above 14,500 before generation.
+- S2-009 #84 at `2a138d7` wires its real questions route/UI to this builder and
+  `answerQuestion`. It bounds question/body input, checks ownership before body
+  reads and returns validated target-tagged, private/no-store responses.
+- The #84 integration passed 1,120 tests, typecheck, lint, a production build and
+  three production-browser tests during its review. Browser success replies were
+  intercepted; service-path tests mock only database/auth/provider infrastructure.
+- A fresh detached integration with current main also passed 1,120 tests and
+  typecheck after preserving the reviewed S2-011 versions in four S2-013
+  squash-history conflicts. No branch or protected merge was performed.
+
+The builder and deterministic production-path integration are now demonstrated.
+Final reviewer reconfirmation, updated-head CI, merge coordination and the team's
+final acceptance remain. Hosted RLS, live-model grounding and the full switching
+stories are not certified by these checks.
+
+Local PR refresh verification after reconciling main at `ed686a26`:
+
+- 907 tests passed; the 16 portable integration cases were explicitly skipped
+  because this independent branch does not include S2-011.
+- The exact refreshed portable suite passed all 16 cases with strict mode against
+  the actual S2-009/S2-010/S2-011 integration and current main in a detached checkout.
+- Formatting, lint, typecheck and the standalone production build passed.
+- Only tests/docs/transcript changed beyond the upstream main reconciliation;
+  the production context builder, request contract and dependency lockfile did not.
+- Original available task records are retained in
+  `ai-transcripts/2026-11-13_shawn_S2-010-pr-refresh_codex.md` with explicit cutoff
+  and privacy notes. No remote action or final team acceptance is inferred.
+
+The merged S2-003 harness no longer depends on #82 and rejects cited refusals in
+line with #79. Its documented oversized-question case still needs its Phase 2
+boundary adjustment: a fake `callModel` bypasses the real adapter's budget check.
+Use the actual route or actual adapter with mocked count/generation transport for
+budget assertions; do not substitute a fake builder or claim that case passes.
+
+## Historical verified snapshots
 
 - S2-010 builder: `c9c7f385a8355264491d93366ce36f2635ae75b9` (#78).
 - Latest checked S2-011: `8b4ca92d89ffa38d3fd9c69ce32a37451f78029e` (#79).
@@ -83,17 +127,19 @@ adapter's fake fetcher when checking the final HTTP envelope, including schema.
 
 ## Token budget and remaining acceptance
 
-S2-010 enforces the exact 100-review / 32,768-byte evidence policy. Current
-S2-013/S2-011 estimates instruction/input tokens from UTF-8 bytes divided by three
-and adds reserved output. The response schema is added later; the ratio is not
-established as a hard upper bound for arbitrary accepted text. Post-call usage
-does not enforce a pre-call limit. The existing estimated-overflow check does not
-prove a complete token budget.
+S2-010 enforces the exact 100-review / 32,768-byte evidence policy. S2-011 at
+`78c914e` now builds the actual provider body, rejects count requests above 128 KiB,
+and calls `/v1/responses/input_tokens` with the same model, instructions, input and
+structured-output format used for generation. It permits generation only when
+the validated input count plus 1,500 reserved output tokens fits 16,000. The old
+bytes/3 estimate, local tokenizer and 256-token overhead allowance are superseded.
 
-Aryan owns that complete model-budget check, including schema/protocol overhead
-and reserved output. Production route wiring, strict integrated CI, actual-route
-security tests, configured-model evaluations and manual/browser acceptance remain
-open. Keep #61 open until the team's agreed acceptance gates pass.
+The refreshed 16-case portable suite verifies this protocol against the actual
+adapter when present. Standalone skipped cases remain explicitly unaccepted.
+CI of the consuming integration must run strict mode or retain equivalent
+unconditionally executed actual-route checks. Current-head reviews and final
+team acceptance are needed before merging/closing #61. Configured-model smoke
+tests and hosted verification remain separate; no real provider call was made.
 
 ## Retiring the optional combined PR
 
