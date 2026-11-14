@@ -1,74 +1,113 @@
-# S2-014 General-Knowledge Refusal Foundation
+# S2-014 General-Knowledge Refusal
 
-## Current boundary audit
+## Integration status
 
 Issue #65 requires ReviewLens to decline questions unrelated to the active review dataset without a
-hard-coded question or keyword blacklist. The behavior is expected to come primarily from the
-reviewable system prompt and application context.
+hard-coded question or keyword blacklist. PR #75 now contains the independently testable evaluator
+and the deterministic production-request integration currently possible on `main`.
 
-At the `f931a34` branch baseline, the repository has no Q&A route, Q&A orchestration service, model
-adapter, OpenAI dependency, or production response contract. GitHub also has no S2-011 or S2-013
-branch or pull request available for integration. Production refusal behavior therefore cannot be
-executed or honestly claimed as verified on this branch.
+The merged boundaries are:
 
-## Relationship to S2-004
+- S2-004 / PR #72: the shared scope-guard fixture;
+- S2-003 / PR #83: the recording fake model and behavior assertions;
+- S2-013 / PR #76: the production system prompt and `runGroundedQaRequest()`; and
+- S2-010 / PR #78: the authenticated `buildReviewDatasetContext()`.
 
-S2-004 is implemented separately in PR #72. Its fixture owns the representative questions and
-includes three cases categorized as `decline_unrelated_general_knowledge`:
+S2-011 / PR #79 remains open and Draft. Its `answerQuestion()` orchestration and production
+`QaAnswer` validation are not copied into this branch. S2-009 / PR #84 also remains open and is not
+part of this implementation.
+
+## Phase 1: evaluator foundation
+
+`tests/helpers/general-knowledge-refusal.ts` imports the actual S2-004
+`ScopeGuardEvaluationCase`. It narrows the shared fixture to
+`decline_unrelated_general_knowledge` without copying or reclassifying question text.
+
+One exhaustive mapping translates all S2-004 categories to the S2-013 outcomes. The S2-014 expected
+pair is:
+
+```text
+decline_unrelated_general_knowledge -> declined_general_knowledge
+```
+
+The `QaAnswer` adapter reuses S2-003's `expectDeclined(answer, outcome)`. Consequently, a
+non-decline outcome, another decline category, or a decline carrying citations fails the refusal
+criterion. S2-014 does not maintain parallel outcome/citation rules.
+
+Scope clarity remains a separate semantic criterion. A human reviewer or an approved semantic
+evaluator must decide whether the user-visible answer clearly explains that ReviewLens is limited
+to analysis of the active review dataset. The machine-readable outcome cannot set that criterion to
+true. For example, a response whose complete answer is `No.` fails scope clarity even when its
+outcome is `declined_general_knowledge`.
+
+The evaluator contains no keyword matcher, entity blacklist, fixed refusal template, or production
+Q&A behavior. It only coordinates a caller-provided Q&A invocation and semantic assessment.
+Invocation and assessment failures are recorded per case with fixed, non-sensitive diagnostics;
+raw errors and response content are not exposed. Missing or malformed observations fail closed, and
+evaluation continues with the remaining cases.
+
+## Shared S2-004 case set
+
+The fixture now contains all four issue #65 general-knowledge examples:
 
 - current weather;
-- the current United States president; and
-- writing a Python sorting function.
+- the current United States president;
+- writing a Python sorting function; and
+- general restaurant recommendations in New York.
 
-S2-014 does not copy those questions or add a competing evaluation fixture. The reusable helper in
-`tests/helpers/general-knowledge-refusal.ts` accepts the S2-004 case shape and selects that category
-after PR #72 lands.
+The fourth case is `sg-general-004`; it requires no review evidence and is labeled as a general
+recommendation request rather than analysis of Restaurant A's stored reviews. The shared baseline
+now has 16 cases. S2-004's completed issue status is unchanged.
 
-The helper runs caller-supplied Q&A invocations and requires a semantic observation that confirms
-both:
+## Phase 2: completed deterministic integration
 
-1. the question was declined; and
-2. the response made the active-review scope clear.
+`tests/unit/services/qa/general-knowledge-refusal.integration.test.ts` runs each of the four shared
+questions through these real modules:
 
-It intentionally does not classify questions or responses with keyword matching, prescribe an exact
-refusal sentence, create fake production AI behavior, or define Aryan's prompt/orchestration
-contract. An invitation to ask about the active reviews is optional under issue #65 and is therefore
-not a pass condition.
+```text
+mocked verified session + deterministic Supabase HTTP fixture
+  -> buildReviewDatasetContext() (S2-010)
+  -> runGroundedQaRequest() / buildQaModelRequest() (S2-013)
+  -> recording fake model (S2-003)
+```
 
-## Completed automated coverage
+The Supabase client itself is real, but its explicit fetch implementation serves only the synthetic
+S2-004 persisted rows. The S2-003 network guard blocks global fetch, HTTP(S), and TCP access. The
+tests verify:
 
-The helper's unit suite verifies category selection, the passing contract, independent failure
-reporting, continued evaluation after invocation/assessment errors, and rejection of malformed case
-sets before Q&A is invoked. These tests verify the reusable evaluator only. They do not verify that
-ReviewLens or a model currently declines unrelated questions.
+- exactly the four S2-004 cases are selected;
+- the verified fixture owner and target ID drive the real ownership/context queries;
+- the actual S2-013 system prompt names Restaurant A and Google Maps;
+- every supplied evidence row and review ID matches the authorized persisted fixture dataset;
+- reviewer identity fields do not reach the model request;
+- the recording model receives the exact question and expected target;
+- the category adapter selects `declined_general_knowledge`; and
+- no real provider or database network request occurs.
 
-## Pending production integration tests
+The fake model returns a controlled raw provider reply so request wiring is observable. That reply
+does not prove that a configured model will independently classify and decline these questions.
 
-After S2-004 and the real S2-011/S2-013 boundary land, add an integration suite with these exact
-steps:
+## Remaining acceptance work
 
-1. Import `scopeGuardEvaluationFixture` from S2-004 and pass its cases through
-   `selectGeneralKnowledgeRefusalCases`; do not restate the questions in S2-014.
-2. Supply the fixture's active target and persisted reviews through the real Q&A orchestration entry
-   point used by the application.
-3. Use the S2-003 injectable model boundary in deterministic CI tests to capture the complete model
-   request and verify the production S2-013 system prompt and active-target context are actually
-   supplied. Do not add an S2-014 prompt copy.
-4. Adapt the finalized production response contract to `GeneralKnowledgeRefusalObservation`. Prefer
-   a machine-readable disposition/scope result. If the contract is text-only, use an approved
-   semantic evaluator or documented human rubric; do not infer behavior with keyword lists.
-5. Run `evaluateGeneralKnowledgeRefusals` for every S2-004 general-knowledge case and require every
-   result to pass. Assert the application does not surface a substantive answer to the unrelated
-   question and that the response explains the active-review boundary without requiring exact text.
-6. Add a failing contract test showing that a substantive answer is reported as
-   `question_was_not_declined`, and another showing that a bare refusal with no ReviewLens scope is
-   reported as `active_review_scope_was_not_clear`.
-7. Separately run an explicitly approved configured-model evaluation against the same S2-004 cases
-   to verify actual prompt-driven behavior. Keep paid/live calls out of normal CI unless the team
-   intentionally provisions them. Deterministic request/response wiring tests alone do not prove
-   model behavior.
-8. Exercise the finalized API or UI boundary once available and verify its user-visible refusal is
-   the assessed model/orchestration result, not a fabricated fallback answer.
+When S2-011 / PR #79 merges, extend the deterministic integration through the real
+`answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })` boundary. For every
+shared general-knowledge case, validate a real production `QaAnswer` with
+`assessGeneralKnowledgeQaAnswer()`. Add production-pipeline regressions for:
 
-Until steps 1-8 can target production code, S2-014 behavior verification remains pending even though
-the independent evaluator foundation is complete and testable.
+1. a valid `declined_general_knowledge` reply with no citations;
+2. `answered`, `insufficient_evidence`, and the two wrong decline outcomes;
+3. a decline containing review citations; and
+4. a correctly categorized but semantically unclear answer such as `No.`.
+
+The fourth assertion still requires the documented human/approved semantic-assessment boundary;
+S2-011 response parsing cannot establish scope clarity by itself.
+
+After deterministic orchestration acceptance, run an explicitly approved configured-model
+evaluation against the same four cases. It must use the production prompt and context and require
+both the mapped outcome and independently assessed scope clarity. Paid/live calls stay outside
+normal CI unless the team intentionally provisions them. The endpoint or UI must ultimately surface
+the assessed model/orchestration result, not a fabricated fallback.
+
+Therefore, Phase 1 and all currently unblocked deterministic Phase 2 request-wiring work are
+complete. Full S2-014 story acceptance remains pending S2-011 integration, configured-model
+evaluation, teammate approval, and green PR CI.
