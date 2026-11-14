@@ -110,22 +110,24 @@ Stop the server with `Ctrl+C`.
 
 ## Available scripts
 
-| Command                 | What it does                                                                                 |
-| ----------------------- | -------------------------------------------------------------------------------------------- |
-| `npm run dev`           | Starts the development server at <http://localhost:3000>                                     |
-| `npm run build`         | Creates an optimized production build in `.next/`                                            |
-| `npm run start`         | Serves the production build (run `npm run build` first)                                      |
-| `npm run lint`          | Runs ESLint across the project                                                               |
-| `npm run format`        | Formats supported project files with Prettier                                                |
-| `npm run format:check`  | Verifies formatting without changing files                                                   |
-| `npm run typecheck`     | Generates Next.js route types, then runs TypeScript without emitting                         |
-| `npm run test`          | Runs Jest unit and component tests; no browser is required                                   |
-| `npm run test:watch`    | Re-runs relevant Jest tests while files change                                               |
-| `npm run test:coverage` | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
-| `npm run test:qa`       | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)          |
-| `npm run test:e2e`      | Starts the app and runs Playwright tests in headless Chromium                                |
-| `npm run test:e2e:auth` | Runs authentication browser tests against an isolated local test provider                    |
-| `npm run test:db`       | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
+| Command                          | What it does                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `npm run dev`                    | Starts the development server at <http://localhost:3000>                                     |
+| `npm run build`                  | Creates an optimized production build in `.next/`                                            |
+| `npm run start`                  | Serves the production build (run `npm run build` first)                                      |
+| `npm run lint`                   | Runs ESLint across the project                                                               |
+| `npm run format`                 | Formats supported project files with Prettier                                                |
+| `npm run format:check`           | Verifies formatting without changing files                                                   |
+| `npm run typecheck`              | Generates Next.js route types, then runs TypeScript without emitting                         |
+| `npm run test`                   | Runs Jest unit and component tests; no browser is required                                   |
+| `npm run test:watch`             | Re-runs relevant Jest tests while files change                                               |
+| `npm run test:coverage`          | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
+| `npm run test:qa`                | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)          |
+| `npm run coverage:changed`       | Runs Jest with coverage, then the S2-001 changed-code coverage gate against `origin/main`    |
+| `npm run coverage:changed:check` | Runs only the gate, reusing an existing `coverage/coverage-final.json`                       |
+| `npm run test:e2e`               | Starts the app and runs Playwright tests in headless Chromium                                |
+| `npm run test:e2e:auth`          | Runs authentication browser tests against an isolated local test provider                    |
+| `npm run test:db`                | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
 
 ### Run automated tests
 
@@ -155,6 +157,21 @@ Authentication specifications live under `tests/e2e/auth/` and run separately wi
 The smoke command excludes those tests so it does not require the provider. Neither auth test
 accounts nor live Supabase credentials are needed. Both suites can use an existing supported
 browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they use bundled Chromium.
+
+### Changed-code coverage gate (S2-001)
+
+Every pull request must execute at least **80%** of the source lines it adds or modifies (**90%**
+inside `src/services/qa/**`), and no changed source file may have 0% changed-line coverage. CI
+enforces this in the required **Lint, typecheck, test, build** check. Run the same check locally
+before opening a PR:
+
+```bash
+git fetch origin main
+npm run coverage:changed
+```
+
+See [docs/changed-code-coverage.md](docs/changed-code-coverage.md) for the policy, exclusions, how
+to read a failure, and how to request an exclusion.
 
 ### Deterministic Q&A test harness (S2-003)
 
