@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/shared/Spinner";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
+import { IngestionStatus } from "./IngestionStatus";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
 
 const POLL_INTERVAL_MS = 5000;
@@ -120,7 +121,11 @@ export function IngestionPanel({
       <h2 className="text-xl font-semibold">Ingestion</h2>
       {pending ? (
         <p role="status">{recovering ? "Loading ingestion status…" : "Starting ingestion..."}</p>
-      ) : null}
+      ) : (
+        <div role="status" aria-atomic="true">
+          <IngestionStatus state={summary?.state ?? null} skippedCount={summary?.skippedCount} />
+        </div>
+      )}
       {processing ? (
         <p role="status" className="max-w-prose break-words">
           Collecting reviews for {targetName} from Google Maps…
@@ -134,6 +139,12 @@ export function IngestionPanel({
         <p role="status" className="max-w-prose">
           Last completed run: {summary.savedCount} reviews saved.
           {summary.skippedCount > 0 && ` ${summary.skippedCount} unusable records were skipped.`}
+        </p>
+      )}
+      {summary?.state === "succeeded" && summary.skippedCount > 0 && !pending && (
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Ingestion partially succeeded for {targetName}. Only saved reviews are included in this
+          target&apos;s dataset.
         </p>
       )}
       {summary?.state === "failed" && !pending && (
