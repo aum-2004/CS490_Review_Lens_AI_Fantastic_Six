@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { QaModelError, createOpenAiQaModel } from "@/services/qa/openai-qa-client";
-import type { QaReviewContext } from "@/services/qa/qa-request";
+import { QaInputValidationError, type QaReviewContext } from "@/services/qa/qa-request";
 import { QaResponseError } from "@/services/qa/qa-response";
 import {
   QA_MAX_REQUEST_TOKENS,
@@ -135,6 +135,53 @@ describe("answerQuestion (S2-011)", () => {
   });
 });
 
+describe("answerQuestion input validation at the service boundary", () => {
+  const validReply = {
+    outcome: "answered",
+    answer: "Service was slow.",
+    citedReviewIds: ["r-service-1"],
+  };
+
+  it.each<[string, unknown, string]>([
+    ["a non-string question", 12345, "QA_QUESTION_INVALID_TYPE"],
+    ["a 140,000-character question", "q".repeat(140_000), "QA_QUESTION_TOO_LONG"],
+  ])(
+    "rejects %s with QaInputValidationError and never calls callModel",
+    async (_label, question, code) => {
+      const deps = setup(validReply);
+
+      const promise = answerQuestion(TARGET_ID, question, deps);
+
+      await expect(promise).rejects.toBeInstanceOf(QaInputValidationError);
+      await expect(promise).rejects.toMatchObject({ name: "QaInputValidationError", code });
+      expect(deps.buildReviewDatasetContext).not.toHaveBeenCalled();
+      expect(deps.callModel).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects an oversized serialized request with QaInputValidationError and never calls callModel", async () => {
+    const oversized: QaReviewContext = {
+      target: context.target,
+      reviews: Array.from({ length: 50 }, (_, i) => ({
+        id: `r-big-${i}`,
+        analysisTargetId: TARGET_ID,
+        rating: 3,
+        text: "x".repeat(3_000),
+        reviewDate: null,
+      })),
+    };
+    const callModel = jest.fn<ReturnType<QaModelCaller>, [QaModelRequest]>();
+
+    await expect(
+      answerQuestion(TARGET_ID, "Any complaints?", {
+        buildReviewDatasetContext: async () => oversized,
+        callModel,
+      }),
+    ).rejects.toMatchObject({ name: "QaInputValidationError", code: "QA_REQUEST_TOO_LARGE" });
+    expect(callModel).not.toHaveBeenCalled();
+  });
+});
+
 describe("provider gating with the real OpenAI adapter", () => {
   const enabledEnv = {
     QA_ENABLED: "true",
@@ -195,13 +242,13 @@ describe("provider gating with the real OpenAI adapter", () => {
     ]);
   });
 
-  it("never reaches the provider with an oversized request (size ceiling checked first)", async () => {
+  it("never reaches the provider with an oversized question (service boundary checked first)", async () => {
     const { fetcher, deps } = depsWith(enabledEnv);
     const oversized = "Is the food good? ".repeat(QA_MAX_REQUEST_TOKENS);
 
     await expect(answerQuestion(TARGET_ID, oversized, deps)).rejects.toMatchObject({
-      name: "QaPromptError",
-      code: "REQUEST_TOO_LARGE",
+      name: "QaInputValidationError",
+      code: "QA_QUESTION_TOO_LONG",
     });
     expect(fetcher).not.toHaveBeenCalled();
     expect(globalFetch).not.toHaveBeenCalled();
@@ -210,6 +257,8 @@ describe("provider gating with the real OpenAI adapter", () => {
   it.each([
     ["QA_ENABLED=false", { ...enabledEnv, QA_ENABLED: "false" }],
     ["QA_ENABLED unset", { ...enabledEnv, QA_ENABLED: undefined }],
+    ['QA_ENABLED=" true"', { ...enabledEnv, QA_ENABLED: " true" }],
+    ['QA_ENABLED="true "', { ...enabledEnv, QA_ENABLED: "true " }],
   ])("never reaches the provider when disabled (%s)", async (_label, env) => {
     const { fetcher, deps } = depsWith(env);
 

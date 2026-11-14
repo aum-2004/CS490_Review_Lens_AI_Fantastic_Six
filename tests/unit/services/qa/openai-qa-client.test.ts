@@ -79,11 +79,24 @@ function provider({
 
 const bodyOf = (call: Parameters<typeof fetch>) => JSON.parse(String(call[1]?.body));
 
+/**
+ * Credential leakage check: the API key's marker must not appear anywhere a thrown error could be
+ * shown or logged: the user-facing message, the log-only detail, the JSON form (own enumerable
+ * fields such as `code`, `detail`, and any `cause`), or the stack.
+ */
+function expectNoSecret(error: unknown): void {
+  const { message, detail, stack } = error as Error & { detail?: unknown };
+  expect(message).not.toContain("SECRET_MARKER");
+  expect(String(detail ?? "")).not.toContain("SECRET_MARKER");
+  expect(JSON.stringify(error)).not.toContain("SECRET_MARKER");
+  expect(String(stack ?? "")).not.toContain("SECRET_MARKER");
+}
+
 async function rejectionOf(promise: Promise<unknown>): Promise<Error & { code?: string }> {
   try {
     await promise;
   } catch (error) {
-    expect((error as Error).message).not.toContain("SECRET_MARKER");
+    expectNoSecret(error);
     return error as Error & { code?: string };
   }
   throw new Error("Expected a rejection.");
@@ -96,14 +109,19 @@ async function codeOf(promise: Promise<unknown>): Promise<QaModelErrorCode> {
 }
 
 describe("readOpenAiQaConfig", () => {
-  it.each([{}, { QA_ENABLED: "false" }, { QA_ENABLED: "TRUE" }, { QA_ENABLED: "1" }])(
-    "is disabled unless QA_ENABLED is exactly true (%j)",
-    (flags) => {
-      expect(() => readOpenAiQaConfig({ ...env, QA_ENABLED: undefined, ...flags })).toThrow(
-        expect.objectContaining({ code: "QA_DISABLED" }),
-      );
-    },
-  );
+  it.each([
+    {},
+    { QA_ENABLED: "false" },
+    { QA_ENABLED: "TRUE" },
+    { QA_ENABLED: "1" },
+    { QA_ENABLED: " true" },
+    { QA_ENABLED: "true " },
+    { QA_ENABLED: " true " },
+  ])("is disabled unless QA_ENABLED is exactly true (%j)", (flags) => {
+    expect(() => readOpenAiQaConfig({ ...env, QA_ENABLED: undefined, ...flags })).toThrow(
+      expect.objectContaining({ code: "QA_DISABLED" }),
+    );
+  });
 
   it.each([{ OPENAI_API_KEY: undefined }, { OPENAI_API_KEY: "  " }])(
     "requires an API key (%j)",
@@ -154,6 +172,47 @@ describe("createOpenAiQaModel request flow", () => {
     ).toBe("MODEL_NOT_CONFIGURED");
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it.each([" true", "true ", " true ", "\ttrue"])(
+    "makes zero provider calls when QA_ENABLED has surrounding whitespace (%j)",
+    async (flag) => {
+      const { fetcher } = provider();
+
+      const error = await rejectionOf(
+        createOpenAiQaModel({ fetcher, env: { ...env, QA_ENABLED: flag } })(request),
+      );
+      expect(error).toMatchObject({ name: "QaModelError", code: "QA_DISABLED" });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([401, 400, 500])(
+    "does not leak the API key when the token count rejects with a body that echoes it (HTTP %i)",
+    async (status) => {
+      const echo = () =>
+        new Response(JSON.stringify({ error: { message: `Incorrect API key: ${API_KEY}` } }), {
+          status,
+        });
+      const { fetcher, generationCalls } = provider({ count: echo });
+
+      await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+      expect(generationCalls()).toHaveLength(0);
+    },
+  );
+
+  it.each([401, 400, 500])(
+    "does not leak the API key when generation rejects with a body that echoes it (HTTP %i)",
+    async (status) => {
+      const echo = () =>
+        new Response(JSON.stringify({ error: { message: `Incorrect API key: ${API_KEY}` } }), {
+          status,
+        });
+      const { fetcher, generationCalls } = provider({ generation: echo });
+
+      await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+      expect(generationCalls()).toHaveLength(1);
+    },
+  );
 
   it("counts tokens first, then generates, with the same model, instructions, input, and format", async () => {
     const { fetcher } = provider();
