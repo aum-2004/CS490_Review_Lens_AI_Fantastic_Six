@@ -1,5 +1,43 @@
 # S2-009 verification — 2026-11-13
 
+## Current upstream refresh
+
+The repeated verification fetched newer tips: main `26f48f7` (S2-003 harness) and
+S2-011 `78c914e` (provider-authoritative token counting). Both merged cleanly into
+`s2-009`; S2-010 remains `6835c29` and S2-013 remains `14effdf`. Source through
+`ba133bb` passed lint, TypeScript, **1,120 tests in 68 suites**, production build
+and **three production-server browser tests**. The elevated browser run exited
+normally without the earlier sandbox wrapper workaround. The new harness's own
+tests also pass; this does not claim all live-model evaluations pass.
+
+Current S2-011 calls `/v1/responses/input_tokens` and then generates only if the
+reported full input count plus 1,500 reserved output tokens fits the 16,000 cap.
+It rejects serialized count requests above 128 KiB before network access. The
+local tokenizer and protocol-overhead estimate are no longer used; their package
+was removed and pruned. The UI deadline is now 75 seconds, covering the two
+separate 30-second provider stages. Additional integration tests verify that the
+count and generation bodies contain identical model/instructions/evidence/schema,
+exclude prior-target evidence from both, and never generate on count failure or
+overflow. **113 focused tests passed.**
+
+The official [input-token API reference](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count)
+documents the request's `text.format` structured-output configuration. This
+resolves the earlier documentation uncertainty; configured-model smoke testing
+is still pending. No live provider request was made. Counting also transmits the
+authorized review context to OpenAI; its billing/retention behavior must not be
+inferred from generation's `store: false` setting.
+
+Lockfile validation (`npm ci --dry-run --ignore-scripts --no-audit --no-fund`),
+pruning and the full dependency-tree inspection passed after tokenizer removal.
+The earlier full clean install remains historical evidence. Refreshed production
+audit: **zero findings**. Full audit remains **five low entries and zero
+moderate/high/critical**, with the local deepmerge mitigation described below.
+Formatting, whitespace and all four merge checks are repeated before handoff.
+Human review, separate security review, current-head CI, hosted RLS and live-model
+acceptance remain outstanding. No push or remote PR was performed.
+
+## Earlier review snapshot (historical)
+
 Author: melissa. Review performed with Codex. Implementation and fixes were tested
 through code commit `ed9dc33` on `s2-009`. Documentation commits follow that source
 snapshot. No push, remote PR, deployment or protected-branch merge was performed.

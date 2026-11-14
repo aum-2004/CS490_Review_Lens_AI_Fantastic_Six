@@ -144,8 +144,9 @@ passes the size ceiling.
 
 - **Not yet verified live.** These fields were checked against the docs: the count body omits
   `max_output_tokens` and `store`, because they don't affect input size and aren't documented for
-  that endpoint. The docs did not confirm that the top-level `text.format` is accepted by the count
-  endpoint. If it is rejected, counting fails closed. The smoke test must confirm that the endpoint
+  that endpoint. Follow-up review confirmed top-level `text.format` in the official
+  [count API reference](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count).
+  Counting still fails closed on rejection. The smoke test must confirm that the endpoint
   accepts this body and that `input_tokens` matches the generation response's `usage.input_tokens`.
 - **Billing and rate limits** of the count endpoint were not stated in the docs read. Each
   question makes one extra API call.

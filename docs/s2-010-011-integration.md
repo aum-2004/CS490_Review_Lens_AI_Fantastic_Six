@@ -1,7 +1,7 @@
 # S2-010 integration evidence and S2-011 handoff
 
 > Historical handoff imported from S2-010 at `6835c29`. In consuming `s2-009`,
-> production route wiring exists, S2-011 at `e55c48a` supplies the tokenizer budget,
+> production route wiring exists, S2-011 at `78c914e` supplies provider-authoritative counting,
 > and integration tests import the real services without skips. See
 > `docs/s2-009-review-questions.md` for current evidence and remaining acceptance.
 > Statements below about missing services and estimated budgets describe the earlier snapshot.

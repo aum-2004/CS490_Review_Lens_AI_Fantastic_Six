@@ -29,10 +29,10 @@ outcomes map to the UI's `out_of_scope`; answers and insufficient evidence retai
 their meaning. Errors use safe application copy without provider diagnostics.
 
 With user authorization, existing services/tests/docs were imported from S2-011 at
-`e55c48a` (includes S2-013 prompt and token budget) and S2-010 at `6835c29`. S2-013
+`78c914e` (includes S2-013 prompt and provider-authoritative token counting) and S2-010 at `6835c29`. S2-013
 at `14effdf` was inspected; its implementation is already included by S2-011.
 Those branch histories are now merged locally into `s2-009`, along with current
-`main` at `9533a69`, so later integration does not encounter copied-file add/add
+`main` at `26f48f7`, so later integration does not encounter copied-file add/add
 conflicts at the checked tips. Service source remains unchanged. Integration tests now import actual modules
 unconditionally, so missing dependencies fail instead of skipping. Their synthetic
 model name was replaced with a tokenizer-supported model; provider I/O remains fake.
@@ -44,10 +44,10 @@ Paid calls require `QA_ENABLED=true`, server-only `OPENAI_API_KEY` and an explic
 calls were used for validation.
 
 The builder rejects datasets above 100 reviews or 32,768 evidence bytes. The adapter
-counts prompt, question/evidence and response schema with a supported tokenizer,
-adds 256 tokens for protocol overhead and reserves 1,500 output tokens within a
-16,000-token application cap. Protocol framing is an allowance rather than an exact
-published provider count. Unsupported models fail closed. Citation validation
+submits the complete model input/schema to OpenAI's input-token endpoint, then
+checks that count plus 1,500 reserved output tokens against a 16,000-token cap.
+Counting failures prevent generation. No local tokenizer dependency remains.
+The UI waits at most 75 seconds for counting and generation. Citation validation
 proves ID membership, not semantic support for every claim.
 
 ## Test evidence from the initial implementation
