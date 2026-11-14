@@ -834,6 +834,10 @@ describe("against a real git repository", () => {
     const statement = (line: string | number, count: string | number) =>
       `{"statementMap":{"0":{"start":{"line":${line},"column":0},"end":{"line":${line},` +
       `"column":1}}},"s":{"0":${count}}}`;
+    // A valid, fully covered statement plus a function whose count is `count`.
+    const withFunction = (count: string | number) =>
+      `${statement(1, 1).slice(0, -1)},"fnMap":{"0":{"name":"f","loc":{"start":{"line":1,` +
+      `"column":0},"end":{"line":1,"column":1}}}},"f":{"0":${count}}}`;
 
     it.each([
       ["an overflowing count (1e309 parses to Infinity)", statement(1, "1e309"), /invalid s count "0" \(Infinity\)/],
@@ -843,6 +847,13 @@ describe("against a real git repository", () => {
       ["a negative line", statement(-3, 1), /malformed statement "0"/],
       ["a fractional line", statement(1.5, 1), /malformed statement "0"/],
       ["an overflowing line", statement("1e309", 1), /malformed statement "0"/],
+      // Arrays are only valid for branch (b) counts; Math.max(0, [1]) would read as covered.
+      ["a one-element statement count array", statement(1, "[1]"), /invalid s count "0" \(\[1\]\)/],
+      ["a multi-element statement count array", statement(1, "[1,2]"), /invalid s count "0" \(\[1,2\]\)/],
+      ["an empty statement count array", statement(1, "[]"), /invalid s count "0" \(\[\]\)/],
+      ["a one-element function count array", withFunction("[1]"), /invalid f count "0" \(\[1\]\)/],
+      ["a multi-element function count array", withFunction("[1,2]"), /invalid f count "0" \(\[1,2\]\)/],
+      ["an empty function count array", withFunction("[]"), /invalid f count "0" \(\[\]\)/],
     ])("exits 2 for a report with %s", (_label, fileJson, message) => {
       write("src/kept.ts", lines(5).replace("v2 = 2", "v2 = 22"));
       write("coverage/coverage-final.json", `{${JSON.stringify(path.join(repo, "src/kept.ts"))}:${fileJson}}`);

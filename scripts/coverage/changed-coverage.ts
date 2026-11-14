@@ -326,24 +326,36 @@ export function parseCoverageJson(
           `be finite, non-negative integers and line numbers positive integers. Re-run the ` +
           `tests with coverage (\`npm run coverage:changed\`).`,
       );
-    const checkCounts = (kind: string, counts: Record<string, unknown>) => {
+    // Statement (s) and function (f) counts are single numbers. An array must be
+    // rejected here: `Math.max(0, [1])` coerces it to 1 and would count as covered.
+    const checkScalarCounts = (kind: string, counts: Record<string, unknown>) => {
       for (const [id, count] of Object.entries(counts)) {
-        const values = Array.isArray(count) ? count : [count];
-        const bad = values.find((entry) => !isExecutionCount(entry));
-        if (bad !== undefined || (kind === "b" && !Array.isArray(count))) {
-          throw unusable(`invalid ${kind} count "${id}" (${describeValue(bad ?? count)})`);
+        if (!isExecutionCount(count)) {
+          throw unusable(`invalid ${kind} count "${id}" (${describeValue(count)})`);
+        }
+      }
+    };
+    // Branch (b) counts are one array per branch, one count per outcome.
+    const checkBranchCounts = (counts: Record<string, unknown>) => {
+      for (const [id, outcomes] of Object.entries(counts)) {
+        if (!Array.isArray(outcomes)) {
+          throw unusable(`invalid b count "${id}" (${describeValue(outcomes)})`);
+        }
+        const bad = outcomes.find((entry) => !isExecutionCount(entry));
+        if (bad !== undefined) {
+          throw unusable(`invalid b count "${id}" (${describeValue(bad)})`);
         }
       }
     };
 
-    checkCounts("s", value.s);
+    checkScalarCounts("s", value.s);
     if (value.f !== undefined) {
       if (!isRecord(value.f)) throw unusable("f is not an object");
-      checkCounts("f", value.f);
+      checkScalarCounts("f", value.f);
     }
     if (value.b !== undefined) {
       if (!isRecord(value.b)) throw unusable("b is not an object");
-      checkCounts("b", value.b);
+      checkBranchCounts(value.b);
     }
 
     const counts = value.s as Record<string, number>;
