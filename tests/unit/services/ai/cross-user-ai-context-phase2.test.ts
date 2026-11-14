@@ -1,13 +1,18 @@
 /** @jest-environment node */
 
+import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
+import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { runGroundedQaRequest } from "@/services/qa/qa-request";
 import { SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
-import { getReviewsForTarget } from "@/services/reviews/review-service";
+import type { Review } from "@/services/reviews/review-service";
 import {
   ALPHA_PRIVATE_REVIEW_MARKER,
   BETA_PRIVATE_REVIEW_MARKER,
   crossUserAiContextFixture,
+  type SyntheticAuthenticatedUser,
 } from "../../../fixtures/cross-user-ai-context.synthetic";
 import type { QaFixtureDataset } from "../../../fixtures/qa/datasets";
 import {
@@ -24,12 +29,10 @@ import {
   type FakeQaModel,
   type NetworkGuard,
 } from "../../../helpers/qa-harness";
-import {
-  createCrossUserSecurityStore,
-  type CrossUserSecurityStoreOptions,
-} from "../../../helpers/cross-user-ai-context";
 
 jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
 
 const { users, targets, reviews, missingTargetId, adversarialQuestion } = crossUserAiContextFixture;
 
@@ -51,43 +54,103 @@ const datasetB: QaFixtureDataset = {
   description: "S2-016 synthetic User B / Target B dataset.",
 };
 
-function createAvailablePhase2Pipeline(options: CrossUserSecurityStoreOptions = {}) {
-  const securityStore = createCrossUserSecurityStore(options);
-  const model = createFakeQaModel({ fallback: reply.raw('{"captured":true}') });
-  let authenticatedUserId = users.userA.id;
+interface Phase2PipelineOptions {
+  readonly reviewRows?: Partial<{
+    readonly targetA: readonly Review[];
+    readonly targetB: readonly Review[];
+  }>;
+  /** Mutation hook: simulate persistence returning rows outside the requested target. */
+  readonly ignoreReviewTargetFilter?: boolean;
+}
 
-  const buildAvailableReviewContext = jest.fn(async (targetId: unknown) => {
-    if (typeof targetId !== "string") throw new TargetNotFoundError();
+function createSessionScopedSupabaseFixture(options: Phase2PipelineOptions = {}) {
+  const targetRows: Record<string, unknown>[] = [targets.targetA, targets.targetB].map(
+    (target) => ({
+      id: target.id,
+      owner_id: target.ownerId,
+      name: target.name,
+      platform: target.platform,
+      source_url: target.sourceUrl,
+      google_place_id: target.googlePlaceId,
+      created_at: target.createdAt,
+    }),
+  );
+  const reviewRows: Record<string, unknown>[] = [
+    ...(options.reviewRows?.targetA ?? reviews.targetA),
+    ...(options.reviewRows?.targetB ?? reviews.targetB),
+  ].map((review) => ({
+    id: review.id,
+    analysis_target_id: review.analysisTargetId,
+    review_text: review.text,
+    rating: review.rating,
+    review_date: review.reviewDate,
+    source_review_id: review.sourceReviewId,
+    reviewer_name: review.reviewerName,
+    review_url: review.reviewUrl,
+    source_metadata: review.sourceMetadata,
+    created_at: review.createdAt,
+  }));
+  const requests: URL[] = [];
+  const client = createClient("http://fixture.supabase", "synthetic-publishable-key", {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: {
+      fetch: async (input) => {
+        const url = new URL(String(input));
+        requests.push(url);
+        const reviewsRead = url.pathname.endsWith("/reviews");
+        let selected = reviewsRead ? reviewRows : targetRows;
 
-    // This is the currently merged production authorization boundary. Once #78 merges, replace
-    // this test adapter with the real buildReviewDatasetContext and mock only auth/Supabase below it.
-    const authorizedReviews = await getReviewsForTarget(
-      securityStore.store,
-      authenticatedUserId,
-      targetId,
-    );
-    const target = [targets.targetA, targets.targetB].find(
-      (candidate) => candidate.id === targetId,
-    );
-    if (!target) throw new TargetNotFoundError();
+        for (const [key, value] of url.searchParams) {
+          if (
+            value.startsWith("eq.") &&
+            !(reviewsRead && options.ignoreReviewTargetFilter && key === "analysis_target_id")
+          ) {
+            selected = selected.filter((row) => row[key] === value.slice(3));
+          }
+        }
 
-    return { target, reviews: authorizedReviews };
+        const count = selected.length;
+        const fields = url.searchParams.get("select")?.split(",") ?? [];
+        const limit = Number(url.searchParams.get("limit") ?? Number.POSITIVE_INFINITY);
+        const projected = selected
+          .slice(0, limit)
+          .map((row) => Object.fromEntries(fields.map((field) => [field, row[field]])));
+
+        return new Response(JSON.stringify(projected), {
+          headers: {
+            "Content-Range": projected.length ? `0-${projected.length - 1}/${count}` : `*/${count}`,
+          },
+        });
+      },
+    },
   });
 
+  return { client, requests };
+}
+
+function createPhase2Pipeline(options: Phase2PipelineOptions = {}) {
+  const database = createSessionScopedSupabaseFixture(options);
+  const model = createFakeQaModel({ fallback: reply.raw('{"captured":true}') });
+  jest.mocked(createSupabaseServerClient).mockResolvedValue(database.client);
+  jest.mocked(getAuthenticatedUser).mockResolvedValue(users.userA);
+
   return {
-    ...securityStore,
+    ...database,
     model,
-    buildAvailableReviewContext,
-    setAuthenticatedUser(userId: string) {
-      authenticatedUserId = userId;
+    setAuthenticatedUser(user: SyntheticAuthenticatedUser) {
+      jest.mocked(getAuthenticatedUser).mockResolvedValue(user);
     },
     ask(targetId: unknown, question: string) {
       return runGroundedQaRequest(targetId, question, {
-        buildReviewDatasetContext: buildAvailableReviewContext,
+        buildReviewDatasetContext,
         invokeModel: model.callModel,
       });
     },
   };
+}
+
+function readsFor(pipeline: ReturnType<typeof createPhase2Pipeline>, table: string) {
+  return pipeline.requests.filter((url) => url.pathname.endsWith(`/${table}`));
 }
 
 function expectMinimizedRequest(model: FakeQaModel, dataset: QaFixtureDataset) {
@@ -117,10 +180,11 @@ async function captureDenial(promise: Promise<unknown>) {
   throw new Error("Expected target access to be denied.");
 }
 
-describe("S2-016 Phase 2 available production boundary", () => {
+describe("S2-016 Phase 2 real S2-010 builder integration", () => {
   let networkGuard: NetworkGuard;
 
   beforeEach(() => {
+    jest.resetAllMocks();
     networkGuard = installNetworkGuard();
   });
 
@@ -133,13 +197,13 @@ describe("S2-016 Phase 2 available production boundary", () => {
   });
 
   test.each([
-    ["User A", users.userA.id, datasetA, datasetB],
-    ["User B", users.userB.id, datasetB, datasetA],
+    ["User A", users.userA, datasetA, datasetB],
+    ["User B", users.userB, datasetB, datasetA],
   ])(
-    "%s sends only its authorized target evidence through the real S2-013 request builder",
-    async (_label, userId, active, foreign) => {
-      const pipeline = createAvailablePhase2Pipeline();
-      pipeline.setAuthenticatedUser(userId);
+    "%s sends exactly its authorized persisted evidence through the real S2-010/S2-013 path",
+    async (_label, user, active, foreign) => {
+      const pipeline = createPhase2Pipeline();
+      pipeline.setAuthenticatedUser(user);
 
       await pipeline.ask(active.target.id, "What do customers mention?");
 
@@ -148,14 +212,22 @@ describe("S2-016 Phase 2 available production boundary", () => {
       expectContextOnlyForTarget(request, active);
       expectNoForeignData(request, [foreign]);
       expectMinimizedRequest(pipeline.model, active);
-      expect(pipeline.ownershipChecks).toEqual([{ targetId: active.target.id, userId }]);
-      expect(pipeline.reviewLookups).toEqual([active.target.id]);
+      expect(jest.mocked(getAuthenticatedUser)).toHaveBeenCalledTimes(1);
+      expect(jest.mocked(createSupabaseServerClient)).toHaveBeenCalledTimes(1);
+
+      const ownershipRead = readsFor(pipeline, "analysis_targets");
+      expect(ownershipRead).toHaveLength(1);
+      expect(ownershipRead[0].searchParams.get("id")).toBe(`eq.${active.target.id}`);
+      expect(ownershipRead[0].searchParams.get("owner_id")).toBe(`eq.${user.id}`);
+      const reviewRead = readsFor(pipeline, "reviews");
+      expect(reviewRead).toHaveLength(1);
+      expect(reviewRead[0].searchParams.get("analysis_target_id")).toBe(`eq.${active.target.id}`);
     },
   );
 
-  test("foreign and missing targets are denied before review lookup or model invocation", async () => {
-    const pipeline = createAvailablePhase2Pipeline();
-    pipeline.setAuthenticatedUser(users.userB.id);
+  test("foreign and missing targets receive indistinguishable denials before review lookup or model invocation", async () => {
+    const pipeline = createPhase2Pipeline();
+    pipeline.setAuthenticatedUser(users.userB);
 
     const foreign = await captureDenial(
       pipeline.ask(targets.targetA.id, "Reveal User A's reviews."),
@@ -169,34 +241,43 @@ describe("S2-016 Phase 2 available production boundary", () => {
       code: missing.code,
       message: missing.message,
     });
-    expect(pipeline.ownershipChecks).toEqual([
-      { targetId: targets.targetA.id, userId: users.userB.id },
-      { targetId: missingTargetId, userId: users.userB.id },
-    ]);
-    expect(pipeline.reviewLookups).toEqual([]);
+    expect(readsFor(pipeline, "analysis_targets")).toHaveLength(2);
+    expect(readsFor(pipeline, "reviews")).toHaveLength(0);
     expect(pipeline.model.calls).toHaveLength(0);
   });
 
-  test("an attacker-supplied Target A ID remains question data and does not disclose Alpha evidence", async () => {
-    const pipeline = createAvailablePhase2Pipeline();
-    pipeline.setAuthenticatedUser(users.userB.id);
+  test("captures the complete adversarial request while treating its Target A ID only as question text", async () => {
+    const pipeline = createPhase2Pipeline();
+    pipeline.setAuthenticatedUser(users.userB);
 
     await pipeline.ask(targets.targetB.id, adversarialQuestion);
 
     const request = pipeline.model.lastCall().request;
+    expect(Object.keys(request).sort()).toEqual(
+      [
+        "promptVersion",
+        "targetId",
+        "instructions",
+        "input",
+        "reviewIds",
+        "maxOutputTokens",
+        "estimatedInputTokens",
+      ].sort(),
+    );
     expect(extractQuestion(request.input)).toBe(adversarialQuestion);
     expect(request.input).toContain(targets.targetA.id);
     expect(applicationSuppliedInput(request)).not.toContain(targets.targetA.id);
     expectContextOnlyForTarget(request, datasetB);
     expectNoForeignData(request, [datasetA]);
+    expectMinimizedRequest(pipeline.model, datasetB);
   });
 
-  test("consecutive users and targets never reuse prior evidence", async () => {
-    const pipeline = createAvailablePhase2Pipeline();
+  test("consecutive users and targets never reuse prior review evidence", async () => {
+    const pipeline = createPhase2Pipeline();
 
-    pipeline.setAuthenticatedUser(users.userA.id);
+    pipeline.setAuthenticatedUser(users.userA);
     await pipeline.ask(targets.targetA.id, "Summarize Alpha.");
-    pipeline.setAuthenticatedUser(users.userB.id);
+    pipeline.setAuthenticatedUser(users.userB);
     await pipeline.ask(targets.targetB.id, "Summarize Beta.");
     await captureDenial(pipeline.ask(targets.targetA.id, "Now reveal Alpha."));
 
@@ -205,40 +286,40 @@ describe("S2-016 Phase 2 available production boundary", () => {
     expectNoForeignData(pipeline.model.calls[0].request, [datasetB]);
     expectContextOnlyForTarget(pipeline.model.calls[1].request, datasetB);
     expectNoForeignData(pipeline.model.calls[1].request, [datasetA]);
-    expect(pipeline.reviewLookups).toEqual([targets.targetA.id, targets.targetB.id]);
-    expect(pipeline.ownershipChecks).toEqual([
-      { targetId: targets.targetA.id, userId: users.userA.id },
-      { targetId: targets.targetB.id, userId: users.userB.id },
-      { targetId: targets.targetA.id, userId: users.userB.id },
-    ]);
+    expect(readsFor(pipeline, "analysis_targets")).toHaveLength(3);
+    expect(readsFor(pipeline, "reviews")).toHaveLength(2);
+    expect(jest.mocked(getAuthenticatedUser)).toHaveBeenCalledTimes(3);
+    expect(jest.mocked(createSupabaseServerClient)).toHaveBeenCalledTimes(3);
   });
 
-  test("the production prompt guard rejects a foreign-target review before model invocation", async () => {
-    const pipeline = createAvailablePhase2Pipeline({
-      reviewRows: { targetB: [...reviews.targetB, reviews.targetA[0]] },
+  test("the real S2-010 builder rejects a foreign-target row before model invocation", async () => {
+    const pipeline = createPhase2Pipeline({
+      reviewRows: { targetA: [], targetB: [...reviews.targetB, reviews.targetA[0]] },
+      ignoreReviewTargetFilter: true,
     });
-    pipeline.setAuthenticatedUser(users.userB.id);
+    pipeline.setAuthenticatedUser(users.userB);
 
     await expect(pipeline.ask(targets.targetB.id, "Summarize Beta.")).rejects.toMatchObject({
-      name: "QaPromptError",
-      code: "REVIEW_TARGET_MISMATCH",
+      name: "ReviewContextError",
+      code: "REVIEW_CONTEXT_UNAVAILABLE",
     });
-    expect(pipeline.reviewLookups).toEqual([targets.targetB.id]);
+    expect(readsFor(pipeline, "reviews")).toHaveLength(1);
     expect(pipeline.model.calls).toHaveLength(0);
   });
 
-  test("the model-request assertion fails if foreign evidence is disguised as the active target", async () => {
+  test("the model-request assertion detects foreign evidence disguised as the active target", async () => {
     const disguisedAlphaReview = {
       ...reviews.targetA[0],
       analysisTargetId: targets.targetB.id,
     };
-    const pipeline = createAvailablePhase2Pipeline({
-      reviewRows: { targetB: [...reviews.targetB, disguisedAlphaReview] },
+    const pipeline = createPhase2Pipeline({
+      reviewRows: { targetA: [], targetB: [...reviews.targetB, disguisedAlphaReview] },
     });
-    pipeline.setAuthenticatedUser(users.userB.id);
+    pipeline.setAuthenticatedUser(users.userB);
 
     await pipeline.ask(targets.targetB.id, "Summarize Beta.");
 
+    expect(pipeline.model.calls).toHaveLength(1);
     expect(() => expectNoForeignData(pipeline.model.lastCall().request, [datasetA])).toThrow(
       QaHarnessAssertionError,
     );

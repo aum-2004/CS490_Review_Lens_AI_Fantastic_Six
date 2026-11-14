@@ -10,7 +10,7 @@ export interface CrossUserSecurityStoreOptions {
   }>;
 }
 
-/** Shared in-memory ReviewStore for the S2-016 Phase 1 and Phase 2 security suites. */
+/** In-memory ReviewStore for the S2-016 Phase 1 review-service boundary. */
 export function createCrossUserSecurityStore(options: CrossUserSecurityStoreOptions = {}) {
   const owners = new Map([
     [targets.targetA.id, users.userA.id],

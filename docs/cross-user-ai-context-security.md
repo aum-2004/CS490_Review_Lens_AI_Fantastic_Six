@@ -23,17 +23,18 @@ The tests currently prove that:
 These tests supplement the existing route and PostgreSQL RLS tests. They do not by themselves prove
 that the Q&A model request is isolated.
 
-The ReviewStore-based Phase 1 tests remain valid for the current production review-service
-boundary. Phase 2 must adapt the fixture and infrastructure mocks to S2-010's session-scoped,
-bounded Supabase query implementation; it must not replace the real context builder with the
-ReviewStore test double.
+The ReviewStore-based Phase 1 tests remain valid for the production review-service boundary. The
+Phase 2 suite now separately adapts the fixture to S2-010's session-scoped, bounded Supabase query
+implementation and calls the real context builder rather than replacing its security behavior.
 
 ## Dependency status for Phase 2
 
-The branch normally merged `origin/main` at `ed686a2` before adding Phase 2 coverage. At that point:
+The branch normally merged `origin/main` at `cd3e69b`, which includes S2-010 / PR #78. At that
+point:
 
-- S2-003 / PR #83 and S2-013 / PR #76 were merged and are exercised here.
-- S2-010 / PR #78 and S2-011 / PR #79 remained draft and unmerged.
+- S2-003 / PR #83, S2-013 / PR #76, and S2-010 / PR #78 were merged and are exercised here.
+- S2-011 / PR #79 remained unmerged, so its production `answerQuestion()` and provider adapter were
+  not copied or recreated.
 - S2-009 / PR #84 remained open and unmerged, so its production questions route was not copied or
   recreated here.
 - S2-019 / issue #70 remained open. This branch tests request-to-request isolation but does not
@@ -41,12 +42,13 @@ The branch normally merged `origin/main` at `ed686a2` before adding Phase 2 cove
 
 ## Phase 2 coverage available on merged production code
 
-`tests/unit/services/ai/cross-user-ai-context-phase2.test.ts` adds seven deterministic cases while
-reusing the Phase 1 users, targets, reviews, markers, and adversarial question. The cases prove that:
+`tests/unit/services/ai/cross-user-ai-context-phase2.test.ts` contains seven deterministic cases
+while reusing the Phase 1 users, targets, reviews, markers, and adversarial question. The cases
+prove that:
 
-- User A / Target A and User B / Target B each pass through the production review authorization
-  service and real S2-013 request orchestration with exactly their persisted review IDs, ratings,
-  dates, text, target identity, and platform;
+- User A / Target A and User B / Target B each pass through the real S2-010 session and ownership
+  checks, bounded reviews query, and S2-013 request orchestration with exactly their persisted
+  review IDs, ratings, dates, text, target identity, and platform;
 - reviewer names, review URLs, source review IDs, source metadata, target source URLs, and persistence
   timestamps do not enter the captured model request;
 - foreign and missing targets produce indistinguishable denials before review lookup, successful
@@ -55,14 +57,16 @@ reusing the Phase 1 users, targets, reviews, markers, and adversarial question. 
   is not mistaken for leaked persisted evidence;
 - consecutive User A / Target A, User B / Target B, and denied User B / Target A requests do not
   reuse prior evidence;
-- S2-013's production `REVIEW_TARGET_MISMATCH` guard stops an injected foreign-target review before
-  the model boundary; and
+- S2-010's production row validation stops an injected foreign-target review before the model
+  boundary; and
 - Deep's `expectNoForeignData` assertion fails when synthetic Alpha evidence is deliberately
   disguised as Target B evidence, proving the leakage regression check is meaningful.
 
 ### Production modules exercised
 
-- `getReviewsForTarget` performs the currently merged ownership check before listing reviews.
+- `buildReviewDatasetContext(targetId)` obtains the verified session identity, calls the existing
+  ownership guard, performs the bounded target-scoped reviews query, validates every row, and
+  explicitly projects the safe review evidence.
 - `runGroundedQaRequest` invokes the context dependency, applies `toPromptContext`, constructs the
   real S2-013 request, and calls the model boundary only after those steps succeed.
 - `buildQaModelRequest` and `buildSystemPrompt` enforce target matching, data minimization, prompt
@@ -70,27 +74,28 @@ reusing the Phase 1 users, targets, reviews, markers, and adversarial question. 
 
 ### Test-controlled boundaries
 
-- `createCrossUserSecurityStore` is the shared in-memory `ReviewStore`; it records ownership checks
-  and review lookups instead of contacting Supabase.
-- `buildAvailableReviewContext` is an explicitly test-only adapter from the currently merged review
-  service to S2-013. It selects the synthetic target only after `getReviewsForTarget` authorizes the
-  verified test actor. It is not represented as S2-010 and must be removed from the full integration
-  test once #78 merges.
+- `getAuthenticatedUser` is mocked with the active synthetic user, and
+  `createSupabaseServerClient` returns a real Supabase SDK client whose HTTP transport serves only
+  the synthetic persisted target and review rows. Recorded query URLs verify that ownership filters
+  are session-derived and that foreign/missing denials never start a reviews read.
+- The S2-010 builder itself is not mocked or replaced. Two deliberate persistence mutations prove
+  that its wrong-target row validation rejects before model invocation and that Deep's request
+  assertion detects foreign content if the persisted target ID is maliciously disguised.
 - Deep's S2-003 `createFakeQaModel` records the complete provider-neutral request and returns a
   deterministic reply. Its network guard removes provider/Supabase environment variables and fails
   any attempted network access.
 - No live OpenAI, Supabase, or review-provider call occurs.
 
-## Remaining full integration after #78 and #79 merge
+## Remaining full integration after #79 merges
 
-Full S2-016 acceptance must call the real S2-010
-`buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext>`. That proposed builder
-verifies the session identity and target ownership internally before its bounded, session-scoped
-Supabase reviews query. The integration test must mock only `getAuthenticatedUser`, the Supabase
-infrastructure beneath the builder, and the permitted provider/model boundary; it must not replace
-the builder's security behavior.
+The current suite calls the merged S2-010
+`buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext>` with only its verified
+authentication and session-scoped Supabase infrastructure mocked underneath it. It passes that real
+builder to `runGroundedQaRequest()` and captures all fields of the current provider-neutral S2-013
+request, including instructions, evidence input, attacker-supplied question text, review IDs,
+target, prompt version, output budget, and estimated input tokens.
 
-The final suite must then call the real S2-011 `answerQuestion()` with the real builder and capture
+After S2-011 merges, the suite must call the real `answerQuestion()` with the real builder and capture
 the complete outgoing provider request, including system instructions, evidence, user question,
 message history, metadata, and any tool payloads. It must repeat the authorized, foreign/missing,
 adversarial, and consecutive-user/target scenarios above and assert:
@@ -109,19 +114,20 @@ adequate cross-user key.
 
 ## Verification
 
-Current local results after the `origin/main` merge:
+Current local results after the `origin/main` merge and real-builder reconciliation:
 
-- Focused S2-016: 2 suites, 14 tests passed (7 Phase 1 + 7 Phase 2).
-- S2-003 Q&A harness: 8 suites, 137 tests passed.
-- Related S2-013/authentication/ownership/review-service tests: 6 suites, 111 tests passed.
-- Full Jest suite: 61 suites, 879 tests passed.
+- Focused S2-016 and S2-010 builder coverage: 3 suites, 56 tests passed. Shawn's portable
+  S2-010/S2-011 suite remains correctly skipped (1 suite / 16 tests) because S2-011 is not present
+  on `main`.
+- Full Jest suite: 62 suites, 921 tests passed; 1 suite / 16 tests skipped for the same explicit
+  S2-011 dependency.
 - ESLint passed.
 - TypeScript typecheck passed.
-- Focused Prettier checks passed after formatting the new Phase 2 test.
+- Focused Prettier checks passed.
 - Repository-wide `npm run format:check` reported only the existing generated
   `supabase/.temp/linked-project.json`; that file was not modified.
-- The production build passed after rerunning with network access for Next.js to fetch the Inter
-  Google Font. The initial sandboxed attempt failed only at that external font download.
+- The production build passed, including TypeScript, page-data collection, and static-page
+  generation.
 
-Passing the available checks does not remove the #78/#79/#84 integration blockers or make S2-016
-ready for complete acceptance.
+Passing the available checks removes the #78 builder-integration blocker, but it does not remove the
+#79/#84 integration blockers or make S2-016 ready for complete acceptance.
