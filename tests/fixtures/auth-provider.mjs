@@ -292,10 +292,17 @@ createServer(async (request, response) => {
         "eq." + row.id === url.searchParams.get("analysis_target_id") &&
         row.owner_id === identity.user.id,
     );
+    const exactCount = request.headers.prefer?.includes("count=exact");
+    if (exactCount)
+      response.setHeader(
+        "Content-Range",
+        target && !target.id.startsWith("cccccccc-") ? "0-0/1" : "*/0",
+      );
     if (!target) return send(200, []);
     // Newly created targets have no reviews until an ingestion actually persists them.
     if (target.id.startsWith("cccccccc-")) return send(200, []);
-    if (url.searchParams.get("offset") !== "0") return send(200, []);
+    if (url.searchParams.has("offset") && url.searchParams.get("offset") !== "0")
+      return send(200, []);
     return send(200, [
       {
         id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",

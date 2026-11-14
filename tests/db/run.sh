@@ -31,4 +31,7 @@ done
 echo "Running two-session ingestion start-limit regression"
 bash tests/db/ingestion-start-limit-concurrency.test.sh "$db"
 
+echo "Running concurrent paid Q&A reservation regression"
+bash tests/db/review-question-quota-concurrency.test.sh "$db"
+
 echo "All database tests passed."

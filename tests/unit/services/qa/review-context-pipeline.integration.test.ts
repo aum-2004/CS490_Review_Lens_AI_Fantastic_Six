@@ -62,6 +62,9 @@ function setup() {
     created_at: "2026-11-12T12:00:00Z",
   }));
   const reads: string[] = [];
+  const quotaReads: string[] = [];
+  const reservations = new Map<string, number>();
+  let quotaUnavailable = false;
   let failReviews = false;
   const db = createClient("http://fixture.supabase", "dummy-publishable", {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -69,6 +72,22 @@ function setup() {
       fetch: async (input) => {
         const url = new URL(String(input));
         reads.push(url.pathname);
+        if (url.pathname.endsWith("/rpc/reserve_review_question")) {
+          const caller = (await getAuthenticatedUser())!.id;
+          quotaReads.push(caller);
+          if (quotaUnavailable)
+            return new Response(
+              JSON.stringify({ code: "PGRST202", message: "PRIVATE_QUOTA_DIAGNOSTIC" }),
+              { status: 404 },
+            );
+          const used = reservations.get(caller) ?? 0;
+          if (used >= 5)
+            return new Response(JSON.stringify({ code: "P0001", message: "QA_DAILY_LIMIT" }), {
+              status: 400,
+            });
+          reservations.set(caller, used + 1);
+          return new Response(JSON.stringify(4 - used));
+        }
         if (failReviews && url.pathname.endsWith("/reviews"))
           return new Response(JSON.stringify({ message: "PRIVATE_DB_DIAGNOSTIC" }), {
             status: 500,
@@ -147,6 +166,10 @@ function setup() {
   return {
     rows,
     reads,
+    quotaReads,
+    failQuota: () => {
+      quotaUnavailable = true;
+    },
     outgoing,
     fetcher,
     generationFetcher,
@@ -428,12 +451,52 @@ describe("production questions route with actual context, orchestration and prov
   });
 
   it("keeps paid calls disabled by configuration", async () => {
-    const { fetcher } = fixture();
+    const { fetcher, quotaReads } = fixture();
     process.env.QA_ENABLED = "false";
     const response = await post();
     expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: "QA_DISABLED" } });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(quotaReads).toEqual([]);
+  });
+
+  it("caps one account across targets before either provider endpoint can run", async () => {
+    const { outgoing, countRequests } = fixture();
+    for (let i = 0; i < 5; i++) expect((await post(i % 2 ? B : A)).status).toBe(200);
+    const denied = await post(B);
+    expect(denied.status).toBe(429);
+    expect(denied.headers.get("cache-control")).toBe("private, no-store");
+    expect(denied.headers.get("retry-after")).toBe("86400");
+    expect(await denied.json()).toMatchObject({ error: { code: "QA_DAILY_LIMIT" } });
+    expect(countRequests).toHaveLength(5);
+    expect(outgoing).toHaveLength(5);
+    jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: OTHER, email: null });
+    expect((await post(C)).status).toBe(200);
+    expect(outgoing).toHaveLength(6);
+  });
+
+  it("makes no counting or generation request when quota storage is unavailable", async () => {
+    const { failQuota, fetcher } = fixture();
+    failQuota();
+    const response = await post(A);
+    expect(response.status).toBe(503);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ error: { code: "QA_QUOTA_UNAVAILABLE" } });
+    expect(JSON.stringify(payload)).not.toContain("PRIVATE_QUOTA_DIAGNOSTIC");
     expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it.each(["counting", "generation"])(
+    "does not refund reservations after %s-provider failures",
+    async (stage) => {
+      const { fetcher, generationFetcher } = fixture();
+      const failedStage = stage === "counting" ? fetcher : generationFetcher;
+      failedStage.mockRejectedValue(new Error("PRIVATE_PROVIDER_DIAGNOSTIC"));
+      for (let i = 0; i < 5; i++) expect((await post(A)).status).toBe(503);
+      expect((await post(A)).status).toBe(429);
+      expect(failedStage).toHaveBeenCalledTimes(5);
+    },
+  );
 });
 
 describe("actual S2-010/S2-011 integration (required)", () => {

@@ -7,7 +7,12 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { answerQuestion } from "@/services/qa/answer-question";
 import { buildReviewDatasetContext, ReviewContextError } from "@/services/qa/review-context";
-import { createOpenAiQaModel, QaModelError } from "@/services/qa/openai-qa-client";
+import {
+  createOpenAiQaModel,
+  QaModelError,
+  readOpenAiQaConfig,
+} from "@/services/qa/openai-qa-client";
+import { reserveQuestionQuota, QuestionQuotaError } from "@/services/qa/question-quota";
 import { QaPromptError } from "@/services/qa/system-prompt";
 import { QaBudgetError } from "@/services/qa/token-budget";
 import { QaResponseError } from "@/services/qa/qa-response";
@@ -54,9 +59,16 @@ export async function POST(
           : undefined,
       );
     }
+    const callModel = createOpenAiQaModel();
     const result = await answerQuestion(targetId, parsed.data.question, {
       buildReviewDatasetContext,
-      callModel: createOpenAiQaModel(),
+      callModel: async (modelRequest) => {
+        // Context/prompt must succeed first. Disabled/misconfigured Q&A consumes no slot.
+        readOpenAiQaConfig();
+        await reserveQuestionQuota(client);
+        // Neither the token-count request nor generation can run without a durable slot.
+        return callModel(modelRequest);
+      },
     });
     return successResponse(200, {
       targetId: result.targetId,
@@ -66,6 +78,15 @@ export async function POST(
   } catch (error) {
     logFailure("ask-question", error);
     if (error instanceof TargetNotFoundError) return targetNotFoundResponse();
+    if (error instanceof QuestionQuotaError) {
+      const response = errorResponse(
+        error.code === "QA_DAILY_LIMIT" ? 429 : 503,
+        error.code,
+        error.message,
+      );
+      if (error.code === "QA_DAILY_LIMIT") response.headers.set("Retry-After", "86400");
+      return response;
+    }
     if (error instanceof ReviewContextError) {
       const status =
         error.code === "AUTH_REQUIRED"

@@ -89,7 +89,32 @@ test("the actual questions route fails safely with paid calls disabled", async (
   await login(page);
   const card = page.getByRole("region", { name: "Review questions" });
   await card.getByLabel(/Question/).fill("What do reviewers like?");
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/analysis-targets/${bakery}/questions`) &&
+      response.request().method() === "POST",
+  );
   await card.getByRole("button", { name: "Ask question" }).click();
-  await expect(card.getByRole("alert")).toBeVisible();
+  const response = await responsePromise;
+  expect(response.status()).toBe(503);
+  expect(await response.json()).toMatchObject({ error: { code: "QA_DISABLED" } });
+  await expect(card.getByRole("alert")).toContainText("Review Q&A is temporarily unavailable.");
   await expect(card.getByRole("button", { name: "Ask question" })).toBeEnabled();
+});
+
+test("explains the account quota and preserves the question", async ({ page }) => {
+  await page.route("**/api/analysis-targets/*/questions", (route) =>
+    route.fulfill({
+      status: 429,
+      headers: { "Retry-After": "86400" },
+      json: { success: false, error: { code: "QA_DAILY_LIMIT", message: "PRIVATE_DIAGNOSTIC" } },
+    }),
+  );
+  await login(page);
+  const card = page.getByRole("region", { name: "Review questions" });
+  await card.getByLabel(/Question/).fill("What do reviewers like?");
+  await card.getByRole("button", { name: "Ask question" }).click();
+  await expect(card.getByRole("alert")).toContainText("limit of five questions in 24 hours");
+  await expect(card.getByLabel(/Question/)).toHaveValue("What do reviewers like?");
+  await expect(card).not.toContainText("PRIVATE_DIAGNOSTIC");
 });
