@@ -36,7 +36,10 @@ export function TargetCard({
         </a>
       </div>
       <div>
-        <IngestionStatus state={target.ingestion?.state ?? null} />
+        <IngestionStatus
+          state={target.ingestion?.state ?? null}
+          skippedCount={target.ingestion?.skippedCount}
+        />
         {!target.ingestion && (
           <p className="mt-2 text-sm text-muted-foreground">
             We couldn&apos;t load the ingestion status. Open this target to try again.
