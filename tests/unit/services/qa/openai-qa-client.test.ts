@@ -2,25 +2,28 @@
 
 import {
   MAX_OPENAI_RESPONSE_BYTES,
-  buildOpenAiRequestBody,
+  OPENAI_INPUT_TOKENS_URL,
+  OPENAI_RESPONSES_URL,
   OPENAI_TIMEOUT_MS,
   QaModelError,
+  buildInputTokenCountBody,
+  buildOpenAiRequestBody,
   createOpenAiQaModel,
   extractReply,
   readOpenAiQaConfig,
   type QaModelErrorCode,
 } from "@/services/qa/openai-qa-client";
 import { QA_REPLY_JSON_SCHEMA } from "@/services/qa/qa-response";
-import { QA_MAX_REQUEST_TOKENS, type QaModelRequest } from "@/services/qa/system-prompt";
-import { enforceModelInputBudget } from "@/services/qa/token-budget";
+import type { QaModelRequest } from "@/services/qa/system-prompt";
+import { MAX_COUNTABLE_REQUEST_BYTES } from "@/services/qa/token-budget";
 
 jest.mock("server-only", () => ({}));
 
 const API_KEY = "test-openai-key-SECRET_MARKER";
-const env = { QA_ENABLED: "true", OPENAI_API_KEY: API_KEY, OPENAI_QA_MODEL: "gpt-5-mini" };
+const env = { QA_ENABLED: "true", OPENAI_API_KEY: API_KEY, OPENAI_QA_MODEL: "gpt-6-luna" };
 
 const request: QaModelRequest = {
-  promptVersion: "s2-013.v2",
+  promptVersion: "s2-013.v3",
   targetId: "target-1",
   instructions: "TRUSTED_RULES",
   input: "UNTRUSTED_REVIEWS_AND_QUESTION",
@@ -43,25 +46,53 @@ function completed(text = REPLY_TEXT, extra: Record<string, unknown> = {}) {
   };
 }
 
+const countBody = (inputTokens: unknown = 120) => ({
+  object: "response.input_tokens",
+  input_tokens: inputTokens,
+});
+
 const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
   new Response(JSON.stringify(body), { status: 200, ...init });
 
-function fakeFetch(response: Response | Error) {
-  return jest.fn<Promise<Response>, Parameters<typeof fetch>>(async () => {
-    if (!(response instanceof Response)) throw response;
-    return response;
+type Reply = Response | Error;
+
+/**
+ * Fake OpenAI: routes the token-count and generation endpoints separately, so tests can assert
+ * that the generation endpoint is (or is not) called.
+ */
+function provider({
+  count = () => jsonResponse(countBody()),
+  generation = () => jsonResponse(completed()),
+}: { count?: () => Reply; generation?: () => Reply } = {}) {
+  const fetcher = jest.fn<Promise<Response>, Parameters<typeof fetch>>(async (url) => {
+    const reply = String(url) === OPENAI_INPUT_TOKENS_URL ? count() : generation();
+    if (!(reply instanceof Response)) throw reply;
+    return reply;
   });
+  const callsTo = (url: string) => fetcher.mock.calls.filter(([u]) => String(u) === url);
+  return {
+    fetcher,
+    countCalls: () => callsTo(OPENAI_INPUT_TOKENS_URL),
+    generationCalls: () => callsTo(OPENAI_RESPONSES_URL),
+  };
 }
 
-async function codeOf(promise: Promise<unknown>): Promise<QaModelErrorCode> {
+const bodyOf = (call: Parameters<typeof fetch>) => JSON.parse(String(call[1]?.body));
+
+async function rejectionOf(promise: Promise<unknown>): Promise<Error & { code?: string }> {
   try {
     await promise;
   } catch (error) {
-    expect(error).toBeInstanceOf(QaModelError);
     expect((error as Error).message).not.toContain("SECRET_MARKER");
-    return (error as QaModelError).code;
+    return error as Error & { code?: string };
   }
-  throw new Error("Expected a QaModelError.");
+  throw new Error("Expected a rejection.");
+}
+
+async function codeOf(promise: Promise<unknown>): Promise<QaModelErrorCode> {
+  const error = await rejectionOf(promise);
+  expect(error).toBeInstanceOf(QaModelError);
+  return (error as QaModelError).code;
 }
 
 describe("readOpenAiQaConfig", () => {
@@ -103,16 +134,16 @@ describe("readOpenAiQaConfig", () => {
   );
 
   it("returns the trimmed configuration", () => {
-    expect(readOpenAiQaConfig({ ...env, OPENAI_QA_MODEL: " gpt-5-mini " })).toEqual({
+    expect(readOpenAiQaConfig({ ...env, OPENAI_QA_MODEL: " gpt-6-luna " })).toEqual({
       apiKey: API_KEY,
-      model: "gpt-5-mini",
+      model: "gpt-6-luna",
     });
   });
 });
 
-describe("createOpenAiQaModel", () => {
+describe("createOpenAiQaModel request flow", () => {
   it("never calls the provider when Q&A is disabled or not configured", async () => {
-    const fetcher = fakeFetch(jsonResponse(completed()));
+    const { fetcher } = provider();
 
     expect(await codeOf(createOpenAiQaModel({ fetcher, env: {} })(request))).toBe("QA_DISABLED");
     expect(
@@ -124,63 +155,189 @@ describe("createOpenAiQaModel", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("sends exactly the configured model, never a substitute", async () => {
-    const fetcher = fakeFetch(jsonResponse(completed()));
+  it("counts tokens first, then generates, with the same model, instructions, input, and format", async () => {
+    const { fetcher } = provider();
+    const timeoutSpy = jest.spyOn(AbortSignal, "timeout");
+
+    await createOpenAiQaModel({ fetcher, env })(request);
+
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      OPENAI_INPUT_TOKENS_URL,
+      OPENAI_RESPONSES_URL,
+    ]);
+    for (const [, init] of fetcher.mock.calls) {
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${API_KEY}`);
+    }
+    expect(timeoutSpy).toHaveBeenCalledTimes(2);
+    expect(timeoutSpy).toHaveBeenCalledWith(OPENAI_TIMEOUT_MS);
+
+    const format = {
+      type: "json_schema",
+      name: "reviewlens_qa_reply",
+      schema: QA_REPLY_JSON_SCHEMA,
+      strict: true,
+    };
+    expect(bodyOf(fetcher.mock.calls[0])).toEqual({
+      model: "gpt-6-luna",
+      instructions: "TRUSTED_RULES",
+      input: "UNTRUSTED_REVIEWS_AND_QUESTION",
+      text: { format },
+    });
+    const generation = bodyOf(fetcher.mock.calls[1]);
+    expect(generation).toEqual({
+      model: "gpt-6-luna",
+      instructions: "TRUSTED_RULES",
+      input: "UNTRUSTED_REVIEWS_AND_QUESTION",
+      max_output_tokens: 1_500,
+      store: false,
+      text: { format },
+    });
+    // Untrusted content never reaches the system-level instructions.
+    expect(generation.instructions).not.toContain("UNTRUSTED");
+    timeoutSpy.mockRestore();
+  });
+
+  it("builds the count body from exactly the generation body's input fields", () => {
+    const body = buildOpenAiRequestBody(request, "gpt-6-luna");
+    expect(buildInputTokenCountBody(body)).toEqual({
+      model: body.model,
+      instructions: body.instructions,
+      input: body.input,
+      text: body.text,
+    });
+  });
+
+  it("sends exactly the configured model to both endpoints, never a substitute", async () => {
+    const { fetcher } = provider();
 
     await createOpenAiQaModel({ fetcher, env: { ...env, OPENAI_QA_MODEL: "gpt-4.1-mini" } })(
       request,
     );
 
-    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).model).toBe("gpt-4.1-mini");
+    expect(fetcher.mock.calls.map((call) => bodyOf(call).model)).toEqual([
+      "gpt-4.1-mini",
+      "gpt-4.1-mini",
+    ]);
   });
 
-  it("sends one Responses API request with isolated instructions and input", async () => {
-    const fetcher = fakeFetch(jsonResponse(completed()));
-    const timeoutSpy = jest.spyOn(AbortSignal, "timeout");
+  it("returns the reply, provider usage, and the pre-generation token count", async () => {
+    const { fetcher } = provider({ count: () => jsonResponse(countBody(118)) });
 
-    await createOpenAiQaModel({ fetcher, env })(request);
-
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    const [url, init] = fetcher.mock.calls[0];
-    expect(url).toBe("https://api.openai.com/v1/responses");
-    expect(init?.method).toBe("POST");
-    expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${API_KEY}`);
-    expect(timeoutSpy).toHaveBeenCalledWith(OPENAI_TIMEOUT_MS);
-
-    const body = JSON.parse(String(init?.body));
-    expect(body).toEqual({
-      model: "gpt-5-mini",
-      instructions: "TRUSTED_RULES",
-      input: "UNTRUSTED_REVIEWS_AND_QUESTION",
-      max_output_tokens: 1_500,
-      store: false,
-      text: {
-        format: {
-          type: "json_schema",
-          name: "reviewlens_qa_reply",
-          schema: QA_REPLY_JSON_SCHEMA,
-          strict: true,
-        },
-      },
-    });
-    // Untrusted content never reaches the system-level instructions.
-    expect(body.instructions).not.toContain("UNTRUSTED");
-    timeoutSpy.mockRestore();
-  });
-
-  it("returns the reply text and provider-reported usage", async () => {
-    const reply = await createOpenAiQaModel({
-      fetcher: fakeFetch(jsonResponse(completed())),
-      env,
-    })(request);
-
-    expect(reply).toEqual({
+    await expect(createOpenAiQaModel({ fetcher, env })(request)).resolves.toEqual({
       text: REPLY_TEXT,
       usage: { inputTokens: 120, outputTokens: 30 },
-      countedInputTokens: expect.any(Number),
+      countedInputTokens: 118,
     });
   });
 
+  it("uses the global fetch when no fetcher is injected", async () => {
+    const globalFetch = jest
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (url) =>
+        String(url) === OPENAI_INPUT_TOKENS_URL
+          ? jsonResponse(countBody())
+          : jsonResponse(completed()),
+      );
+
+    await expect(createOpenAiQaModel({ env })(request)).resolves.toMatchObject({
+      text: REPLY_TEXT,
+    });
+    expect(globalFetch).toHaveBeenCalledTimes(2);
+    globalFetch.mockRestore();
+  });
+});
+
+describe("token budget (input_tokens + 1,500 <= 16,000)", () => {
+  it("allows generation at exactly 14,500 input tokens", async () => {
+    const { fetcher, generationCalls } = provider({
+      count: () => jsonResponse(countBody(14_500)),
+    });
+
+    await expect(createOpenAiQaModel({ fetcher, env })(request)).resolves.toMatchObject({
+      countedInputTokens: 14_500,
+    });
+    expect(generationCalls()).toHaveLength(1);
+    expect(bodyOf(generationCalls()[0]).max_output_tokens).toBe(1_500);
+  });
+
+  it("blocks generation at 14,501 input tokens", async () => {
+    const { fetcher, countCalls, generationCalls } = provider({
+      count: () => jsonResponse(countBody(14_501)),
+    });
+
+    const error = await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+    expect(error).toMatchObject({ name: "QaPromptError", code: "REQUEST_TOO_LARGE" });
+    expect(countCalls()).toHaveLength(1);
+    expect(generationCalls()).toHaveLength(0);
+  });
+
+  it("applies an injected budget the same way", async () => {
+    const budget = { maxRequestTokens: 2_000, reservedOutputTokens: 1_500 };
+    const ok = provider({ count: () => jsonResponse(countBody(500)) });
+    const over = provider({ count: () => jsonResponse(countBody(501)) });
+
+    await createOpenAiQaModel({ fetcher: ok.fetcher, env, budget })(request);
+    await rejectionOf(createOpenAiQaModel({ fetcher: over.fetcher, env, budget })(request));
+
+    expect(ok.generationCalls()).toHaveLength(1);
+    expect(over.generationCalls()).toHaveLength(0);
+  });
+
+  it.each<[string, unknown]>([
+    ["a missing count", { object: "response.input_tokens" }],
+    ["a negative count", countBody(-1)],
+    ["a fractional count", countBody(14_000.5)],
+    ["a string count", countBody("14000")],
+    ["a null count", { object: "response.input_tokens", input_tokens: null }],
+    ["an unsafe integer", countBody(Number.MAX_SAFE_INTEGER + 2)],
+    ["the wrong object type", { object: "response", input_tokens: 10 }],
+    ["a non-object body", [10]],
+  ])("fails closed with zero generation calls for %s", async (_label, body) => {
+    const { fetcher, generationCalls } = provider({ count: () => jsonResponse(body) });
+
+    const error = await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+    expect(error).toMatchObject({ name: "QaBudgetError", code: "BUDGET_CHECK_FAILED" });
+    expect(generationCalls()).toHaveLength(0);
+  });
+
+  it.each<[string, () => Reply, string]>([
+    ["HTTP 429", () => new Response("{}", { status: 429 }), "MODEL_RATE_LIMITED"],
+    ["HTTP 401", () => new Response("{}", { status: 401 }), "MODEL_AUTH"],
+    ["HTTP 400", () => new Response("{}", { status: 400 }), "MODEL_REJECTED"],
+    ["HTTP 500", () => new Response("{}", { status: 500 }), "MODEL_UNAVAILABLE"],
+    ["a timeout", () => new DOMException("timed out", "TimeoutError"), "MODEL_TIMEOUT"],
+    ["a network failure", () => new TypeError("fetch failed SECRET_MARKER"), "MODEL_UNAVAILABLE"],
+    ["a non-JSON body", () => new Response("<html>gateway</html>"), "MODEL_FAILED"],
+  ])(
+    "makes zero generation calls when the count request fails with %s",
+    async (_label, count, code) => {
+      const { fetcher, generationCalls } = provider({ count });
+
+      const error = await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+      expect(error).toMatchObject({ name: "QaModelError", code });
+      expect(generationCalls()).toHaveLength(0);
+    },
+  );
+
+  it("names the failing stage in the log-only detail", async () => {
+    const { fetcher } = provider({ count: () => new Response("{}", { status: 503 }) });
+
+    const error = await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+    expect((error as QaModelError).detail).toBe("OpenAI token count request failed with HTTP 503.");
+  });
+
+  it("makes no provider calls at all for a payload over the size ceiling", async () => {
+    const { fetcher } = provider();
+    const huge = { ...request, input: "x".repeat(MAX_COUNTABLE_REQUEST_BYTES) };
+
+    const error = await rejectionOf(createOpenAiQaModel({ fetcher, env })(huge));
+    expect(error).toMatchObject({ name: "QaPromptError", code: "REQUEST_TOO_LARGE" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("generation request failures", () => {
   it.each<[number, QaModelErrorCode]>([
     [429, "MODEL_RATE_LIMITED"],
     [401, "MODEL_AUTH"],
@@ -191,18 +348,17 @@ describe("createOpenAiQaModel", () => {
     [500, "MODEL_UNAVAILABLE"],
     [503, "MODEL_UNAVAILABLE"],
   ])("maps HTTP %i to %s without exposing the provider body", async (status, code) => {
-    const fetcher = fakeFetch(
-      new Response(JSON.stringify({ error: { message: "PROVIDER_DETAIL_MARKER" } }), { status }),
-    );
+    const { fetcher } = provider({
+      generation: () =>
+        new Response(JSON.stringify({ error: { message: "PROVIDER_DETAIL_MARKER" } }), { status }),
+    });
 
-    let thrown: unknown;
-    try {
-      await createOpenAiQaModel({ fetcher, env })(request);
-    } catch (error) {
-      thrown = error;
-    }
-    expect(thrown).toMatchObject({ name: "QaModelError", code });
-    expect((thrown as Error).message).not.toContain("PROVIDER_DETAIL_MARKER");
+    const error = await rejectionOf(createOpenAiQaModel({ fetcher, env })(request));
+    expect(error).toMatchObject({ name: "QaModelError", code });
+    expect(error.message).not.toContain("PROVIDER_DETAIL_MARKER");
+    expect((error as QaModelError).detail).toBe(
+      `OpenAI generation request failed with HTTP ${status}.`,
+    );
   });
 
   it.each<[string, Error, QaModelErrorCode]>([
@@ -210,29 +366,31 @@ describe("createOpenAiQaModel", () => {
     ["an abort", new DOMException("aborted", "AbortError"), "MODEL_TIMEOUT"],
     ["a network failure", new TypeError("fetch failed SECRET_MARKER"), "MODEL_UNAVAILABLE"],
   ])("maps %s to %s", async (_label, failure, code) => {
-    expect(await codeOf(createOpenAiQaModel({ fetcher: fakeFetch(failure), env })(request))).toBe(
-      code,
-    );
+    const { fetcher } = provider({ generation: () => failure });
+    expect(await codeOf(createOpenAiQaModel({ fetcher, env })(request))).toBe(code);
   });
 
-  it("maps a timeout while reading the body to MODEL_TIMEOUT", async () => {
+  it.each<[string, Error, QaModelErrorCode]>([
+    ["a timeout", new DOMException("timed out", "TimeoutError"), "MODEL_TIMEOUT"],
+    ["a socket failure", new TypeError("socket closed SECRET_MARKER"), "MODEL_UNAVAILABLE"],
+  ])("maps %s while reading the body to %s", async (_label, failure, code) => {
     const body = new ReadableStream({
       pull(controller) {
-        controller.error(new DOMException("timed out", "TimeoutError"));
+        controller.error(failure);
       },
     });
-    expect(
-      await codeOf(createOpenAiQaModel({ fetcher: fakeFetch(new Response(body)), env })(request)),
-    ).toBe("MODEL_TIMEOUT");
+    const { fetcher } = provider({ generation: () => new Response(body) });
+    expect(await codeOf(createOpenAiQaModel({ fetcher, env })(request))).toBe(code);
   });
 
   it("rejects a response declared larger than the limit without reading it", async () => {
-    const response = jsonResponse(completed(), {
-      headers: { "content-length": String(MAX_OPENAI_RESPONSE_BYTES + 1) },
+    const { fetcher } = provider({
+      generation: () =>
+        jsonResponse(completed(), {
+          headers: { "content-length": String(MAX_OPENAI_RESPONSE_BYTES + 1) },
+        }),
     });
-    expect(await codeOf(createOpenAiQaModel({ fetcher: fakeFetch(response), env })(request))).toBe(
-      "MODEL_FAILED",
-    );
+    expect(await codeOf(createOpenAiQaModel({ fetcher, env })(request))).toBe("MODEL_FAILED");
   });
 
   it("stops reading a streamed response once it passes the limit", async () => {
@@ -244,19 +402,17 @@ describe("createOpenAiQaModel", () => {
         controller.enqueue(chunk);
       },
     });
-    expect(
-      await codeOf(createOpenAiQaModel({ fetcher: fakeFetch(new Response(body)), env })(request)),
-    ).toBe("MODEL_FAILED");
+    const { fetcher } = provider({ generation: () => new Response(body) });
+
+    expect(await codeOf(createOpenAiQaModel({ fetcher, env })(request))).toBe("MODEL_FAILED");
     expect(sent * chunk.byteLength).toBeLessThanOrEqual(
       MAX_OPENAI_RESPONSE_BYTES + chunk.byteLength * 2,
     );
   });
 
   it("rejects a non-JSON body", async () => {
-    const response = new Response("<html>gateway</html>", { status: 200 });
-    expect(await codeOf(createOpenAiQaModel({ fetcher: fakeFetch(response), env })(request))).toBe(
-      "MODEL_FAILED",
-    );
+    const { fetcher } = provider({ generation: () => new Response("<html>gateway</html>") });
+    expect(await codeOf(createOpenAiQaModel({ fetcher, env })(request))).toBe("MODEL_FAILED");
   });
 });
 
@@ -316,89 +472,5 @@ describe("extractReply", () => {
       usage: { input_tokens: "120", output_tokens: 3 },
     };
     expect(extractReply(body)).toEqual({ text: "ok" });
-  });
-});
-
-describe("createOpenAiQaModel defaults and stream failures", () => {
-  it("uses the global fetch when no fetcher is injected", async () => {
-    const globalFetch = jest
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(jsonResponse(completed()));
-
-    await expect(createOpenAiQaModel({ env })(request)).resolves.toMatchObject({
-      text: REPLY_TEXT,
-    });
-    expect(globalFetch).toHaveBeenCalledTimes(1);
-    globalFetch.mockRestore();
-  });
-
-  it("maps a non-timeout failure while reading the body to MODEL_UNAVAILABLE", async () => {
-    const body = new ReadableStream({
-      pull(controller) {
-        controller.error(new TypeError("socket closed SECRET_MARKER"));
-      },
-    });
-    expect(
-      await codeOf(createOpenAiQaModel({ fetcher: fakeFetch(new Response(body)), env })(request)),
-    ).toBe("MODEL_UNAVAILABLE");
-  });
-});
-
-describe("pre-call token budget", () => {
-  const exactCountFor = (model: string) => {
-    const body = buildOpenAiRequestBody(request, model);
-    return enforceModelInputBudget(
-      { instructions: body.instructions, input: body.input, responseFormat: body.text.format },
-      model,
-      { maxRequestTokens: 1_000_000, reservedOutputTokens: 0 },
-    );
-  };
-
-  it("makes exactly one provider call at the limit and zero calls one token over", async () => {
-    const n = exactCountFor("gpt-5-mini");
-    const atLimit = fakeFetch(jsonResponse(completed()));
-    const oneOver = fakeFetch(jsonResponse(completed()));
-
-    const reply = await createOpenAiQaModel({
-      fetcher: atLimit,
-      env,
-      budget: { maxRequestTokens: n + 1_500, reservedOutputTokens: 1_500 },
-    })(request);
-    await expect(
-      createOpenAiQaModel({
-        fetcher: oneOver,
-        env,
-        budget: { maxRequestTokens: n + 1_499, reservedOutputTokens: 1_500 },
-      })(request),
-    ).rejects.toMatchObject({ name: "QaPromptError", code: "REQUEST_TOO_LARGE" });
-
-    expect(atLimit).toHaveBeenCalledTimes(1);
-    expect(reply.countedInputTokens).toBe(n);
-    expect(oneOver).not.toHaveBeenCalled();
-  });
-
-  it("makes zero provider calls for an oversized request under the default budget", async () => {
-    const fetcher = fakeFetch(jsonResponse(completed()));
-    const huge = { ...request, input: "Is the food good? ".repeat(QA_MAX_REQUEST_TOKENS) };
-
-    await expect(createOpenAiQaModel({ fetcher, env })(huge)).rejects.toMatchObject({
-      code: "REQUEST_TOO_LARGE",
-    });
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-
-  it("still sends max_output_tokens: 1500", async () => {
-    const fetcher = fakeFetch(jsonResponse(completed()));
-    await createOpenAiQaModel({ fetcher, env })(request);
-    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body)).max_output_tokens).toBe(1_500);
-  });
-
-  it("makes zero provider calls for a model without a confirmed encoding", async () => {
-    const fetcher = fakeFetch(jsonResponse(completed()));
-
-    await expect(
-      createOpenAiQaModel({ fetcher, env: { ...env, OPENAI_QA_MODEL: "gpt-6-luna" } })(request),
-    ).rejects.toMatchObject({ name: "QaBudgetError", code: "MODEL_BUDGET_UNSUPPORTED" });
-    expect(fetcher).not.toHaveBeenCalled();
   });
 });

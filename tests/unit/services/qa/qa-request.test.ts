@@ -1,20 +1,19 @@
 /** @jest-environment node */
 
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
-import { buildOpenAiRequestBody } from "@/services/qa/openai-qa-client";
+import { buildInputTokenCountBody, buildOpenAiRequestBody } from "@/services/qa/openai-qa-client";
 import {
   runGroundedQaRequest,
   toPromptContext,
   type QaReviewContextBuilder,
 } from "@/services/qa/qa-request";
 import {
-  QA_MAX_REQUEST_TOKENS,
   QA_RESERVED_OUTPUT_TOKENS,
   QaPromptError,
   buildSystemPrompt,
   type QaModelRequest,
 } from "@/services/qa/system-prompt";
-import { enforceModelInputBudget } from "@/services/qa/token-budget";
+import { assertCountableSize } from "@/services/qa/token-budget";
 
 jest.mock("server-only", () => ({}));
 
@@ -235,7 +234,7 @@ describe("runGroundedQaRequest", () => {
     });
   });
 
-  it("fits S2-010's largest allowed evidence plus a 2,000-character question in the budget", async () => {
+  it("passes S2-010's largest allowed evidence plus a 2,000-character question through the size ceiling", async () => {
     // Grow review text until the S2-010 evidence measurement is as close to its cap as possible.
     const contextWithTextLength = (length: number) =>
       makeContext(
@@ -256,13 +255,11 @@ describe("runGroundedQaRequest", () => {
 
     await runGroundedQaRequest(TARGET_ID, "q".repeat(2_000), deps);
 
-    // Count exactly what the OpenAI adapter would send, with the real tokenizer.
+    // The pre-network size ceiling must never block S2-010's largest allowed dataset; the exact
+    // token count then comes from OpenAI's input_tokens endpoint (tested in the adapter suite).
     const request = deps.invokeModel.mock.calls[0][0];
-    const body = buildOpenAiRequestBody(request, "gpt-5-mini");
-    const counted = enforceModelInputBudget(
-      { instructions: body.instructions, input: body.input, responseFormat: body.text.format },
-      "gpt-5-mini",
-    );
-    expect(counted + request.maxOutputTokens).toBeLessThanOrEqual(QA_MAX_REQUEST_TOKENS);
+    expect(() =>
+      assertCountableSize(buildInputTokenCountBody(buildOpenAiRequestBody(request, "gpt-6-luna"))),
+    ).not.toThrow();
   });
 });

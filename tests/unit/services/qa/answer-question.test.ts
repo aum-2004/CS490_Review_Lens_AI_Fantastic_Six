@@ -214,8 +214,11 @@ describe("provider gating with the real OpenAI adapter", () => {
   afterEach(() => globalFetch.mockRestore());
 
   function depsWith(env: Record<string, string | undefined>) {
-    const fetcher = jest.fn<Promise<Response>, Parameters<typeof fetch>>(
-      async () => new Response(JSON.stringify(completedReply), { status: 200 }),
+    // Fake OpenAI: the token-count endpoint reports a small request; generation replies.
+    const fetcher = jest.fn<Promise<Response>, Parameters<typeof fetch>>(async (url) =>
+      String(url).endsWith("/responses/input_tokens")
+        ? new Response(JSON.stringify({ object: "response.input_tokens", input_tokens: 900 }))
+        : new Response(JSON.stringify(completedReply), { status: 200 }),
     );
     return {
       fetcher,
@@ -226,16 +229,19 @@ describe("provider gating with the real OpenAI adapter", () => {
     };
   }
 
-  it("calls the provider once when enabled and configured (control case)", async () => {
+  it("counts tokens, then generates once, when enabled and configured (control case)", async () => {
     const { fetcher, deps } = depsWith(enabledEnv);
 
     await expect(answerQuestion(TARGET_ID, "Any complaints?", deps)).resolves.toMatchObject({
       outcome: "answered",
     });
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.openai.com/v1/responses/input_tokens",
+      "https://api.openai.com/v1/responses",
+    ]);
   });
 
-  it("never reaches the provider with an oversized request (budget checked first)", async () => {
+  it("never reaches the provider with an oversized request (size ceiling checked first)", async () => {
     const { fetcher, deps } = depsWith(enabledEnv);
     const oversized = "Is the food good? ".repeat(QA_MAX_REQUEST_TOKENS);
 
