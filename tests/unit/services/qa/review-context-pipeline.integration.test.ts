@@ -317,10 +317,13 @@ describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)"
     },
   );
 
-  it("rejects the serialized request ceiling before counting or generation", async () => {
+  it("rejects an oversized question at the service boundary before counting or generation", async () => {
     const { deps, fetcher } = setup();
+    // The shared service boundary (qa-request.ts) now stops this before the OpenAI adapter's
+    // REQUEST_TOO_LARGE ceiling is reached.
     await expect(answerQuestion(A, "Q".repeat(140000), deps)).rejects.toMatchObject({
-      code: "REQUEST_TOO_LARGE",
+      name: "QaInputValidationError",
+      code: "QA_QUESTION_TOO_LONG",
     });
     expect(fetcher).not.toHaveBeenCalled();
   });

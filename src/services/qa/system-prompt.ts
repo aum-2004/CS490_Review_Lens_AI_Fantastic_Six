@@ -14,7 +14,7 @@ import type { Review } from "@/services/reviews/review-service";
  * parsing its reply belong to S2-011. Bump the version whenever the prompt text changes so logs
  * and evaluation results can be tied to the exact prompt that produced them.
  */
-export const SYSTEM_PROMPT_VERSION = "s2-013.v2";
+export const SYSTEM_PROMPT_VERSION = "s2-013.v3";
 
 /**
  * Machine-readable outcome the model must report with every reply. The decline outcomes map
@@ -57,27 +57,18 @@ export function resolveDeclineOutcome(applicable: Iterable<QaDeclineOutcome>): Q
 
 /**
  * Request-size budget. QA_MAX_REQUEST_TOKENS is the single configurable cap on one model request:
- * system prompt + review evidence + question + reserved output must fit inside it. S2-010's
- * 100-review / 32 KiB evidence limit is one part of this budget and is enforced there first.
- * These are application budgets for cost and latency, not the model's context window.
+ * system prompt + review evidence + question + structured-output schema + provider overhead +
+ * reserved output must fit inside it. `buildQaModelRequest` does not enforce it. S2-010's
+ * 100-review / 32 KiB evidence limit and the service boundary's question-length and 128 KiB
+ * serialized-request limits (`qa/qa-request.ts`) run first. The token budget itself is enforced by
+ * the OpenAI adapter with OpenAI's token count immediately before generation
+ * (`qa/token-budget.ts`), because the exact count depends on the configured model. These are application budgets for cost and latency, not
+ * the model's context window.
  */
 export const QA_MAX_REQUEST_TOKENS = 16_000;
 
 /** Output tokens reserved for the reply. S2-011 must send this as the provider's output limit. */
 export const QA_RESERVED_OUTPUT_TOKENS = 1_500;
-
-/**
- * Conservative UTF-8 bytes per token used to estimate size without a tokenizer dependency.
- * English prose averages about 4 bytes per token, so this overestimates prose. Dense JSON and IDs
- * can tokenize worse; check the estimate against the provider's reported input tokens in S2-011.
- */
-export const ESTIMATED_BYTES_PER_TOKEN = 3;
-
-const utf8 = new TextEncoder();
-
-export function estimateTokens(text: string): number {
-  return Math.ceil(utf8.encode(text).length / ESTIMATED_BYTES_PER_TOKEN);
-}
 
 /** Human-readable platform names. A Record keeps this exhaustive when a platform is added. */
 export const REVIEW_PLATFORM_LABELS: Record<ReviewPlatform, string> = {
@@ -111,8 +102,6 @@ export interface QaModelRequest {
   input: string;
   /** IDs of the reviews included in `input`, so callers and tests can audit the context. */
   reviewIds: string[];
-  /** Estimated tokens for `instructions` + `input`. */
-  estimatedInputTokens: number;
   /** Output limit to send to the provider (QA_RESERVED_OUTPUT_TOKENS). */
   maxOutputTokens: number;
 }
@@ -151,7 +140,8 @@ EVIDENCE RULES
    counts or proportions you can verify by counting the supplied reviews.
 4. If the question is about these reviews but the reviews do not contain enough information to
    answer it, say so clearly. Do not guess or fill the gap from general knowledge. If the reviews
-   answer part of the question, answer that part and state what the reviews do not cover.
+   answer part of the question, use "answered" for that part, cite the reviews that support it,
+   and state what the reviews do not cover.
 5. Keep what the reviews say separate from what they do not say. Do not present an absence of
    complaints as proof that something is good.
 
@@ -185,7 +175,8 @@ Reply with only a JSON object, with no surrounding text:
   platform is "declined_other_entity".
 - "answer" is plain text for the user.
 - "citedReviewIds" lists the "id" values of the reviews that support the answer. Use only ids from
-  the REVIEW DATASET. Use an empty list when no review supports the reply.`;
+  the REVIEW DATASET. For "answered", cite at least one review. For every other outcome, it must
+  be an empty list.`;
 }
 
 export function buildQaModelRequest({ target, reviews, question }: QaPromptInput): QaModelRequest {
@@ -221,23 +212,14 @@ ${JSON.stringify(dataset)}
 QUESTION (JSON string):
 ${JSON.stringify(trimmedQuestion)}`;
 
-  const instructions = buildSystemPrompt(target);
-  const estimatedInputTokens = estimateTokens(instructions) + estimateTokens(input);
-  // Total request budget: prompt template + evidence + question + reserved output.
-  if (estimatedInputTokens + QA_RESERVED_OUTPUT_TOKENS > QA_MAX_REQUEST_TOKENS) {
-    throw new QaPromptError(
-      "REQUEST_TOO_LARGE",
-      "This question is too long to analyze with these reviews. Try a shorter question.",
-    );
-  }
-
+  // The total request budget is enforced with model-compatible token counting immediately before
+  // the provider call (qa/token-budget.ts), where the configured model is known.
   return {
     promptVersion: SYSTEM_PROMPT_VERSION,
     targetId: target.id,
-    instructions,
+    instructions: buildSystemPrompt(target),
     input,
     reviewIds: dataset.map((review) => review.id),
-    estimatedInputTokens,
     maxOutputTokens: QA_RESERVED_OUTPUT_TOKENS,
   };
 }
