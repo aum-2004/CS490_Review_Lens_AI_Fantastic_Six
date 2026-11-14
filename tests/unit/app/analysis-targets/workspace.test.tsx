@@ -7,7 +7,10 @@ import {
   TargetNotFoundError,
 } from "@/services/analysis-targets/target-ownership";
 import { createSupabaseReviewStore } from "@/services/reviews/supabase-review-store";
-import { getLatestAttempt } from "@/services/ingestion/ingestion-attempt-repository";
+import {
+  getLatestAttempt,
+  type IngestionAttemptRow,
+} from "@/services/ingestion/ingestion-attempt-repository";
 
 jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() }));
 jest.mock("@/services/ingestion/ingestion-recovery", () => ({
@@ -59,6 +62,77 @@ beforeEach(() => {
 
 afterEach(() => jest.restoreAllMocks());
 
+const persistedAttempt: IngestionAttemptRow = {
+  id: "attempt-a",
+  analysis_target_id: "owned-target",
+  owner_id: "verified-user",
+  source_url: "https://www.google.com/maps/place/Bakery",
+  submitted_query: "ChIJSynthetic",
+  query_kind: "place_id",
+  expected_place_id: "ChIJSynthetic",
+  provider_request_id: "synthetic-job",
+  status: "succeeded",
+  started_at: "2026-11-01T12:00:00Z",
+  finished_at: "2026-11-01T12:01:00Z",
+  saved_count: 1,
+  skipped_count: 0,
+  error_code: null,
+  identity_basis: "expected_place_id",
+  verified_identity: null,
+};
+
+it.each([
+  ["succeeded", 0, "Ingested"],
+  ["succeeded", 2, "Partially ingested"],
+  ["failed", 2, "Failed"],
+  ["processing", 0, "Ingesting"],
+] as const)(
+  "renders persisted %s status with %i skipped records",
+  async (status, skipped, label) => {
+    jest.mocked(getLatestAttempt).mockResolvedValue({
+      ...persistedAttempt,
+      status,
+      skipped_count: skipped,
+      saved_count: status === "succeeded" ? 1 : 0,
+      error_code: status === "failed" ? "PROVIDER_QUOTA" : null,
+      finished_at: status === "processing" ? null : persistedAttempt.finished_at,
+    });
+    render(await ProtectedTargetWorkspace({ params }));
+    expect(getLatestAttempt).toHaveBeenCalledWith({}, "verified-user", "owned-target");
+    expect(screen.getAllByText(label, { exact: true })).toHaveLength(2);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
+    // Empty review rows do not override the persisted operation result.
+    expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
+  },
+);
+
+it.each(["failed", null] as const)(
+  "does not mistake existing review rows for success when the persisted attempt is %s",
+  async (status) => {
+    jest
+      .mocked(getLatestAttempt)
+      .mockResolvedValue(
+        status
+          ? { ...persistedAttempt, status, saved_count: 0, error_code: "PROVIDER_QUOTA" }
+          : null,
+      );
+    listReviews.mockResolvedValue([
+      {
+        id: "review-a",
+        analysisTargetId: "owned-target",
+        rating: 4,
+        text: "Previously saved bakery review",
+        reviewerName: null,
+        reviewDate: null,
+      },
+    ]);
+    render(await ProtectedTargetWorkspace({ params }));
+    expect(screen.getByText("Previously saved bakery review")).toBeInTheDocument();
+    expect(screen.getAllByText(status ? "Failed" : "Not ingested")).toHaveLength(2);
+    expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
+  },
+);
+
 it("opens an owned target with the shared shell, context, empty reviews and ingestion path", async () => {
   render(await ProtectedTargetWorkspace({ params }));
   expect(requirePageUser).toHaveBeenCalledWith("/analysis-targets/owned-target");
@@ -67,7 +141,7 @@ it("opens an owned target with the shared shell, context, empty reviews and inge
   expect(screen.getByText("Google Maps", { exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Start ingestion" })).toBeEnabled();
   expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
-  expect(screen.getAllByText("Not ingested")).toHaveLength(1);
+  expect(screen.getAllByText("Not ingested")).toHaveLength(2);
   expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
 });
 
@@ -75,7 +149,7 @@ it("never labels unavailable status as no ingestion", async () => {
   jest.mocked(getLatestAttempt).mockRejectedValue(new Error("status database unavailable"));
   render(await ProtectedTargetWorkspace({ params }));
   expect(screen.queryByText("Not ingested")).not.toBeInTheDocument();
-  expect(screen.getAllByText("Status unavailable")).toHaveLength(1);
+  expect(screen.getAllByText("Status unavailable")).toHaveLength(2);
 });
 it("shows the creation confirmation only after verifying the owned target", async () => {
   render(
