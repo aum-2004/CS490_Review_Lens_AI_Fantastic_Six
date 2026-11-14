@@ -22,6 +22,10 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v6
+        with:
+          # S2-001: the changed-code coverage gate diffs against the PR base branch,
+          # so it needs history back to the merge-base.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -41,11 +45,20 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm test
+      # Same suite as `npm test`, plus coverage data for the changed-code gate.
+      - name: Unit tests (with coverage)
+        run: npm run test:coverage -- --coverageReporters=json --coverageReporters=text-summary
 
       - name: Build
         run: npm run build
+
+      # S2-001: fail the PR when added or modified lines are not executed by tests.
+      # Policy: scripts/coverage/changed-coverage-policy.ts; docs/changed-code-coverage.md.
+      - name: Changed-code coverage
+        if: github.event_name == 'pull_request'
+        env:
+          CHANGED_COVERAGE_BASE: origin/${{ github.base_ref }}
+        run: npm run coverage:changed:check
 
   database:
     name: Database tests
