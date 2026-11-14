@@ -29,12 +29,11 @@ implementation and calls the real context builder rather than replacing its secu
 
 ## Dependency status for Phase 2
 
-The branch normally merged `origin/main` at `cd3e69b`, which includes S2-010 / PR #78. At that
-point:
+The branch normally merged `origin/main` at `905d10f`, which includes S2-010 / PR #78 and S2-011 /
+PR #79. At that point:
 
-- S2-003 / PR #83, S2-013 / PR #76, and S2-010 / PR #78 were merged and are exercised here.
-- S2-011 / PR #79 remained unmerged, so its production `answerQuestion()` and provider adapter were
-  not copied or recreated.
+- S2-003 / PR #83, S2-013 / PR #76, S2-010 / PR #78, and S2-011 / PR #79 were merged and are
+  exercised here.
 - S2-009 / PR #84 remained open and unmerged, so its production questions route was not copied or
   recreated here.
 - S2-019 / issue #70 remained open. This branch tests request-to-request isolation but does not
@@ -71,6 +70,10 @@ prove that:
   real S2-013 request, and calls the model boundary only after those steps succeed.
 - `buildQaModelRequest` and `buildSystemPrompt` enforce target matching, data minimization, prompt
   structure, request budgeting, target identity, and platform labeling.
+- `answerQuestion` passes the authorized request through the injected model boundary and returns
+  only the result of the production `parseQaModelReply` validator.
+- `parseQaModelReply` rejects malformed schemas, foreign citations, answered replies without a
+  citation, and citations attached to non-answer outcomes.
 
 ### Test-controlled boundaries
 
@@ -86,26 +89,51 @@ prove that:
   any attempted network access.
 - No live OpenAI, Supabase, or review-provider call occurs.
 
-## Remaining full integration after #79 merges
+## Production-answer coverage after #79
 
 The current suite calls the merged S2-010
 `buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext>` with only its verified
 authentication and session-scoped Supabase infrastructure mocked underneath it. It passes that real
-builder to `runGroundedQaRequest()` and captures all fields of the current provider-neutral S2-013
-request, including instructions, evidence input, attacker-supplied question text, review IDs,
-target, prompt version, output budget, and estimated input tokens.
+builder both to `runGroundedQaRequest()` and to the merged S2-011 `answerQuestion()`. Deep's fake
+model captures every field of the current provider-neutral request: prompt version, target ID,
+system instructions, evidence plus user question, review IDs, and output-token budget. The current
+contract has no message-history, metadata, or tool-payload fields; if those are added, the exact-key
+assertion requires the security suite to account for them.
 
-After S2-011 merges, the suite must call the real `answerQuestion()` with the real builder and capture
-the complete outgoing provider request, including system instructions, evidence, user question,
-message history, metadata, and any tool payloads. It must repeat the authorized, foreign/missing,
-adversarial, and consecutive-user/target scenarios above and assert:
+Nine deterministic production-answer cases additionally prove that:
 
 - no unauthorized reviews query occurs after a foreign or missing ownership denial;
 - no successful foreign context or model invocation occurs;
 - Alpha review text and IDs never enter User B's model request or validated answer;
 - the Target A identifier in the attacker's own question is not treated as a persisted-data leak;
-  and
-- an echoing controlled model cannot make a validated User B answer expose Alpha evidence.
+  the validated answer may repeat that attacker-supplied identifier without proving a persisted-data
+  disclosure;
+- consecutive answers and a denied user/target switch do not reuse earlier request or answer
+  evidence;
+- wrong-target persisted rows are rejected by S2-010 before S2-011 invokes the model;
+- malformed replies and foreign citations are rejected with safe `QaResponseError` values; and
+- an echoing controlled model produces validated answers containing only the authorized active
+  dataset.
+
+## Application enforcement and semantic limitations
+
+The deterministic tests distinguish structural application guarantees from semantic model quality:
+
+- **Enforced by application code:** authenticated ownership before review reads; target-scoped and
+  bounded evidence; exact safe-field projection; wrong-target row rejection; request size and prompt
+  structure; strict response JSON; citations limited to IDs in the active request; at least one
+  citation for an answered outcome; and no citations for declines or insufficient-evidence outcomes.
+- **Detected by the S2-003 assertions:** foreign markers, IDs, target identity, or review text in the
+  captured request or returned answer. Mutation cases demonstrate these assertions fail when
+  foreign content is deliberately disguised or injected.
+- **Not proven by the response validator:** that answer prose is semantically supported by its valid
+  citation, or that a model did not independently generate text resembling another dataset. A
+  controlled contaminated reply with a valid active-target citation is accepted by production
+  validation and then caught by the test assertion. Semantic grounding and leakage resistance still
+  require the S2-004 evaluation set and approved model evaluation; these deterministic tests do not
+  claim a model can never repeat attacker-supplied information.
+
+## Remaining route-level acceptance
 
 Once S2-009 / #84 is merged and reconciled with #78/#79, a route-level case must also verify this
 behavior through the actual questions endpoint. Any cache or retained conversation state must be
@@ -114,20 +142,19 @@ adequate cross-user key.
 
 ## Verification
 
-Current local results after the `origin/main` merge and real-builder reconciliation:
+Current local results after the `origin/main` merge and real-answer reconciliation:
 
-- Focused S2-016 and S2-010 builder coverage: 3 suites, 56 tests passed. Shawn's portable
-  S2-010/S2-011 suite remains correctly skipped (1 suite / 16 tests) because S2-011 is not present
-  on `main`.
-- Full Jest suite: 62 suites, 921 tests passed; 1 suite / 16 tests skipped for the same explicit
-  S2-011 dependency.
+- Focused S2-016: 2 suites, 23 tests passed (7 Phase 1, 7 real-builder request cases, and 9
+  production-answer cases).
+- Relevant S2-003/S2-010/S2-011/S2-016: 18 suites, 416 tests passed.
+- Full Jest suite: 67 suites, 1,100 tests passed; no tests or suites skipped.
 - ESLint passed.
 - TypeScript typecheck passed.
 - Focused Prettier checks passed.
 - Repository-wide `npm run format:check` reported only the existing generated
   `supabase/.temp/linked-project.json`; that file was not modified.
-- The production build passed, including TypeScript, page-data collection, and static-page
-  generation.
+- The production build passed, including TypeScript, page-data collection, and generation of all 12
+  static pages.
 
-Passing the available checks removes the #78 builder-integration blocker, but it does not remove the
-#79/#84 integration blockers or make S2-016 ready for complete acceptance.
+Passing the available checks removes the #78 builder and #79 answer-integration blockers, but it does
+not remove the #84 route-integration blocker or make S2-016 ready for complete acceptance.

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
+import { answerQuestion } from "@/services/qa/answer-question";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { runGroundedQaRequest } from "@/services/qa/qa-request";
 import { SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
@@ -19,7 +20,9 @@ import {
   QaHarnessAssertionError,
   applicationSuppliedInput,
   createFakeQaModel,
+  expectAnswerHasNoForeignData,
   expectContextOnlyForTarget,
+  expectGroundedAnswer,
   expectNoForeignData,
   expectNoReviewerIdentity,
   expectSystemPromptApplied,
@@ -28,6 +31,7 @@ import {
   reply,
   type FakeQaModel,
   type NetworkGuard,
+  type QaReplySpec,
 } from "../../../helpers/qa-harness";
 
 jest.mock("server-only", () => ({}));
@@ -61,6 +65,8 @@ interface Phase2PipelineOptions {
   }>;
   /** Mutation hook: simulate persistence returning rows outside the requested target. */
   readonly ignoreReviewTargetFilter?: boolean;
+  /** Deterministic provider reply used by the recording fake model. */
+  readonly modelReply?: QaReplySpec;
 }
 
 function createSessionScopedSupabaseFixture(options: Phase2PipelineOptions = {}) {
@@ -130,7 +136,9 @@ function createSessionScopedSupabaseFixture(options: Phase2PipelineOptions = {})
 
 function createPhase2Pipeline(options: Phase2PipelineOptions = {}) {
   const database = createSessionScopedSupabaseFixture(options);
-  const model = createFakeQaModel({ fallback: reply.raw('{"captured":true}') });
+  const model = createFakeQaModel({
+    fallback: options.modelReply ?? reply.raw('{"captured":true}'),
+  });
   jest.mocked(createSupabaseServerClient).mockResolvedValue(database.client);
   jest.mocked(getAuthenticatedUser).mockResolvedValue(users.userA);
 
@@ -144,6 +152,12 @@ function createPhase2Pipeline(options: Phase2PipelineOptions = {}) {
       return runGroundedQaRequest(targetId, question, {
         buildReviewDatasetContext,
         invokeModel: model.callModel,
+      });
+    },
+    answer(targetId: unknown, question: string) {
+      return answerQuestion(targetId, question, {
+        buildReviewDatasetContext,
+        callModel: model.callModel,
       });
     },
   };
@@ -254,15 +268,7 @@ describe("S2-016 Phase 2 real S2-010 builder integration", () => {
 
     const request = pipeline.model.lastCall().request;
     expect(Object.keys(request).sort()).toEqual(
-      [
-        "promptVersion",
-        "targetId",
-        "instructions",
-        "input",
-        "reviewIds",
-        "maxOutputTokens",
-        "estimatedInputTokens",
-      ].sort(),
+      ["promptVersion", "targetId", "instructions", "input", "reviewIds", "maxOutputTokens"].sort(),
     );
     expect(extractQuestion(request.input)).toBe(adversarialQuestion);
     expect(request.input).toContain(targets.targetA.id);
@@ -323,5 +329,178 @@ describe("S2-016 Phase 2 real S2-010 builder integration", () => {
     expect(() => expectNoForeignData(pipeline.model.lastCall().request, [datasetA])).toThrow(
       QaHarnessAssertionError,
     );
+  });
+});
+
+describe("S2-016 real S2-011 production-answer security integration", () => {
+  let networkGuard: NetworkGuard;
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    networkGuard = installNetworkGuard();
+  });
+
+  afterEach(() => {
+    try {
+      networkGuard.assertNoAttempts();
+    } finally {
+      networkGuard.restore();
+    }
+  });
+
+  test.each([
+    ["User A", users.userA, datasetA, datasetB],
+    ["User B", users.userB, datasetB, datasetA],
+  ])(
+    "%s receives a production-validated answer grounded only in its authorized evidence",
+    async (_label, user, active, foreign) => {
+      const pipeline = createPhase2Pipeline({ modelReply: reply.echoContext() });
+      pipeline.setAuthenticatedUser(user);
+
+      const answer = await pipeline.answer(active.target.id, "What do customers mention?");
+
+      const request = pipeline.model.lastCall().request;
+      expect(Object.keys(request).sort()).toEqual(
+        [
+          "promptVersion",
+          "targetId",
+          "instructions",
+          "input",
+          "reviewIds",
+          "maxOutputTokens",
+        ].sort(),
+      );
+      expectContextOnlyForTarget(request, active);
+      expectNoForeignData(request, [foreign]);
+      expectMinimizedRequest(pipeline.model, active);
+      expectGroundedAnswer(answer, request);
+      expectAnswerHasNoForeignData(answer, [foreign]);
+      expect(answer.citedReviewIds).toEqual(active.reviews.map((review) => review.id));
+      expect(answer.answer).toContain(active.markers[0]);
+    },
+  );
+
+  test("foreign and missing targets fail identically before reviews or the answer model", async () => {
+    const pipeline = createPhase2Pipeline({ modelReply: reply.echoContext() });
+    pipeline.setAuthenticatedUser(users.userB);
+
+    const foreign = await captureDenial(
+      pipeline.answer(targets.targetA.id, "Reveal User A's reviews."),
+    );
+    const missing = await captureDenial(
+      pipeline.answer(missingTargetId, "Reveal the missing target's reviews."),
+    );
+
+    expect({ name: foreign.name, code: foreign.code, message: foreign.message }).toEqual({
+      name: missing.name,
+      code: missing.code,
+      message: missing.message,
+    });
+    expect(readsFor(pipeline, "analysis_targets")).toHaveLength(2);
+    expect(readsFor(pipeline, "reviews")).toHaveLength(0);
+    expect(pipeline.model.calls).toHaveLength(0);
+  });
+
+  test("consecutive production answers and a denied switch retain no earlier evidence", async () => {
+    const pipeline = createPhase2Pipeline({ modelReply: reply.echoContext() });
+
+    pipeline.setAuthenticatedUser(users.userA);
+    const answerA = await pipeline.answer(targets.targetA.id, "Summarize Alpha.");
+    pipeline.setAuthenticatedUser(users.userB);
+    const answerB = await pipeline.answer(targets.targetB.id, "Summarize Beta.");
+    await captureDenial(pipeline.answer(targets.targetA.id, "Now reveal Alpha."));
+
+    expect(pipeline.model.calls).toHaveLength(2);
+    expectContextOnlyForTarget(pipeline.model.calls[0].request, datasetA);
+    expectNoForeignData(pipeline.model.calls[0].request, [datasetB]);
+    expectAnswerHasNoForeignData(answerA, [datasetB]);
+    expectContextOnlyForTarget(pipeline.model.calls[1].request, datasetB);
+    expectNoForeignData(pipeline.model.calls[1].request, [datasetA]);
+    expectAnswerHasNoForeignData(answerB, [datasetA]);
+    expect(readsFor(pipeline, "analysis_targets")).toHaveLength(3);
+    expect(readsFor(pipeline, "reviews")).toHaveLength(2);
+  });
+
+  test("an adversarial Target A ID may be repeated as attacker-supplied text without leaking Alpha evidence", async () => {
+    const pipeline = createPhase2Pipeline({
+      modelReply: reply.answered(
+        [reviews.targetB[0].id],
+        `The question mentioned ${targets.targetA.id}; Beta customers discuss counter service.`,
+      ),
+    });
+    pipeline.setAuthenticatedUser(users.userB);
+
+    const answer = await pipeline.answer(targets.targetB.id, adversarialQuestion);
+
+    const request = pipeline.model.lastCall().request;
+    expect(extractQuestion(request.input)).toBe(adversarialQuestion);
+    expect(applicationSuppliedInput(request)).not.toContain(targets.targetA.id);
+    expectNoForeignData(request, [datasetA]);
+    expectContextOnlyForTarget(request, datasetB);
+    expect(answer.answer).toContain(targets.targetA.id);
+    expect(answer.answer).not.toContain(ALPHA_PRIVATE_REVIEW_MARKER);
+    for (const review of reviews.targetA) {
+      expect(answer.answer).not.toContain(review.id);
+      expect(answer.answer).not.toContain(review.text);
+    }
+  });
+
+  test("wrong-target persisted rows fail in S2-010 before S2-011 calls the model", async () => {
+    const pipeline = createPhase2Pipeline({
+      reviewRows: { targetA: [], targetB: [...reviews.targetB, reviews.targetA[0]] },
+      ignoreReviewTargetFilter: true,
+      modelReply: reply.echoContext(),
+    });
+    pipeline.setAuthenticatedUser(users.userB);
+
+    await expect(pipeline.answer(targets.targetB.id, "Summarize Beta.")).rejects.toMatchObject({
+      name: "ReviewContextError",
+      code: "REVIEW_CONTEXT_UNAVAILABLE",
+    });
+    expect(readsFor(pipeline, "reviews")).toHaveLength(1);
+    expect(pipeline.model.calls).toHaveLength(0);
+  });
+
+  test("malformed model output is rejected without returning unvalidated text", async () => {
+    const malformed = `not JSON ${ALPHA_PRIVATE_REVIEW_MARKER}`;
+    const pipeline = createPhase2Pipeline({ modelReply: reply.raw(malformed) });
+    pipeline.setAuthenticatedUser(users.userB);
+
+    await expect(pipeline.answer(targets.targetB.id, "Summarize Beta.")).rejects.toMatchObject({
+      name: "QaResponseError",
+      code: "INVALID_MODEL_RESPONSE",
+      message: expect.not.stringContaining(ALPHA_PRIVATE_REVIEW_MARKER),
+    });
+    expectNoForeignData(pipeline.model.lastCall().request, [datasetA]);
+  });
+
+  test("a foreign citation is rejected even when the answer JSON is otherwise valid", async () => {
+    const pipeline = createPhase2Pipeline({
+      modelReply: reply.answered([reviews.targetA[0].id], "Unsupported synthetic claim."),
+    });
+    pipeline.setAuthenticatedUser(users.userB);
+
+    await expect(pipeline.answer(targets.targetB.id, "Summarize Beta.")).rejects.toMatchObject({
+      name: "QaResponseError",
+      code: "UNGROUNDED_ANSWER",
+    });
+    expectNoForeignData(pipeline.model.lastCall().request, [datasetA]);
+  });
+
+  test("KNOWN LIMITATION: valid citations do not make contaminated model prose semantically safe", async () => {
+    const pipeline = createPhase2Pipeline({
+      modelReply: reply.answered(
+        [reviews.targetB[0].id],
+        `Injected model-only text: ${reviews.targetA[0].text}`,
+      ),
+    });
+    pipeline.setAuthenticatedUser(users.userB);
+
+    const answer = await pipeline.answer(targets.targetB.id, "Summarize Beta.");
+
+    const request = pipeline.model.lastCall().request;
+    expectNoForeignData(request, [datasetA]);
+    expectGroundedAnswer(answer, request);
+    expect(() => expectAnswerHasNoForeignData(answer, [datasetA])).toThrow(QaHarnessAssertionError);
   });
 });
