@@ -20,7 +20,7 @@ it("renders persisted count, average, ingestion status, and skipped count", () =
   expect(screen.getByRole("heading", { name: "Review summary" })).toBeInTheDocument();
   expect(screen.getByText("3")).toBeInTheDocument();
   expect(screen.getByText("4.3 / 5")).toBeInTheDocument();
-  expect(screen.getByText("Ingested")).toBeInTheDocument();
+  expect(screen.getByText("Partially ingested")).toBeInTheDocument();
   expect(screen.getByText("1")).toBeInTheDocument();
 });
 
