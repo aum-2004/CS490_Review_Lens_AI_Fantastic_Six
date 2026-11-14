@@ -34,10 +34,23 @@ API keys, or `.env` values appeared in these portions.
 - Done as a separate PR after S2-011 (#79) merged, because #79 also edited `system-prompt.ts`.
 - Built in a separate worktree so uncommitted work on the author's S2-012 branch was untouched.
 
+### Security review follow-up (Deep, #89)
+
+- Changed: "specific, named" was replaced with "named or only described", and rule 7 now
+  explicitly declines comparisons with other businesses ("other restaurants nearby", "the average
+  cafe"). The draft wording would have let unnamed comparisons reach `answered` or
+  `insufficient_evidence`. Rule 6 now says general-knowledge recommendations are "not about" the
+  target and "do not point to a particular business", so the New York case stays general knowledge.
+- Added: a test for unnamed comparisons and a pinned `SYSTEM_PROMPT_VERSION` assertion
+  (`s2-013.v4`). The existing version check compared the constant with itself.
+- Fixed: `docs/s2-011-answers.md` still referenced `s2-013.v3`.
+- Mutation checks: reverting the version to v3 fails the pinned test; restoring the "specific,
+  named" draft wording fails four tests.
+
 ### Verification
 
 - `npm run format:check`, `npm run lint`, `npm run typecheck`: passed.
-- Full Jest: 65 suites, 1,079 tests passed.
+- Full Jest after the security-review fixes: 65 suites, 1,080 tests passed.
 - No model or provider calls were made.
 
 ## Transcript
@@ -254,3 +267,15 @@ All 3 changed or new tests fail against the old prompt and pass against the new 
 
 Everything passes. Now the transcript, following the format of your S1-014 one.
 
+
+### Aryan
+
+Deep — 5:43 PM
+Hey Aryan, security review on #89 (8d37aae): changes requested, two fixes:
+
+Rule 7 + declined_other_entity now say "specific, named". Unnamed comparisons ("vs other restaurants nearby", "the place across the street", "better than the average cafe") used to decline and now can end up insufficient_evidence/answered. Drop "named" so it covers named or described businesses, and add a test for one unnamed comparison.
+Line 147's version test compares the constant to itself (reverting to v3 stays green). Add expect(SYSTEM_PROMPT_VERSION).toBe("s2-013.v4"). Small: docs/s2-011-answers.md:88 still says v3.
+
+### Claude
+
+Deep is right on both points. Fixed on the PR branch: rule 7 and the `declined_other_entity` definition now cover any other business "whether named or only described", including comparisons with other businesses, with "the place across the street", "other restaurants nearby", and "the average cafe" as examples. Rule 6 keeps the New York case as general knowledge by describing it as not about the target and not pointing to a particular business. Added a test for unnamed comparisons, pinned `SYSTEM_PROMPT_VERSION` to `s2-013.v4`, and updated `docs/s2-011-answers.md`. Mutation checks: reverting to v3 fails the pinned test, and restoring the "specific, named" wording fails four tests.
