@@ -538,3 +538,81 @@ The new tests are expected to pass once this branch is refreshed from the alread
 copied into the working tree because the user explicitly prohibited modifying Melissa's code.
 No implementation outside the two requested S2-006 files, no shared data, and no GitHub state were
 modified.
+
+## 7. Melissa workspace-integration session — 2026-11-13
+
+### User prompt
+
+> We need to address Melissa's latest review feedback on ReviewLens AI S2-006 PR #80.
+>
+> Repository: aum-2004/CS490_Review_Lens_AI_Fantastic_Six; PR #80; branch `feature/S2-006-review-summary`.
+>
+> Melissa requested workspace integration in the same PR: load the active target's persisted summary, render `ReviewSummaryCard`, handle summary-load failures independently with safe retry behavior, refresh after ingestion, switch targets without stale summaries, and add workspace tests for successful display, count/average, empty data, failure/retry, refresh, switching, unauthorized/nonexistent targets, no private leakage, and no full-review loading solely for metrics.
+>
+> Preserve the existing authenticated API route, invoker aggregate, RLS, target ownership, S2-005 ingestion behavior, and S2-007 skipped-record behavior. Do not modify the S2-007 branch, make paid provider calls, change shared Supabase data, edit the PR description, commit, push, merge, or open another PR.
+
+### Codex response
+
+> I’ll verify the checkout identity from the repository metadata and inspect the requested workspace files before editing. I will not modify anything unless this workspace is already on `feature/S2-006-review-summary`; if it is still on S2-007, I’ll stop rather than risk changing the wrong branch.
+
+The repository metadata identified `feature/S2-006-review-summary`. Git itself remained unavailable because Xcode Command Line Tools are missing, so no checkout, branch, reset, or other Git mutation was attempted.
+
+### Findings
+
+`ProtectedTargetWorkspace` already authenticated and checked target ownership before loading ingestion and saved reviews, but it did not load `ReviewSummary`. `ReviewSummaryCard`, the protected API route, and the PostgreSQL aggregate service already existed. The existing `WorkspaceIngestion` refreshes the server workspace through `router.refresh()` after ingestion completion, so no new polling was needed. Existing workspace and ingestion tests already covered persisted state transitions and refresh behavior.
+
+### Codex implementation response
+
+> The workspace currently loads target, ingestion, and full review-list data after ownership, but does not load `ReviewSummary` at all. I’ll add an independent summary load after the ownership guard, render either the persisted summary or a safe retry card, and extend the existing server-workspace tests without changing ingestion polling or the aggregate service.
+
+The workspace now creates one user-scoped review store after ownership verification, uses that store for the existing saved-review list and `getReviewSummary`, and renders `ReviewSummaryCard` when the persisted aggregate succeeds. Summary failures render a separate safe error card with the existing router-refresh retry control; they do not replace unavailable data with zero reviews and do not affect the ingestion or saved-review sections. Target changes are server-rendered from the requested target ID, preventing a previous target's summary from being retained.
+
+Workspace tests now cover persisted count/average display, empty summaries, summary failure and retry, target switching, ownership-denied access, authentication redirects, private-error redaction, and summary invocation after the ownership guard. Existing ingestion tests cover refresh after completion and the no-full-review aggregate behavior remains covered by the summary-service/store tests.
+
+### Validation result
+
+```text
+Focused workspace/review/ingestion tests: 5 suites passed, 65 tests passed.
+Full Jest before the final refresh regression: 60 suites passed, 853 tests passed.
+ESLint: passed.
+TypeScript: passed after regenerating current Next route metadata.
+Prettier: passed.
+Production build: application compilation succeeded, then failed on the pre-existing ProtectedNewAnalysisTargetPage export in src/app/analysis-targets/new/page.tsx.
+git diff --check: unavailable because Git requires missing Xcode Command Line Tools.
+npm commands: npm was blocked; repository-local binaries were used.
+```
+
+The exact PR-description replacement text is intentionally not applied. Suggested text:
+
+> Integrates the persisted review summary into the authenticated target workspace. The workspace displays the database-backed review count and average rating, preserves empty and unavailable states, retries summary failures safely, and refreshes the summary after ingestion without loading full review rows for metrics.
+
+## 8. Final refresh regression follow-up — 2026-11-13
+
+### User request
+
+> Melissa specifically requested workspace tests for refresh after ingestion, and that is the remaining test gap. Add one focused regression test verifying that after ingestion completion triggers the existing `router.refresh` behavior, the refreshed server-rendered workspace displays updated persisted review count and average rating. Use mocked database/service data, preserve existing tests, and run focused Jest and available validation checks without committing or pushing.
+
+### Codex response
+
+> I’ll add one integration-level workspace regression test rather than duplicate the existing ingestion polling assertion. It will simulate a processing workspace, complete ingestion through the existing refresh path, verify `router.refresh()`, then rerender the server workspace with updated mocked persisted summary data and assert the new count and average.
+
+### Test added
+
+`tests/unit/app/analysis-targets/workspace.test.tsx` now starts with a processing attempt and an
+initial summary, completes the existing `WorkspaceIngestion` refresh using mocked fetch data,
+asserts the router refresh call, then rerenders `ProtectedTargetWorkspace` with updated persisted
+attempt/summary mocks and asserts the updated review count and average rating. No provider or
+Supabase writes are performed.
+
+### Final validation
+
+```text
+Focused workspace test: passed — 19 tests.
+Full Jest: passed — 60 suites, 854 tests.
+ESLint: passed.
+TypeScript: passed.
+Prettier: passed.
+npm test: unavailable because the environment blocks npm.
+git diff --check: unavailable because Git requires missing Xcode Command Line Tools.
+Production build: compiled, then failed on the existing unrelated ProtectedNewAnalysisPage export.
+```
