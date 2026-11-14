@@ -25,9 +25,17 @@ jest.mock("server-only", () => ({}));
 interface InsufficientCase {
   readonly id: string;
   readonly question: string;
-  /** Words that would mean the dataset DOES cover the topic. None may appear in any review. */
+  /**
+   * Keywords for the topic. The question must match them (so they describe what is asked), and no
+   * review may match them (so the dataset does not cover the topic). This is a keyword check on a
+   * fixed fixture, not a semantic one: a review that discusses the topic in other words would pass.
+   */
   readonly absentTopic: RegExp;
 }
+
+/** Parking safety at night: the lot itself, vehicles, and the conditions that make it unsafe. */
+const PARKING_SAFETY_TERMS =
+  /park|\blot\b|night|safe|security|lighting|\bcars?\b|garage|valet|\bdark/i;
 
 interface ControlledDataset {
   readonly name: string;
@@ -69,7 +77,7 @@ const issueExample: ControlledDataset = {
     {
       id: "s2-012-issue-parking",
       question: "Do customers think the parking lot is safe at night?",
-      absentTopic: /park|\blot\b|night|safe|security|lighting/i,
+      absentTopic: PARKING_SAFETY_TERMS,
     },
   ],
 };
@@ -78,7 +86,7 @@ const issueExample: ControlledDataset = {
 const S2_004_ABSENT_TOPICS: Readonly<Record<string, RegExp>> = {
   "sg-insufficient-001": /outdoor|outside|patio|terrace|seating/i,
   "sg-insufficient-002": /hours|\bopen|\bclos|morning|evening|weekend/i,
-  "sg-insufficient-003": /park|\blot\b|night|safe|security|lighting/i,
+  "sg-insufficient-003": PARKING_SAFETY_TERMS,
 };
 
 const s2004InsufficientCases = s2004.cases.filter(
@@ -111,9 +119,13 @@ const s2004Dataset: ControlledDataset = {
 
 const DATASETS = [issueExample, s2004Dataset];
 
+const ADMITS_GAP_ANSWER =
+  "The reviews do not mention this, so I can't tell what customers think about it.";
+
+/** The fake model's reply. Tests assert the expected outcome literally, never via this object. */
 const admitsGap = {
   outcome: "insufficient_evidence",
-  answer: "The reviews do not mention this, so I can't tell what customers think about it.",
+  answer: ADMITS_GAP_ANSWER,
   citedReviewIds: [],
 };
 
@@ -135,12 +147,19 @@ describe("S2-012 controlled datasets", () => {
     }
   });
 
-  it.each(
-    DATASETS.flatMap((dataset) =>
-      dataset.cases.map((testCase) => [testCase.id, dataset, testCase] as const),
-    ),
-  )(
-    "%s: no review in the dataset mentions the topic (absence is known)",
+  const allCases = DATASETS.flatMap((dataset) =>
+    dataset.cases.map((testCase) => [testCase.id, dataset, testCase] as const),
+  );
+
+  it.each(allCases)(
+    "%s: the question matches its declared topic keywords",
+    (_id, _ds, testCase) => {
+      expect(testCase.question).toMatch(testCase.absentTopic);
+    },
+  );
+
+  it.each(allCases)(
+    "%s: no review in the dataset matches the topic keywords (absence is known)",
     (_id, dataset, testCase) => {
       expect(dataset.context.reviews.length).toBeGreaterThan(0);
       for (const review of dataset.context.reviews) {
@@ -148,7 +167,28 @@ describe("S2-012 controlled datasets", () => {
       }
     },
   );
+
+  it("catches parking evidence that avoids the words 'parking' and 'lot'", () => {
+    const disguised = "We left the car in the garage; the valet stand was dark and empty.";
+    expect(disguised).toMatch(PARKING_SAFETY_TERMS);
+  });
 });
+
+/** The dataset section of the outgoing request, parsed back into the reviews the model sees. */
+function sentDataset(request: QaModelRequest): unknown {
+  const match =
+    /^REVIEW DATASET \((\d+) reviews, JSON array\):\n([\s\S]*)\n\nQUESTION \(JSON string\):\n([\s\S]*)$/.exec(
+      request.input,
+    );
+  if (!match) throw new Error("Request input does not have the expected sections.");
+  const reviews: unknown = JSON.parse(match[2]);
+  expect(Array.isArray(reviews) && reviews.length).toBe(Number(match[1]));
+  return reviews;
+}
+
+function sentQuestion(request: QaModelRequest): unknown {
+  return JSON.parse(request.input.slice(request.input.lastIndexOf("\n") + 1));
+}
 
 describe.each(
   DATASETS.flatMap((dataset) =>
@@ -167,8 +207,23 @@ describe.each(
     expect(deps.buildReviewDatasetContext).toHaveBeenCalledWith(targetId);
     expect(deps.callModel).toHaveBeenCalledTimes(1);
     const request = deps.callModel.mock.calls[0][0];
+    expect(request.targetId).toBe(targetId);
     expect(request.reviewIds).toEqual(reviewIds);
-    expect(request.input).toContain(JSON.stringify(question));
+    // Every review reaches the model with all of its projected fields, unchanged and in order.
+    // Built from the controlled dataset, not from the request, so blanking or dropping any field
+    // in the pipeline fails here.
+    expect(sentDataset(request)).toEqual(
+      context.reviews.map((review) => ({
+        id: review.id,
+        rating: review.rating,
+        date: review.reviewDate,
+        text: review.text,
+      })),
+    );
+    for (const review of context.reviews) {
+      expect(review.text.trim().length).toBeGreaterThan(0);
+    }
+    expect(sentQuestion(request)).toBe(question);
     // Evidence rule 4: say clearly when the reviews lack the information; do not fill the gap.
     expect(request.instructions).toMatch(
       /do not contain enough information to\s+answer it, say so clearly\. Do not guess or fill the gap\s+from general knowledge/,
@@ -183,8 +238,14 @@ describe.each(
   });
 
   it("returns an insufficient_evidence reply that states the limitation, with no citations", async () => {
-    await expect(answerQuestion(targetId, question, setup(context, admitsGap))).resolves.toEqual({
-      ...admitsGap,
+    const result = await answerQuestion(targetId, question, setup(context, admitsGap));
+
+    // Literal expectations, independent of the fake reply object: if the fixture drifted to a
+    // decline (or anything else), this would fail instead of echoing it back.
+    expect(result).toEqual({
+      outcome: "insufficient_evidence",
+      answer: ADMITS_GAP_ANSWER,
+      citedReviewIds: [],
       promptVersion: SYSTEM_PROMPT_VERSION,
       targetId,
     });
@@ -240,7 +301,9 @@ describe("S2-012 partial evidence", () => {
     };
 
     await expect(answerQuestion(targetId, question, setup(context, partial))).resolves.toEqual({
-      ...partial,
+      outcome: "answered",
+      answer: partial.answer,
+      citedReviewIds: [pizzaReviewId],
       promptVersion: SYSTEM_PROMPT_VERSION,
       targetId,
     });
