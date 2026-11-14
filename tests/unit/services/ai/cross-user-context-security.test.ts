@@ -11,12 +11,9 @@ import {
   BETA_PRIVATE_REVIEW_MARKER,
   crossUserAiContextFixture,
 } from "../../../fixtures/cross-user-ai-context.synthetic";
+import { createCrossUserSecurityStore } from "../../../helpers/cross-user-ai-context";
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
-import {
-  getReviewsForTarget,
-  type Review,
-  type ReviewStore,
-} from "@/services/reviews/review-service";
+import { getReviewsForTarget, type ReviewStore } from "@/services/reviews/review-service";
 
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
@@ -27,35 +24,6 @@ jest.mock("next/server", () => ({
 
 const { users, targets, reviews, missingTargetId, spoofedIdentityClaims } =
   crossUserAiContextFixture;
-
-function createSecurityStore() {
-  const owners = new Map([
-    [targets.targetA.id, targets.targetA.ownerId],
-    [targets.targetB.id, targets.targetB.ownerId],
-  ]);
-  const rows = new Map<string, Review[]>([
-    [targets.targetA.id, reviews.targetA],
-    [targets.targetB.id, reviews.targetB],
-  ]);
-  const ownershipChecks: Array<{ targetId: string; userId: string }> = [];
-  const reviewLookups: string[] = [];
-
-  const store: ReviewStore = {
-    async isTargetOwnedBy(targetId, userId) {
-      ownershipChecks.push({ targetId, userId });
-      return owners.get(targetId) === userId;
-    },
-    async insertReviews() {
-      throw new Error("This read-only security fixture must not insert reviews.");
-    },
-    async listReviews(targetId) {
-      reviewLookups.push(targetId);
-      return [...(rows.get(targetId) ?? [])];
-    },
-  };
-
-  return { store, ownershipChecks, reviewLookups };
-}
 
 function useForeignTargetRouteClient() {
   const calls: Array<[string, ...unknown[]]> = [];
@@ -105,7 +73,7 @@ describe("S2-016 cross-user AI-context security foundation", () => {
   ])(
     "%s can retrieve only their owned target's persisted reviews",
     async (_label, userId, targetId, marker) => {
-      const { store, ownershipChecks, reviewLookups } = createSecurityStore();
+      const { store, ownershipChecks, reviewLookups } = createCrossUserSecurityStore();
 
       const result = await getReviewsForTarget(store, userId, targetId);
 
@@ -118,7 +86,7 @@ describe("S2-016 cross-user AI-context security foundation", () => {
   );
 
   test("User B cannot retrieve User A's reviews by supplying Target A's ID", async () => {
-    const { store, ownershipChecks, reviewLookups } = createSecurityStore();
+    const { store, ownershipChecks, reviewLookups } = createCrossUserSecurityStore();
 
     await captureTargetDenial(store, users.userB.id, targets.targetA.id);
 
@@ -127,7 +95,7 @@ describe("S2-016 cross-user AI-context security foundation", () => {
   });
 
   test("a missing target and a foreign-owned target have indistinguishable denials", async () => {
-    const { store, reviewLookups } = createSecurityStore();
+    const { store, reviewLookups } = createCrossUserSecurityStore();
 
     const foreign = await captureTargetDenial(store, users.userB.id, targets.targetA.id);
     const missing = await captureTargetDenial(store, users.userB.id, missingTargetId);
@@ -165,7 +133,7 @@ describe("S2-016 cross-user AI-context security foundation", () => {
   });
 
   test("Target B lookup excludes Alpha text and metadata after a prior Target A lookup", async () => {
-    const { store, reviewLookups } = createSecurityStore();
+    const { store, reviewLookups } = createCrossUserSecurityStore();
 
     const priorTargetAResult = await getReviewsForTarget(store, users.userA.id, targets.targetA.id);
     const targetBResult = await getReviewsForTarget(store, users.userB.id, targets.targetB.id);

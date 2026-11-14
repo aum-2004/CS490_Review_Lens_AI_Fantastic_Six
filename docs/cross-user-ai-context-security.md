@@ -20,62 +20,108 @@ The tests currently prove that:
   `ALPHA_PRIVATE_REVIEW_MARKER` from both review text and metadata, including after an earlier
   Target A lookup.
 
-These tests supplement the existing route and PostgreSQL RLS tests. They do not prove full S2-016
-acceptance because this branch has no S2-010 context builder, S2-011 Q&A orchestrator, or model
-invocation boundary.
+These tests supplement the existing route and PostgreSQL RLS tests. They do not by themselves prove
+that the Q&A model request is isolated.
 
 The ReviewStore-based Phase 1 tests remain valid for the current production review-service
 boundary. Phase 2 must adapt the fixture and infrastructure mocks to S2-010's session-scoped,
 bounded Supabase query implementation; it must not replace the real context builder with the
 ReviewStore test double.
 
-## Required integration once S2-010 and S2-011 land
+## Dependency status for Phase 2
 
-Call the real S2-010 context builder while mocking only its underlying authentication and Supabase
-infrastructure and the permitted provider/model boundary. Do not mock the builder's authorization,
-ownership, or evidence-bounding behavior. Use Deep's S2-003 deterministic harness or an equivalent
-injected model adapter to capture the complete model request without making a provider call. Add
-integration tests with the synthetic fixture that verify all of the following:
+The branch normally merged `origin/main` at `ed686a2` before adding Phase 2 coverage. At that point:
 
-1. Mock a verified User B session, call `buildReviewDatasetContext` for Target B, and submit the
-   fixture's adversarial question through the real orchestration boundary. Assert that the returned
-   review IDs are exactly the Target B review IDs.
-2. Once S2-011 is available, inspect the complete outgoing model request, including the system
-   prompt, evidence, user question, message history, metadata, and any tool payloads. Assert that it
-   contains the authorized `BETA_PRIVATE_REVIEW_MARKER` evidence and never contains
-   `ALPHA_PRIVATE_REVIEW_MARKER`, a Target A review ID, or evidence or metadata retained from a
-   prior target. The adversarial question intentionally contains a user-supplied Target A
-   identifier; its presence in the user question is not by itself an unauthorized review-data leak.
-3. Configure the deterministic model response to echo every marker it receives. Assert that the
-   Q&A result still cannot contain `ALPHA_PRIVATE_REVIEW_MARKER`. This is an output check in
-   addition to, not a substitute for, inspecting model input.
-4. With the verified User B session, call the real builder for Target A and for the fixture's
-   missing target so the builder can perform its ownership check. Assert that both receive
-   indistinguishable denials, no unauthorized review lookup occurs, no successful review context is
-   returned, and no model invocation occurs.
-5. Repeat the Target A request with every fixture `spoofedIdentityClaims` field in the body or query.
-   Assert that the internally verified User B session remains authoritative and the model is not
-   invoked.
-6. Exercise consecutive users and targets through the real orchestration boundary and assert that
-   request two is built only from its newly verified session and authorized target, with no stale
-   evidence from request one. Coordinate the active-target state setup and cache-reset expectations
-   with Shawn's S2-019 work instead of implementing that state here.
+- S2-003 / PR #83 and S2-013 / PR #76 were merged and are exercised here.
+- S2-010 / PR #78 and S2-011 / PR #79 remained draft and unmerged.
+- S2-009 / PR #84 remained open and unmerged, so its production questions route was not copied or
+  recreated here.
+- S2-019 / issue #70 remained open. This branch tests request-to-request isolation but does not
+  implement unrelated active-target state management.
 
-## Shared interface expectations
+## Phase 2 coverage available on merged production code
 
-- S2-010's proposed public builder interface is
-  `buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext>`. The builder verifies
-  the session identity and target ownership internally before querying reviews. Its public interface
-  must not accept a user ID, authenticated identity, client-supplied review context, or ownership
-  claims.
-- Once S2-011 is available, its permitted model boundary should let the integration test capture the
-  complete outgoing request before any provider receives it. This document does not prescribe a
-  finalized S2-011 interface.
-- S2-003 should let tests inspect every model invocation and supply deterministic responses without
-  live API access. The captured request type should include all content and metadata sent to the
-  provider.
-- Any context cache must be request-scoped or keyed by both authenticated user and active target.
-  A target ID alone is not an adequate cross-user cache key.
+`tests/unit/services/ai/cross-user-ai-context-phase2.test.ts` adds seven deterministic cases while
+reusing the Phase 1 users, targets, reviews, markers, and adversarial question. The cases prove that:
 
-Full S2-016 acceptance remains pending until these model-input and orchestration tests run against
-the merged production boundaries.
+- User A / Target A and User B / Target B each pass through the production review authorization
+  service and real S2-013 request orchestration with exactly their persisted review IDs, ratings,
+  dates, text, target identity, and platform;
+- reviewer names, review URLs, source review IDs, source metadata, target source URLs, and persistence
+  timestamps do not enter the captured model request;
+- foreign and missing targets produce indistinguishable denials before review lookup, successful
+  context construction, or model invocation;
+- a Target A identifier supplied by the attacker inside User B's question remains question data and
+  is not mistaken for leaked persisted evidence;
+- consecutive User A / Target A, User B / Target B, and denied User B / Target A requests do not
+  reuse prior evidence;
+- S2-013's production `REVIEW_TARGET_MISMATCH` guard stops an injected foreign-target review before
+  the model boundary; and
+- Deep's `expectNoForeignData` assertion fails when synthetic Alpha evidence is deliberately
+  disguised as Target B evidence, proving the leakage regression check is meaningful.
+
+### Production modules exercised
+
+- `getReviewsForTarget` performs the currently merged ownership check before listing reviews.
+- `runGroundedQaRequest` invokes the context dependency, applies `toPromptContext`, constructs the
+  real S2-013 request, and calls the model boundary only after those steps succeed.
+- `buildQaModelRequest` and `buildSystemPrompt` enforce target matching, data minimization, prompt
+  structure, request budgeting, target identity, and platform labeling.
+
+### Test-controlled boundaries
+
+- `createCrossUserSecurityStore` is the shared in-memory `ReviewStore`; it records ownership checks
+  and review lookups instead of contacting Supabase.
+- `buildAvailableReviewContext` is an explicitly test-only adapter from the currently merged review
+  service to S2-013. It selects the synthetic target only after `getReviewsForTarget` authorizes the
+  verified test actor. It is not represented as S2-010 and must be removed from the full integration
+  test once #78 merges.
+- Deep's S2-003 `createFakeQaModel` records the complete provider-neutral request and returns a
+  deterministic reply. Its network guard removes provider/Supabase environment variables and fails
+  any attempted network access.
+- No live OpenAI, Supabase, or review-provider call occurs.
+
+## Remaining full integration after #78 and #79 merge
+
+Full S2-016 acceptance must call the real S2-010
+`buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext>`. That proposed builder
+verifies the session identity and target ownership internally before its bounded, session-scoped
+Supabase reviews query. The integration test must mock only `getAuthenticatedUser`, the Supabase
+infrastructure beneath the builder, and the permitted provider/model boundary; it must not replace
+the builder's security behavior.
+
+The final suite must then call the real S2-011 `answerQuestion()` with the real builder and capture
+the complete outgoing provider request, including system instructions, evidence, user question,
+message history, metadata, and any tool payloads. It must repeat the authorized, foreign/missing,
+adversarial, and consecutive-user/target scenarios above and assert:
+
+- no unauthorized reviews query occurs after a foreign or missing ownership denial;
+- no successful foreign context or model invocation occurs;
+- Alpha review text and IDs never enter User B's model request or validated answer;
+- the Target A identifier in the attacker's own question is not treated as a persisted-data leak;
+  and
+- an echoing controlled model cannot make a validated User B answer expose Alpha evidence.
+
+Once S2-009 / #84 is merged and reconciled with #78/#79, a route-level case must also verify this
+behavior through the actual questions endpoint. Any cache or retained conversation state must be
+request-scoped or keyed by both authenticated user and active target; a target ID alone is not an
+adequate cross-user key.
+
+## Verification
+
+Current local results after the `origin/main` merge:
+
+- Focused S2-016: 2 suites, 14 tests passed (7 Phase 1 + 7 Phase 2).
+- S2-003 Q&A harness: 8 suites, 137 tests passed.
+- Related S2-013/authentication/ownership/review-service tests: 6 suites, 111 tests passed.
+- Full Jest suite: 61 suites, 879 tests passed.
+- ESLint passed.
+- TypeScript typecheck passed.
+- Focused Prettier checks passed after formatting the new Phase 2 test.
+- Repository-wide `npm run format:check` reported only the existing generated
+  `supabase/.temp/linked-project.json`; that file was not modified.
+- The production build passed after rerunning with network access for Next.js to fetch the Inter
+  Google Font. The initial sandboxed attempt failed only at that external font download.
+
+Passing the available checks does not remove the #78/#79/#84 integration blockers or make S2-016
+ready for complete acceptance.
