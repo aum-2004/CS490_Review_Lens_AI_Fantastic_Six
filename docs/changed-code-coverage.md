@@ -42,17 +42,19 @@ the gate passes and says so.
 
 ### Edge cases
 
-| Situation                                                   | Behavior                                                                                                      |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Docs-only or tests-only change                              | Pass: "No coverable changed source lines"                                                                     |
-| Deleted file                                                | Ignored (no added lines)                                                                                      |
-| Renamed or moved file                                       | Only lines edited after the move count; a pure move adds no lines                                             |
-| New file no test loads                                      | Fails: it is in the report at 0% because `collectCoverageFrom` includes every source file                     |
-| New file containing only types/interfaces                   | Not gated: it emits no runtime code (detected with the TypeScript compiler)                                   |
-| Changed file missing from the coverage report               | **Error** (exit 2): the report is stale or from a partial `jest <path>` run                                   |
-| Missing, empty or malformed `coverage-final.json`           | **Error** (exit 2), never a silent pass                                                                       |
-| Base branch not fetched / shallow clone                     | **Error** (exit 2) with the fix (`git fetch origin main`)                                                     |
-| Code exercised only by Playwright or SQL (`tests/db`) tests | Not credited: those suites do not produce Jest coverage. Add a unit test, or request an exclusion (section 5) |
+| Situation                                                   | Behavior                                                                                                             |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Docs-only or tests-only change                              | Pass: "No coverable changed source lines"                                                                            |
+| Deleted file                                                | Ignored (no added lines)                                                                                             |
+| Renamed or moved file                                       | Only lines edited after the move count; a pure move adds no lines                                                    |
+| New file no test loads                                      | Fails: it is in the report at 0% because `collectCoverageFrom` includes every source file                            |
+| New file containing only types/interfaces                   | Not gated: it emits no runtime code (detected with the TypeScript compiler)                                          |
+| Changed file missing from the coverage report               | **Error** (exit 2): the report is stale or from a partial `jest <path>` run                                          |
+| Missing, empty or malformed `coverage-final.json`           | **Error** (exit 2), never a silent pass                                                                              |
+| Invalid numbers in the report (e.g. `1e309`, `-1`, `0.5`)   | **Error** (exit 2): every `s`/`f`/`b` count must be a finite, non-negative integer and every line a positive integer |
+| Changed runtime file whose coverage entry is empty          | **Error** (exit 2): unusable report. Only a type-only module may have an empty entry (it is not gated)               |
+| Base branch not fetched / shallow clone                     | **Error** (exit 2) with the fix (`git fetch origin main`)                                                            |
+| Code exercised only by Playwright or SQL (`tests/db`) tests | Not credited: those suites do not produce Jest coverage. Add a unit test, or request an exclusion (section 5)        |
 
 Exit codes: `0` pass, `1` coverage requirements not met, `2` the check could not run.
 
@@ -121,8 +123,8 @@ FAIL: changed-code coverage requirements are not met:
 - **"none of its N changed lines are executed"** means no test imports the file at all.
 - In CI the same table appears in the job's **Summary** tab (`$GITHUB_STEP_SUMMARY`), and the full
   text is in the `Changed-code coverage` step log.
-- **Exit 2** means the check could not run (no coverage file, partial report, base branch not
-  fetched). The message says what to run; this never counts as a pass.
+- **Exit 2** means the check could not run (no coverage file, partial or corrupt report, base
+  branch not fetched). The message says what to run; this never counts as a pass.
 
 ## 6. Requesting an exclusion
 

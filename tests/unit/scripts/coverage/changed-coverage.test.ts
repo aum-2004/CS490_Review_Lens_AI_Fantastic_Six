@@ -282,6 +282,45 @@ describe("parseCoverageJson", () => {
     expect(() => parseCoverageJson(json, [root], "test.json")).toThrow(message);
   });
 
+  it.each([
+    ["an infinite branch count", { ...entry, b: { "0": [1, Infinity] } }, /invalid b count "0"/],
+    ["a branch count that is not an array", { ...entry, b: { "0": 1 } }, /invalid b count "0"/],
+    ["a branch without a count per outcome", { ...entry, b: { "0": [1] } }, /every outcome/],
+    ["a negative function count", { ...entry, f: { "0": -1 } }, /invalid f count "0"/],
+    [
+      "a branch outcome on line 0",
+      {
+        ...entry,
+        branchMap: {
+          "0": { locations: [{ start: { line: 0, column: 0 }, end: { line: 0, column: 1 } }] },
+        },
+        b: { "0": [1] },
+      },
+      /outcome 0 has an invalid location/,
+    ],
+  ])("refuses %s as unusable", (_label, value, message) => {
+    // JSON.stringify writes Infinity as null; put it back as the overflowing literal 1e309.
+    const parse = () =>
+      parseCoverageJson(JSON.stringify({ "src/a.ts": value }).replace("null", "1e309"), [root], "t");
+    expect(parse).toThrow(ChangedCoverageError);
+    expect(parse).toThrow(message);
+  });
+
+  it("accepts the column -1 that Jest's V8 provider emits for some branches", () => {
+    const v8Branch = {
+      ...entry,
+      branchMap: {
+        "0": {
+          loc: { start: { line: 2, column: -1 }, end: { line: 2, column: 4 } },
+          locations: [{ start: { line: 2, column: -1 }, end: { line: 2, column: 4 } }],
+        },
+      },
+      b: { "0": [0] },
+    };
+    const coverage = parseCoverageJson(JSON.stringify({ "src/a.ts": v8Branch }), [root], "t");
+    expect(coverage.get("src/a.ts")?.branches).toEqual([{ line: 2, covered: false }]);
+  });
+
   it("reports a missing coverage file instead of passing", () => {
     expect(() => loadCoverageFile("/definitely/missing/coverage-final.json", "/repo")).toThrow(
       /Coverage file not found/,
@@ -466,6 +505,28 @@ describe("evaluateChangedCoverage", () => {
       { files: { "src/types/review.ts": "export type A = string;\nexport const LIMIT = 3;\n" } },
     );
     expect(result.passed).toBe(false);
+  });
+
+  it("errors when a changed runtime module has an empty coverage entry", () => {
+    expect(() =>
+      evaluate(
+        new Map([["src/lib/limit.ts", [1, 2]]]),
+        new Map([["src/lib/limit.ts", { lines: new Map(), branches: [] }]]),
+        { files: { "src/lib/limit.ts": "export const LIMIT = 3;\nexport const MIN = 1;\n" } },
+      ),
+    ).toThrow(/report is unusable.*emit runtime code.*src\/lib\/limit.ts/);
+  });
+
+  it("skips a type-only module whose coverage entry is empty", () => {
+    const result = evaluate(
+      new Map([["src/types/review.ts", range(1, 3)]]),
+      new Map([["src/types/review.ts", { lines: new Map(), branches: [] }]]),
+      { files: { "src/types/review.ts": "export interface Review {\n  id: string;\n}\n" } },
+    );
+    expect(result.passed).toBe(true);
+    expect(result.skipped).toEqual([
+      { file: "src/types/review.ts", reason: "type-only module (emits no runtime code)" },
+    ]);
   });
 
   it("skips changed lines the coverage report does not consider executable", () => {
@@ -767,6 +828,61 @@ describe("against a real git repository", () => {
       expect(code).toBe(EXIT_ERROR);
       expect(output.stderr).toContain("Coverage file not found");
       expect(output.stdout).toBe("");
+    });
+
+    // Raw JSON text, so values like 1e309 reach the gate exactly as a corrupt report would.
+    const statement = (line: string | number, count: string | number) =>
+      `{"statementMap":{"0":{"start":{"line":${line},"column":0},"end":{"line":${line},` +
+      `"column":1}}},"s":{"0":${count}}}`;
+
+    it.each([
+      ["an overflowing count (1e309 parses to Infinity)", statement(1, "1e309"), /invalid s count "0" \(Infinity\)/],
+      ["a negative count", statement(1, -1), /invalid s count "0" \(-1\)/],
+      ["a fractional count", statement(1, 0.5), /invalid s count "0" \(0.5\)/],
+      ["a statement on line 0", statement(0, 1), /malformed statement "0"/],
+      ["a negative line", statement(-3, 1), /malformed statement "0"/],
+      ["a fractional line", statement(1.5, 1), /malformed statement "0"/],
+      ["an overflowing line", statement("1e309", 1), /malformed statement "0"/],
+    ])("exits 2 for a report with %s", (_label, fileJson, message) => {
+      write("src/kept.ts", lines(5).replace("v2 = 2", "v2 = 22"));
+      write("coverage/coverage-final.json", `{${JSON.stringify(path.join(repo, "src/kept.ts"))}:${fileJson}}`);
+      const { output, io } = capture();
+
+      const code = runCli(["--base", "main"], {}, io, { cwd: repo, policy: testPolicy });
+
+      expect(code).toBe(EXIT_ERROR);
+      expect(output.stderr).toMatch(message);
+      expect(output.stdout).toBe("");
+    });
+
+    it("exits 2 when a changed runtime module has an empty coverage entry", () => {
+      write("src/kept.ts", lines(5).replace("v2 = 2", "v2 = 22"));
+      write(
+        "coverage/coverage-final.json",
+        JSON.stringify({ [path.join(repo, "src/kept.ts")]: { statementMap: {}, s: {} } }),
+      );
+      const { output, io } = capture();
+
+      const code = runCli(["--base", "main"], {}, io, { cwd: repo, policy: testPolicy });
+
+      expect(code).toBe(EXIT_ERROR);
+      expect(output.stderr).toContain("report is unusable");
+      expect(output.stderr).toContain("src/kept.ts");
+      expect(output.stdout).toBe("");
+    });
+
+    it("exits 0 when a changed type-only module has an empty coverage entry", () => {
+      write("src/types/review.ts", "export interface Review {\n  id: string;\n}\n");
+      write(
+        "coverage/coverage-final.json",
+        JSON.stringify({ [path.join(repo, "src/types/review.ts")]: { statementMap: {}, s: {} } }),
+      );
+      const { output, io } = capture();
+
+      const code = runCli(["--base", "main"], {}, io, { cwd: repo, policy: testPolicy });
+
+      expect(code).toBe(EXIT_PASS);
+      expect(output.stdout).toContain("src/types/review.ts (type-only module");
     });
 
     it("exits 2 for an unknown argument", () => {

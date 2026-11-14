@@ -241,12 +241,6 @@ export function collectChangedLines(options: {
 
 type IstanbulLocation = { start: { line: number }; end: { line: number } };
 
-type IstanbulFileCoverage = {
-  statementMap: Record<string, IstanbulLocation>;
-  s: Record<string, number>;
-  branchMap?: Record<string, { locations?: IstanbulLocation[]; loc?: IstanbulLocation }>;
-  b?: Record<string, number[]>;
-};
 
 export type FileLineCoverage = {
   /** Coverable line -> execution count (Istanbul line semantics: statement start lines). */
@@ -261,14 +255,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Istanbul execution counts are finite, non-negative integers. `1e309` parses to Infinity. */
+function isExecutionCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/** Istanbul line numbers are 1-based integers. */
+function isLineNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+// Only line numbers are validated: the gate never reads columns, and Jest's V8
+// provider legitimately emits column -1 for some branch locations.
 function isLocation(value: unknown): value is IstanbulLocation {
   return (
     isRecord(value) &&
     isRecord(value.start) &&
-    typeof value.start.line === "number" &&
+    isLineNumber(value.start.line) &&
     isRecord(value.end) &&
-    typeof value.end.line === "number"
+    isLineNumber(value.end.line)
   );
+}
+
+function describeValue(value: unknown): string {
+  return typeof value === "number" ? String(value) : JSON.stringify(value) ?? String(value);
 }
 
 function toRepoPath(rootDir: string, coveredFile: string): string {
@@ -310,13 +320,40 @@ export function parseCoverageJson(
         `Coverage entry "${key}" in ${sourceLabel} is malformed (missing statementMap or s).`,
       );
     }
-    const fileCoverage = value as IstanbulFileCoverage;
+    const unusable = (detail: string) =>
+      new ChangedCoverageError(
+        `Coverage entry "${key}" in ${sourceLabel} is unusable: ${detail}. Execution counts must ` +
+          `be finite, non-negative integers and line numbers positive integers. Re-run the ` +
+          `tests with coverage (\`npm run coverage:changed\`).`,
+      );
+    const checkCounts = (kind: string, counts: Record<string, unknown>) => {
+      for (const [id, count] of Object.entries(counts)) {
+        const values = Array.isArray(count) ? count : [count];
+        const bad = values.find((entry) => !isExecutionCount(entry));
+        if (bad !== undefined || (kind === "b" && !Array.isArray(count))) {
+          throw unusable(`invalid ${kind} count "${id}" (${describeValue(bad ?? count)})`);
+        }
+      }
+    };
+
+    checkCounts("s", value.s);
+    if (value.f !== undefined) {
+      if (!isRecord(value.f)) throw unusable("f is not an object");
+      checkCounts("f", value.f);
+    }
+    if (value.b !== undefined) {
+      if (!isRecord(value.b)) throw unusable("b is not an object");
+      checkCounts("b", value.b);
+    }
+
+    const counts = value.s as Record<string, number>;
     const lines = new Map<number, number>();
-    for (const [id, location] of Object.entries(fileCoverage.statementMap)) {
-      const count = fileCoverage.s[id];
-      if (!isLocation(location) || typeof count !== "number") {
+    for (const [id, location] of Object.entries(value.statementMap)) {
+      const count = counts[id];
+      if (!isLocation(location) || count === undefined) {
         throw new ChangedCoverageError(
-          `Coverage entry "${key}" in ${sourceLabel} has a malformed statement "${id}".`,
+          `Coverage entry "${key}" in ${sourceLabel} has a malformed statement "${id}" ` +
+            `(missing count, or a line number that is not a positive integer).`,
         );
       }
       const line = location.start.line;
@@ -324,14 +361,23 @@ export function parseCoverageJson(
     }
 
     const branches: FileLineCoverage["branches"] = [];
-    for (const [id, branch] of Object.entries(fileCoverage.branchMap ?? {})) {
-      const counts = fileCoverage.b?.[id];
-      const locations = branch.locations ?? [];
-      locations.forEach((location, index) => {
-        const loc = isLocation(location) ? location : branch.loc;
-        if (isLocation(loc) && Array.isArray(counts) && typeof counts[index] === "number") {
-          branches.push({ line: loc.start.line, covered: counts[index] > 0 });
+    const branchMap = value.branchMap ?? {};
+    if (!isRecord(branchMap)) throw unusable("branchMap is not an object");
+    const branchCounts = (value.b ?? {}) as Record<string, number[]>;
+    for (const [id, branch] of Object.entries(branchMap)) {
+      if (!isRecord(branch)) throw unusable(`malformed branch "${id}"`);
+      const locations = Array.isArray(branch.locations) ? branch.locations : [];
+      const outcomes = branchCounts[id] ?? [];
+      if (outcomes.length !== locations.length) {
+        throw unusable(`branch "${id}" has no count for every outcome`);
+      }
+      locations.forEach((location: unknown, index) => {
+        // V8 sometimes records an outcome without its own range; use the branch's.
+        const loc = location === undefined || location === null ? branch.loc : location;
+        if (!isLocation(loc)) {
+          throw unusable(`branch "${id}" outcome ${index} has an invalid location`);
         }
+        branches.push({ line: loc.start.line, covered: outcomes[index] > 0 });
       });
     }
 
@@ -451,6 +497,7 @@ export function evaluateChangedCoverage(options: {
   const files: FileResult[] = [];
   const skipped: SkippedFile[] = [];
   const missingFromCoverage: string[] = [];
+  const emptyRuntimeCoverage: string[] = [];
 
   for (const [file, lines] of [...changedLines.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     if (!policy.include.some((pattern) => matchesGlob(file, pattern))) continue;
@@ -469,6 +516,16 @@ export function evaluateChangedCoverage(options: {
     const fileCoverage = coverage.get(file);
     if (!fileCoverage) {
       missingFromCoverage.push(file);
+      continue;
+    }
+
+    if (fileCoverage.lines.size === 0) {
+      // An empty entry is only legitimate when the file has nothing to execute.
+      if (isTypeOnlyModule(readFile(file), file)) {
+        skipped.push({ file, reason: "type-only module (emits no runtime code)" });
+      } else {
+        emptyRuntimeCoverage.push(file);
+      }
       continue;
     }
 
@@ -503,6 +560,15 @@ export function evaluateChangedCoverage(options: {
       `These changed source files have no entry in the coverage report: ` +
         `${missingFromCoverage.join(", ")}. The report is stale or was produced by a partial ` +
         `test run. Re-run the full suite with coverage (\`npm run coverage:changed\`).`,
+    );
+  }
+
+  if (emptyRuntimeCoverage.length > 0) {
+    throw new ChangedCoverageError(
+      `The coverage report is unusable: these changed source files emit runtime code but their ` +
+        `coverage entries record no statements: ${emptyRuntimeCoverage.join(", ")}. Coverage ` +
+        `instrumentation failed or the report was edited. Re-run the full suite with coverage ` +
+        `(\`npm run coverage:changed\`).`,
     );
   }
 
