@@ -5,7 +5,7 @@
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 
-import { getQaDataset } from "../../fixtures/qa/datasets";
+import { getQaDataset, type QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
   errorMatches,
   expectAnswerHasNoForeignData,
@@ -139,14 +139,63 @@ describe("request-side assertions", () => {
     );
   });
 
-  it("expectNoReviewerIdentity rejects a request carrying a reviewer name", async () => {
+  it.each([
+    ["ordinary reviewer name", targetA.reviews[0].reviewerName ?? "", "Reviewer name"],
+    ["ordinary review URL", "https://reviews.example.test/ordinary-review", "Review URL"],
+  ])("expectNoReviewerIdentity rejects an %s", async (_label, prohibitedValue, message) => {
     const request = await validRequest();
-    const name = targetA.reviews[0].reviewerName ?? "";
+    const dataset: QaFixtureDataset = {
+      ...targetA,
+      reviews: targetA.reviews.map((review, index) =>
+        index === 0
+          ? {
+              ...review,
+              reviewerName: message === "Reviewer name" ? prohibitedValue : review.reviewerName,
+              reviewUrl: message === "Review URL" ? prohibitedValue : review.reviewUrl,
+            }
+          : review,
+      ),
+    };
     rejects(
-      () => expectNoReviewerIdentity({ ...request, input: `${request.input}\n${name}` }, targetA),
-      /Reviewer name/,
+      () =>
+        expectNoReviewerIdentity(
+          { ...request, input: `${request.input}\n${prohibitedValue}` },
+          dataset,
+        ),
+      new RegExp(message),
     );
   });
+
+  it.each([
+    ["quoted reviewer name in instructions", 'Reviewer "Quoted"', null, "instructions"],
+    ["backslash reviewer name in input", "Reviewer \\Backslash", null, "input"],
+    [
+      "quote-and-backslash review URL in promptVersion",
+      null,
+      'https://reviews.example.test/quoted"/backslash\\review',
+      "promptVersion",
+    ],
+  ] as const)(
+    "expectNoReviewerIdentity rejects a JSON-escaped %s without a property name",
+    async (_label, reviewerName, reviewUrl, field) => {
+      const request = await validRequest();
+      const prohibitedValue = reviewerName ?? reviewUrl ?? "";
+      const dataset: QaFixtureDataset = {
+        ...targetA,
+        reviews: targetA.reviews.map((review, index) =>
+          index === 0 ? { ...review, reviewerName, reviewUrl } : review,
+        ),
+      };
+      const contaminatedRequest: QaModelRequest = {
+        ...request,
+        [field]: `${request[field]}\n${prohibitedValue}`,
+      };
+
+      expect(() => expectNoReviewerIdentity(contaminatedRequest, dataset)).toThrow(
+        QaHarnessAssertionError,
+      );
+    },
+  );
 
   it.each([
     ["a foreign marker", userBPrivate.markers[0]],

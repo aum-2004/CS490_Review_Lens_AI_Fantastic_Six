@@ -157,6 +157,10 @@ The route-level cases prove that:
   or metadata-only marker is appended without its field name to model instructions, when the
   metadata marker is placed in another application-controlled request field, and in the reverse
   User B → User A direction;
+- the reviewer-identity oracle checks both raw and JSON-escaped forms throughout the complete
+  request. Three negative cases prove quoted reviewer names, backslash reviewer names, and a
+  quote/backslash review URL are detected without relying on identity field names; temporarily
+  restoring the prior raw-only comparison makes exactly those three cases fail;
 - malformed model output fails closed as `INVALID_MODEL_RESPONSE`; and
 - a model reply carrying a foreign citation fails closed as `UNGROUNDED_ANSWER`, without exposing
   the unvalidated controlled reply through the route response.
@@ -201,16 +205,16 @@ current production request contract contains no message history or tool payloads
 
 ## Verification
 
-Current local results for the final request-assertion correction:
+Current local results for the final request-assertion corrections:
 
 - Focused S2-016: 3 suites, 38 tests passed (all previously reviewed 31 cases preserved plus seven
   metadata-exclusivity and mutation-sensitive cases).
-- Focused S2-016 plus the shared S2-003 assertion suite: 4 suites, 56 tests passed.
+- Focused S2-016 plus the shared S2-003 assertion suite: 4 suites, 60 tests passed.
 - Relevant context-builder, answer, and quota suites: 3 suites, 76 tests passed. The unchanged
   S2-009 route, quota, API client, and component set had previously passed 4 suites / 108 tests;
   every route test was also included in the current full run.
 - Next route type generation and strict TypeScript checking passed.
-- Full Jest with coverage: 82 suites, 1,503 tests passed; no tests or suites skipped.
+- Full Jest with coverage: 82 suites, 1,507 tests passed; no tests or suites skipped.
 - A temporary no-commit merge with S2-006 / PR #80 passed route type generation and TypeScript
   checking. Jest discovery from the hidden nested Windows worktree found no tests, so behavior was
   verified by the standalone 24-test run instead; the temporary worktree was removed.

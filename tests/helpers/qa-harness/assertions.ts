@@ -203,14 +203,19 @@ function serializedRequest(request: QaModelRequest, excludeQuestion: boolean): s
     .join("\n");
 }
 
+function includesRawOrJsonEscaped(haystack: string, needle: string): boolean {
+  const jsonEscaped = JSON.stringify(needle).slice(1, -1);
+  return haystack.includes(needle) || haystack.includes(jsonEscaped);
+}
+
 /** S2-013 data minimisation: reviewer names and source URLs never reach the model. */
 export function expectNoReviewerIdentity(request: QaModelRequest, dataset: QaFixtureDataset): void {
   const haystack = serializedRequest(request, false);
   for (const review of dataset.reviews) {
-    if (review.reviewerName && haystack.includes(review.reviewerName)) {
+    if (review.reviewerName && includesRawOrJsonEscaped(haystack, review.reviewerName)) {
       fail(`Reviewer name for review ${review.id} was sent to the model.`);
     }
-    if (review.reviewUrl && haystack.includes(review.reviewUrl)) {
+    if (review.reviewUrl && includesRawOrJsonEscaped(haystack, review.reviewUrl)) {
       fail(`Review URL for review ${review.id} was sent to the model.`);
     }
   }
@@ -255,7 +260,7 @@ function findLeaks(haystack: string, foreign: readonly QaFixtureDataset[]): stri
   const leaks: string[] = [];
   for (const dataset of foreign) {
     for (const needle of forbiddenNeedles(dataset)) {
-      if (haystack.includes(needle) || haystack.includes(JSON.stringify(needle).slice(1, -1))) {
+      if (includesRawOrJsonEscaped(haystack, needle)) {
         leaks.push(`${dataset.key}: ${JSON.stringify(needle)}`);
       }
     }
