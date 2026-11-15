@@ -291,3 +291,30 @@ it("aborts a pending request when the verified account changes", async () => {
   submit("New account question");
   expect(await screen.findByText(answer.answer)).toBeInTheDocument();
 });
+
+it("ignores a late success after hide/show without a replacement submission", async () => {
+  let resolve!: (value: ReviewAnswer) => void;
+  ask.mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  const view = (mode: "visible" | "hidden") => (
+    <Activity mode={mode}>
+      <ReviewQuestions {...props} />
+    </Activity>
+  );
+  const { rerender } = render(view("visible"));
+  submit("Question from the old visit");
+  await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  const signal = ask.mock.calls[0][2];
+  rerender(view("hidden"));
+  expect(signal.aborted).toBe(true);
+  rerender(view("visible"));
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+  await act(async () => resolve({ ...answer, answer: "STALE_SUCCESS_WITHOUT_RESUBMISSION" }));
+  expect(screen.queryByText("STALE_SUCCESS_WITHOUT_RESUBMISSION")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Question from the old visit/)).not.toBeInTheDocument();
+  expect(screen.getByLabelText(/Question/)).toHaveValue("");
+  expect(ask).toHaveBeenCalledTimes(1);
+});

@@ -151,3 +151,38 @@ The recovered source corrects the earlier statement that direct-session recovery
 was unavailable. No policy exception is claimed or needed for the recovery approach;
 the reviewer should verify this revised evidence against section 6. Functional
 feedback reported no blocking defect. Independent security review is still required.
+
+## Security-review follow-up to 250c6376
+
+The reviewer identified two missing regression assertions, without identifying a
+blocking functional defect. Added the exact sequence submit -> Activity hide ->
+show -> no replacement submission -> old promise resolves. It asserts that the
+stale answer/question never appears and only the original request was made.
+Deleting the production stale-success guard now makes this test fail; sources
+were restored after the challenge.
+
+The provider-boundary sequence now uses a different unmistakable question for
+each A -> B -> A -> other-account step. Every complete counting and generation
+body must carry the current question and exclude every earlier question. The
+overlapping-user sequence also excludes prior questions. Injecting the first
+question into later instructions now fails the regression test. These checks do
+not merely inspect the final answer or only the evidence section.
+
+The original transcript objection referred to older head 250c6376. The direct
+primary-session recovery was published at b5b4db0c and is extended with the latest
+review and corrections here. UTF-8 byte round-trip is valid, no U+FFFD replacement
+characters are present, and original user/assistant message sections show no
+checked mojibake sequences. Original Unicode is preserved from the source rather
+than replaced with question marks. Historical captured terminal output is retained
+as it actually appeared; legitimate question punctuation is not blindly rewritten.
+
+This follow-up changes tests and documentation only. Production behavior remains
+unchanged. Existing build/browser results apply to the same production sources;
+current-head CI and reviewer reconfirmation remain required after publication.
+
+Follow-up verification: 83 Jest suites / 1,518 tests passed, zero skips. The two
+changed suites passed all 23 cases. Removing the stale-success guard caused
+exactly the new case to fail (1 failed / 19 passed); injecting an earlier question
+caused the provider-isolation sequence to fail (1 failed / 2 passed). Both source
+faults were restored. Explicit TypeScript, focused ESLint, formatting and whitespace
+checks passed. This is a new full Jest run, not a new full coverage/browser run.

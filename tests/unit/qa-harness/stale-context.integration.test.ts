@@ -8,6 +8,7 @@ import {
   createFakeOpenAiFetch,
   FAKE_OPENAI_ENV,
   realQaPipeline,
+  extractQuestion,
   setupQaTestHarness,
 } from "../../helpers/qa-harness";
 
@@ -30,7 +31,11 @@ beforeEach(() => {
   delay = undefined;
 });
 
-function assertLastBodies(active: typeof a) {
+function assertLastBodies(
+  active: typeof a,
+  question: string,
+  earlierQuestions: readonly string[] = [],
+) {
   const count = provider.countCalls().at(-1)!.body;
   const generation = provider.generationCalls().at(-1)!.body;
   expect(count).toEqual({
@@ -39,6 +44,10 @@ function assertLastBodies(active: typeof a) {
     input: generation.input,
     text: generation.text,
   });
+  for (const body of [count, generation]) {
+    expect(extractQuestion(String(body.input))).toBe(question);
+    for (const earlier of earlierQuestions) expect(JSON.stringify(body)).not.toContain(earlier);
+  }
   const rows = JSON.parse(String(generation.input).split("\n")[1]);
   expect(rows).toEqual(
     active.reviews.map((r) => ({ id: r.id, text: r.text, rating: r.rating, date: r.reviewDate })),
@@ -55,13 +64,19 @@ function assertLastBodies(active: typeof a) {
 }
 
 it("uses fresh active-target evidence on A -> B -> A and then a different authenticated account", async () => {
-  for (const dataset of [a, b, a]) {
-    expect((await qa().ask(dataset.target.id, "Summarize these reviews.")).ok).toBe(true);
-    assertLastBodies(dataset);
+  const steps = [
+    [a, "S2_019_A_FIRST: What do reviewers say about battery life?"],
+    [b, "S2_019_B_SECOND: What do reviewers say about customer service?"],
+    [a, "S2_019_A_RETURN: Which battery details are mentioned?"],
+    [privateB, "S2_019_OTHER_ACCOUNT: Summarize this account's saved reviews."],
+  ] as const;
+  const earlier: string[] = [];
+  for (const [dataset, question] of steps) {
+    if (dataset === privateB) qa().setActor(QA_USERS.userB);
+    expect((await qa().ask(dataset.target.id, question)).ok).toBe(true);
+    assertLastBodies(dataset, question, earlier);
+    earlier.push(question);
   }
-  qa().setActor(QA_USERS.userB);
-  expect((await qa().ask(privateB.target.id, "Summarize these reviews.")).ok).toBe(true);
-  assertLastBodies(privateB);
 });
 
 it("isolates overlapping requests that complete in the opposite order across users", async () => {
@@ -84,11 +99,11 @@ it("isolates overlapping requests that complete in the opposite order across use
   qa().setActor(QA_USERS.userB);
   const current = await qa().ask(privateB.target.id, "Current question");
   expect(current.ok).toBe(true);
-  assertLastBodies(privateB);
+  assertLastBodies(privateB, "Current question", ["Old question"]);
   release();
   expect((await old).ok).toBe(true);
   expect((await qa().ask(privateB.target.id, "Next question")).ok).toBe(true);
-  assertLastBodies(privateB);
+  assertLastBodies(privateB, "Next question", ["Old question", "Current question"]);
   expect(provider.generationCalls()).toHaveLength(3);
 });
 
