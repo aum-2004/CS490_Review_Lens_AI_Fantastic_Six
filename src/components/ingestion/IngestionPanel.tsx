@@ -117,8 +117,12 @@ export function IngestionPanel({
   const processing = summary?.state === "processing";
   const recovering = !summary || (processing && pollFailed);
   return (
-    <Card id="ingestion" className="space-y-4">
+    <Card id="ingestion" className="space-y-4" aria-label="Target ingestion">
       <h2 className="text-xl font-semibold">Ingestion</h2>
+      <p className="max-w-prose break-words text-sm text-muted-foreground">
+        Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
+        Maps
+      </p>
       {pending ? (
         <p role="status">{recovering ? "Loading ingestion status…" : "Starting ingestion..."}</p>
       ) : (

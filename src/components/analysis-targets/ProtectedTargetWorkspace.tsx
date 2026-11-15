@@ -8,6 +8,11 @@ import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { RetryTargetsButton } from "./RetryTargetsButton";
+import { TargetSwitcher } from "./TargetSwitcher";
+import {
+  listAnalysisTargets,
+  type AnalysisTargetListItem,
+} from "@/services/analysis-targets/list-analysis-targets";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requirePageUser } from "@/services/auth/access-control";
 import type { AnalysisTarget } from "@/services/analysis-targets/analysis-target-repository";
@@ -39,9 +44,18 @@ export async function ProtectedTargetWorkspace({
   let unavailable = false;
   let reviews: Review[] | null = null;
   let ingestion: IngestionSummary | null = null;
+  let targets: AnalysisTargetListItem[] | null = null;
   try {
     const client = await createSupabaseServerClient();
     target = await getOwnedTargetOrThrow(client, targetId, user.id);
+    try {
+      targets = await listAnalysisTargets(client, user.id);
+    } catch {
+      console.error("Workspace operation failed", {
+        operation: "switch-targets",
+        category: "LOAD_FAILED",
+      });
+    }
     try {
       ingestion = summarizeAttempt(await getLatestAttempt(client, user.id, target.id));
     } catch {
@@ -72,6 +86,16 @@ export async function ProtectedTargetWorkspace({
     <>
       <PageHeader
         title={target?.name ?? "Target workspace"}
+        description={target ? "Active analysis target" : undefined}
+        action={
+          target && (
+            <TargetSwitcher
+              key={target.id}
+              activeTarget={{ id: target.id, name: target.name, sourceUrl: target.sourceUrl }}
+              targets={targets?.map(({ id, name, sourceUrl }) => ({ id, name, sourceUrl })) ?? null}
+            />
+          )
+        }
         breadcrumbs={[
           { label: "My Targets", href: "/analysis-targets" },
           { label: target?.name ?? "Target workspace" },
