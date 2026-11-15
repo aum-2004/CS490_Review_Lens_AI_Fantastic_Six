@@ -15,6 +15,7 @@
 /playwright-report/
 /test-results/
 /blob-report/
+/local-eval-results/
 
 # next.js
 /.next/

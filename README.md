@@ -312,6 +312,20 @@ a member of its production error's code type, or if the reply payload or evidenc
 > what it accepts, when it refuses to call). They do not prove a real model would choose the
 > scripted outcome; that needs an approved live-model evaluation (S2-004/S2-014/S2-015).
 
+### Configured-model refusal evaluation (S2-014/S2-015)
+
+The separate local-only runner defaults to a recording fake transport and makes zero external
+requests:
+
+```bash
+npm run eval:configured-model
+```
+
+The exact 12-case matrix, 36-call/72-request guards, ignored artifacts, independent human
+assessment workflow, and explicitly **not yet authorized** paid command are documented in
+[`docs/s2-configured-model-evaluation-harness.md`](docs/s2-configured-model-evaluation-harness.md).
+Normal tests, builds, CI, and the web application never invoke this runner.
+
 ### Run database tests
 
 `npm run test:db` checks the real schema and Row Level Security policies, not a mock. It creates a
