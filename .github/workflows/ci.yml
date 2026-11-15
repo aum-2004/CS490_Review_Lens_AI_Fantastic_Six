@@ -39,6 +39,9 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
+      - name: Check migration versions
+        run: npm run check:migrations
+
       - name: Lint
         run: npm run lint
 
@@ -85,6 +88,11 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
 
       - name: Migrations and RLS tests
         run: npm run test:db
