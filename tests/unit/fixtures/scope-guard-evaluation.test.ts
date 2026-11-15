@@ -162,14 +162,19 @@ describe("scope-guard evaluation fixture", () => {
     }
   });
 
-  test.each(requiredExpectedCategories)(
-    "includes three distinct cases for %s",
-    (expectedCategory) => {
-      expect(cases.filter((item) => item.expectedCategory === expectedCategory)).toHaveLength(3);
-    },
-  );
+  test.each([
+    ["answer_from_active_reviews", 3],
+    ["insufficient_review_evidence", 3],
+    ["decline_unrelated_general_knowledge", 4],
+    ["decline_other_entity_or_product", 3],
+    ["decline_other_review_platform", 3],
+  ] as const)("includes the intended case count for %s", (expectedCategory, expectedCount) => {
+    expect(cases.filter((item) => item.expectedCategory === expectedCategory)).toHaveLength(
+      expectedCount,
+    );
+  });
 
-  test("keeps a compact, balanced fifteen-case baseline", () => {
-    expect(cases).toHaveLength(15);
+  test("keeps a compact sixteen-case baseline", () => {
+    expect(cases).toHaveLength(16);
   });
 });

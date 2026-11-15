@@ -171,6 +171,14 @@ export const scopeGuardEvaluationFixture = {
       explanation: "Programming help is outside review analysis for the active target.",
     },
     {
+      id: "sg-general-004",
+      question: "What are the best restaurants in New York?",
+      expectedCategory: "decline_unrelated_general_knowledge",
+      expectedReviewIds: [],
+      explanation:
+        "A general restaurant recommendation is outside analysis of the active target's reviews.",
+    },
+    {
       id: "sg-other-entity-001",
       question: "What do customers think about Restaurant B?",
       expectedCategory: "decline_other_entity_or_product",
