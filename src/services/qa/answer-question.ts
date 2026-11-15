@@ -29,15 +29,17 @@ export interface AnswerQuestionDependencies {
 /**
  * S2-011: answers a question about the active target from its reviews.
  *
- * Order: authorized review context (S2-010) → model request (S2-013) → model call → reply
- * validation. A failure at any step throws and nothing unvalidated is returned. Errors are
- * ReviewContextError / TargetNotFoundError (S2-010), QaPromptError (request, including
- * REQUEST_TOO_LARGE from the pre-generation budget check), QaBudgetError (invalid token count),
- * QaModelError (provider, including failed token-count calls), or QaResponseError (reply).
+ * Order: question validation → authorized review context (S2-010) → model request (S2-013) →
+ * request size check → model call → reply validation. A failure at any step throws and nothing
+ * unvalidated is returned. Errors are QaInputValidationError (question type or length, or
+ * serialized request size, at the service boundary), ReviewContextError / TargetNotFoundError
+ * (S2-010), QaPromptError (empty question, no or mismatched reviews; REQUEST_TOO_LARGE from the
+ * OpenAI adapter's token budget), QaBudgetError (invalid token count), QaModelError (provider,
+ * including failed token-count calls), or QaResponseError (reply).
  */
 export async function answerQuestion(
   targetId: unknown,
-  question: string,
+  question: unknown,
   { buildReviewDatasetContext, callModel }: AnswerQuestionDependencies,
 ): Promise<QaAnswer> {
   return runGroundedQaRequest(targetId, question, {

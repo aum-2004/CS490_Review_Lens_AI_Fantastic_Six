@@ -3,6 +3,9 @@
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
 import { buildInputTokenCountBody, buildOpenAiRequestBody } from "@/services/qa/openai-qa-client";
 import {
+  QA_MAX_QUESTION_CHARACTERS,
+  QA_MAX_REQUEST_BYTES,
+  QaInputValidationError,
   runGroundedQaRequest,
   toPromptContext,
   type QaReviewContextBuilder,
@@ -261,5 +264,109 @@ describe("runGroundedQaRequest", () => {
     expect(() =>
       assertCountableSize(buildInputTokenCountBody(buildOpenAiRequestBody(request, "gpt-6-luna"))),
     ).not.toThrow();
+  });
+});
+
+describe("service-boundary input validation (before the injected model call)", () => {
+  async function expectInputError(promise: Promise<unknown>, code: string): Promise<Error> {
+    const error = (await captureRejection(promise)) as Error & { code: string; detail: string };
+    expect(error).toBeInstanceOf(QaInputValidationError);
+    expect(error).toMatchObject({ name: "QaInputValidationError", code });
+    // detail is for logs: sizes and types only, never question or review text.
+    expect(error.detail).not.toContain("CONTENT_MARKER");
+    expect(error.message).not.toContain("CONTENT_MARKER");
+    expect(JSON.stringify(error)).not.toContain("CONTENT_MARKER");
+    return error;
+  }
+
+  it("uses the S2-009 question limit and a 128 KiB request limit", () => {
+    expect(QA_MAX_QUESTION_CHARACTERS).toBe(2_000);
+    expect(QA_MAX_REQUEST_BYTES).toBe(131_072);
+  });
+
+  it.each<[string, unknown]>([
+    ["undefined", undefined],
+    ["null", null],
+    ["a number", 42],
+    ["a boolean", true],
+    ["an object", { question: "CONTENT_MARKER" }],
+    ["an array", ["CONTENT_MARKER"]],
+  ])("rejects %s as QA_QUESTION_INVALID_TYPE before loading data", async (_label, question) => {
+    const { deps } = setup(defaultContext);
+
+    const error = await expectInputError(
+      runGroundedQaRequest(TARGET_ID, question, deps),
+      "QA_QUESTION_INVALID_TYPE",
+    );
+    expect(error.message).toBe("Enter a question about the reviews.");
+    expect(deps.buildReviewDatasetContext).not.toHaveBeenCalled();
+    expect(deps.invokeModel).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["140,000 characters", 140_000],
+    ["one over the limit", QA_MAX_QUESTION_CHARACTERS + 1],
+  ])("rejects a question of %s as QA_QUESTION_TOO_LONG before loading data", async (_l, n) => {
+    const { deps } = setup(defaultContext);
+    const question = ("CONTENT_MARKER " + "q".repeat(n)).slice(0, n);
+
+    const error = await expectInputError(
+      runGroundedQaRequest(TARGET_ID, question, deps),
+      "QA_QUESTION_TOO_LONG",
+    );
+    expect(error.message).toBe("Questions can be up to 2,000 characters.");
+    expect((error as QaInputValidationError).detail).toBe(
+      `Question is ${n} characters after trimming; the limit is 2000.`,
+    );
+    expect(deps.buildReviewDatasetContext).not.toHaveBeenCalled();
+    expect(deps.invokeModel).not.toHaveBeenCalled();
+  });
+
+  it("measures the question after trimming, like the S2-009 route", async () => {
+    const { deps } = setup(defaultContext);
+
+    await runGroundedQaRequest(TARGET_ID, `   ${"q".repeat(QA_MAX_QUESTION_CHARACTERS)}   `, deps);
+
+    expect(deps.invokeModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an oversized serialized request as QA_REQUEST_TOO_LARGE, with no model call", async () => {
+    // A builder that skips S2-010's evidence cap: 50 reviews of 3,000 characters is about 150 KB.
+    const oversized = makeContext(
+      Array.from({ length: 50 }, (_, i) => review(i, `CONTENT_MARKER ${"x".repeat(2_985)}`)),
+    );
+    const { deps } = setup(oversized);
+
+    const error = await expectInputError(
+      runGroundedQaRequest(TARGET_ID, "Any complaints?", deps),
+      "QA_REQUEST_TOO_LARGE",
+    );
+    expect((error as QaInputValidationError).detail).toMatch(
+      /^Serialized model request is \d+ bytes; the limit is 131072\.$/,
+    );
+    expect(deps.buildReviewDatasetContext).toHaveBeenCalledTimes(1);
+    expect(deps.invokeModel).not.toHaveBeenCalled();
+  });
+
+  it("allows a request exactly at the byte limit and rejects one byte over", async () => {
+    // Size of JSON.stringify(request) for a one-review dataset padded with `padding` ASCII chars,
+    // or undefined if the boundary rejected it.
+    const requestBytes = async (padding: number) => {
+      const { deps } = setup(makeContext([review(1, "x".repeat(padding))]));
+      try {
+        await runGroundedQaRequest(TARGET_ID, "Any complaints?", deps);
+      } catch (error) {
+        expect(error).toMatchObject({ code: "QA_REQUEST_TOO_LARGE" });
+        return undefined;
+      }
+      return Buffer.byteLength(JSON.stringify(deps.invokeModel.mock.calls[0][0]), "utf8");
+    };
+    const base = (await requestBytes(0))!;
+    // Review text appears once in the serialized request, so each ASCII character adds one byte.
+    expect((await requestBytes(1_000))! - base).toBe(1_000);
+    const exactFit = QA_MAX_REQUEST_BYTES - base;
+
+    expect(await requestBytes(exactFit)).toBe(QA_MAX_REQUEST_BYTES);
+    expect(await requestBytes(exactFit + 1)).toBeUndefined();
   });
 });

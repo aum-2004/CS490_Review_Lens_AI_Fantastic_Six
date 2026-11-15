@@ -67,6 +67,8 @@ export async function askReviewQuestion(
         "We couldn't load the saved reviews for this question. Please try again.",
       REQUEST_TOO_LARGE:
         "This question is too long to analyze with these reviews. Try a shorter question.",
+      QA_REQUEST_TOO_LARGE:
+        "This question is too long to analyze with these reviews. Try a shorter question.",
       QA_DISABLED: "Review Q&A is temporarily unavailable. Please try again later.",
       QA_DAILY_LIMIT:
         "You've reached the limit of five questions in 24 hours. Please try again later.",

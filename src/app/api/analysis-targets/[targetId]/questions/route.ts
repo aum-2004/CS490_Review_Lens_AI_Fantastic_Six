@@ -16,6 +16,7 @@ import { reserveQuestionQuota, QuestionQuotaError } from "@/services/qa/question
 import { QaPromptError } from "@/services/qa/system-prompt";
 import { QaBudgetError } from "@/services/qa/token-budget";
 import { QaResponseError } from "@/services/qa/qa-response";
+import { QaInputValidationError } from "@/services/qa/qa-request";
 import {
   reviewQuestionSchema,
   QUESTION_REQUIRED_MESSAGE,
@@ -78,6 +79,16 @@ export async function POST(
   } catch (error) {
     logFailure("ask-question", error);
     if (error instanceof TargetNotFoundError) return targetNotFoundResponse();
+    if (error instanceof QaInputValidationError) {
+      if (error.code === "QA_REQUEST_TOO_LARGE")
+        return errorResponse(413, error.code, error.message);
+      return errorResponse(400, "INVALID_QUESTION", error.message, {
+        question:
+          error.code === "QA_QUESTION_TOO_LONG"
+            ? QUESTION_LENGTH_MESSAGE
+            : QUESTION_REQUIRED_MESSAGE,
+      });
+    }
     if (error instanceof QuestionQuotaError) {
       const response = errorResponse(
         error.code === "QA_DAILY_LIMIT" ? 429 : 503,

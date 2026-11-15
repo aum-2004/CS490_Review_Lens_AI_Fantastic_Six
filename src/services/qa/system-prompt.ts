@@ -58,10 +58,11 @@ export function resolveDeclineOutcome(applicable: Iterable<QaDeclineOutcome>): Q
 /**
  * Request-size budget. QA_MAX_REQUEST_TOKENS is the single configurable cap on one model request:
  * system prompt + review evidence + question + structured-output schema + provider overhead +
- * reserved output must fit inside it. S2-010's 100-review / 32 KiB evidence limit is one part of
- * this budget and is enforced there first. The full budget is enforced with model-compatible
- * token counting immediately before the provider call (`qa/token-budget.ts`), because the exact
- * count depends on the configured model. These are application budgets for cost and latency, not
+ * reserved output must fit inside it. `buildQaModelRequest` does not enforce it. S2-010's
+ * 100-review / 32 KiB evidence limit and the service boundary's question-length and 128 KiB
+ * serialized-request limits (`qa/qa-request.ts`) run first. The token budget itself is enforced by
+ * the OpenAI adapter with OpenAI's token count immediately before generation
+ * (`qa/token-budget.ts`), because the exact count depends on the configured model. These are application budgets for cost and latency, not
  * the model's context window.
  */
 export const QA_MAX_REQUEST_TOKENS = 16_000;

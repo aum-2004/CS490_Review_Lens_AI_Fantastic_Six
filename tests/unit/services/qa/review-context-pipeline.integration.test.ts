@@ -8,10 +8,17 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
+import * as qaRequest from "@/services/qa/qa-request";
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
+// Delegate to the real pipeline by default; allow injecting service failures only for
+// the route's error-contract tests (Next's SWC exports cannot be spied on directly).
+jest.mock("@/services/qa/qa-request", () => {
+  const actual = jest.requireActual("@/services/qa/qa-request");
+  return { ...actual, runGroundedQaRequest: jest.fn(actual.runGroundedQaRequest) };
+});
 jest.mock("next/server", () => ({
   ...jest.requireActual("next/server"),
   connection: jest.fn().mockResolvedValue(undefined),
@@ -183,7 +190,12 @@ function setup() {
     },
   };
 }
-beforeEach(() => jest.resetAllMocks());
+beforeEach(() => {
+  jest.resetAllMocks();
+  jest
+    .mocked(qaRequest.runGroundedQaRequest)
+    .mockImplementation(jest.requireActual("@/services/qa/qa-request").runGroundedQaRequest);
+});
 
 describe("production questions route with actual context, orchestration and provider adapter", () => {
   const originalFetch = global.fetch;
@@ -221,6 +233,39 @@ describe("production questions route with actual context, orchestration and prov
     global.fetch = fixture.fetcher as typeof fetch;
     return fixture;
   }
+
+  it.each([
+    ["QA_REQUEST_TOO_LARGE", 413, "QA_REQUEST_TOO_LARGE", undefined],
+    ["QA_QUESTION_TOO_LONG", 400, "INVALID_QUESTION", "Questions can be up to 2,000 characters."],
+    [
+      "QA_QUESTION_INVALID_TYPE",
+      400,
+      "INVALID_QUESTION",
+      "Enter a question about this target's reviews.",
+    ],
+  ] as const)(
+    "maps service validation %s without consuming quota or calling the provider",
+    async (code, status, responseCode, fieldMessage) => {
+      const { fetcher, quotaReads } = fixture();
+      jest
+        .mocked(qaRequest.runGroundedQaRequest)
+        .mockRejectedValueOnce(
+          new qaRequest.QaInputValidationError(code, "PRIVATE_VALIDATION_DETAIL"),
+        );
+      const response = await post();
+      const payload = await response.json();
+      expect(response.status).toBe(status);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(payload.error.code).toBe(responseCode);
+      if (fieldMessage) expect(payload.error.fieldErrors).toEqual({ question: fieldMessage });
+      expect(JSON.stringify(payload)).not.toContain("PRIVATE_VALIDATION_DETAIL");
+      expect(JSON.stringify(jest.mocked(console.error).mock.calls)).not.toContain(
+        "PRIVATE_VALIDATION_DETAIL",
+      );
+      expect(quotaReads).toEqual([]);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns target-tagged answers and excludes previous-target and cross-user evidence", async () => {
     const { outgoing } = fixture();
@@ -607,10 +652,10 @@ describe("actual S2-010/S2-011 integration (required)", () => {
     },
   );
 
-  it("rejects the serialized request byte ceiling before any provider invocation", async () => {
+  it("rejects an oversized question at the merged service boundary before any provider invocation", async () => {
     const { deps, fetcher } = setup();
     await expect(answerQuestion(A, "Q ".repeat(80000), deps)).rejects.toMatchObject({
-      code: "REQUEST_TOO_LARGE",
+      code: "QA_QUESTION_TOO_LONG",
     });
     expect(fetcher).not.toHaveBeenCalled();
   });

@@ -1,38 +1,62 @@
-# S2-011 / S2-012 — Answers from Review Evidence
+# S2-011 — Answers from Review Evidence
 
-**Stories:** [#62](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/62) S2-011,
-[#63](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/63) S2-012 |
-**Rules:** S2-BR-008 through S2-BR-015 | **Builds on:** S2-013 (PR #76), S2-010 (PR #78)
+**Story:** [#62](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/62) S2-011 |
+**Rules:** S2-BR-008 through S2-BR-015 | **Builds on:** S2-013 (PR #76, merged), S2-010 (PR #78)
 
 ## Pipeline
 
 `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })`
 (`src/services/qa/answer-question.ts`):
 
-1. **Context (S2-010):** `buildReviewDatasetContext(targetId)` loads the signed-in owner's reviews
+1. **Question validation (service boundary):** the question must be a string of at most 2,000
+   characters after trimming, or `QaInputValidationError` is thrown. No data is loaded first.
+2. **Context (S2-010):** `buildReviewDatasetContext(targetId)` loads the signed-in owner's reviews
    for the active target, or throws.
-2. **Request (S2-013):** `buildQaModelRequest` builds the system instructions, the review dataset,
-   and the question, and checks the request-size budget, or throws `QaPromptError`.
-3. **Model call (S2-011):** `callModel(request)`. In production this is `createOpenAiQaModel()`;
-   tests pass a deterministic fake.
-4. **Reply validation (S2-011 / S2-012):** `parseQaModelReply` checks the reply, or throws
+3. **Request (S2-013):** `buildQaModelRequest` builds the system instructions, the review dataset,
+   and the question. It rejects an empty question, an empty dataset, and reviews from another
+   target (`QaPromptError`). It does **not** check the request size or token budget.
+4. **Request size (service boundary):** `JSON.stringify(request)` must be at most 128 KiB, or
+   `QaInputValidationError` is thrown.
+5. **Model call (S2-011):** `callModel(request)`. In production this is `createOpenAiQaModel()`,
+   which enforces the token budget before generating; tests pass a deterministic fake.
+6. **Reply validation (S2-011):** `parseQaModelReply` checks the reply, or throws
    `QaResponseError`.
 
-A failure at any step throws, and nothing unvalidated is returned. Steps 1 and 2 run before any
-model call.
+A failure at any step throws, and nothing unvalidated is returned. Steps 1–4 run before the
+injected model caller.
 
 **Integration entry point.** The Q&A route calls `answerQuestion()`. It is built on
-`runGroundedQaRequest()` (`qa-request.ts`, S2-013), which runs steps 1–3 and stops before the model
-call if the context or request builder throws. Do not call `runGroundedQaRequest()` directly from a
-route: it does not validate the reply.
+`runGroundedQaRequest()` (`qa-request.ts`), the shared service boundary, which runs steps 1–5 and
+stops before the model call if any earlier step throws. Do not call `runGroundedQaRequest()`
+directly from a route: it does not validate the reply.
 
-| Error                                       | From          | Meaning                                                                    |
-| ------------------------------------------- | ------------- | -------------------------------------------------------------------------- |
-| `ReviewContextError`, `TargetNotFoundError` | S2-010        | Not signed in, foreign or missing target, no data                          |
-| `QaPromptError`                             | S2-013        | Empty question, mismatched data; `REQUEST_TOO_LARGE` from the budget check |
-| `QaBudgetError`                             | Budget check  | OpenAI token-count response was invalid (fails closed)                     |
-| `QaModelError`                              | OpenAI client | Disabled, not configured, provider failure                                 |
-| `QaResponseError`                           | Validation    | Malformed or ungrounded reply                                              |
+### Where each limit is enforced
+
+| Limit                                                  | Enforced in                                         | When                         | Error                                               |
+| ------------------------------------------------------ | --------------------------------------------------- | ---------------------------- | --------------------------------------------------- |
+| Question is a string                                   | Service boundary (`runGroundedQaRequest`)           | Before the context is loaded | `QaInputValidationError` `QA_QUESTION_INVALID_TYPE` |
+| Question ≤ 2,000 characters after trimming             | Service boundary (same limit as the S2-009 route)   | Before the context is loaded | `QaInputValidationError` `QA_QUESTION_TOO_LONG`     |
+| Question not blank                                     | `buildQaModelRequest` (S2-013)                      | While building the request   | `QaPromptError` `EMPTY_QUESTION`                    |
+| Evidence ≤ 100 reviews and 32 KiB                      | `buildReviewDatasetContext` (S2-010)                | While loading the context    | `ReviewContextError` `REVIEW_CONTEXT_TOO_LARGE`     |
+| Serialized request ≤ 128 KiB (`QA_MAX_REQUEST_BYTES`)  | Service boundary                                    | After the request is built   | `QaInputValidationError` `QA_REQUEST_TOO_LARGE`     |
+| Serialized count body ≤ 128 KiB                        | OpenAI adapter (`token-budget.ts`)                  | Before any network call      | `QaPromptError` `REQUEST_TOO_LARGE`                 |
+| Input ≤ 14,500 tokens (16,000 − 1,500 reserved output) | OpenAI adapter, using OpenAI's `input_tokens` count | Before the generation call   | `QaPromptError` `REQUEST_TOO_LARGE`                 |
+| Token count is valid                                   | OpenAI adapter                                      | Before the generation call   | `QaBudgetError` `BUDGET_CHECK_FAILED`               |
+| Output ≤ 1,500 tokens                                  | OpenAI (`max_output_tokens`)                        | During generation            | `QaModelError` `RESPONSE_INCOMPLETE`                |
+| Provider response ≤ 256 KiB                            | OpenAI adapter                                      | While reading the response   | `QaModelError` `MODEL_FAILED`                       |
+
+The service-boundary checks apply to every caller (the route, the S2-003 harness, scripts) and to
+any injected model caller, including test fakes. Token counting needs the configured model and
+OpenAI's endpoint, so it stays in the adapter.
+
+| Error                                       | From             | Meaning                                                                              |
+| ------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `QaInputValidationError`                    | Service boundary | Question not a string or too long; serialized request too large                      |
+| `ReviewContextError`, `TargetNotFoundError` | S2-010           | Not signed in, foreign or missing target, no data                                    |
+| `QaPromptError`                             | S2-013 / adapter | Empty question, mismatched data; `REQUEST_TOO_LARGE` from the adapter's token budget |
+| `QaBudgetError`                             | Budget check     | OpenAI token-count response was invalid (fails closed)                               |
+| `QaModelError`                              | OpenAI client    | Disabled, not configured, provider failure                                           |
+| `QaResponseError`                           | Validation       | Malformed or ungrounded reply                                                        |
 
 Every error message is user-safe. None includes review text, model output, provider bodies, or
 the API key.
@@ -73,20 +97,11 @@ confirm that the cited review supports the claim. For example, an invented parki
 that cites a food review passes. A test documents this. Semantic support is measured by the
 S2-004 evaluation set, which should include cases where the citation does not support the answer.
 
-## S2-012: insufficient evidence
+## Insufficient evidence (S2-012)
 
-The prompt (S2-013 evidence rules 4–5) tells the model to separate what the reviews support from
-what they do not, and to return `insufficient_evidence` instead of guessing. The tests use a
-controlled dataset with food and service reviews only, and the issue's question: "Do customers
-think the parking lot is safe at night?". They check that:
-
-- the dataset sent to the model contains no parking evidence;
-- an `insufficient_evidence` reply passes through with its limitation stated;
-- an `answered` reply with no supporting reviews is rejected as `UNGROUNDED_ANSWER`.
-
-These tests check the pipeline with a fake model, not live model judgment. Whether the configured
-model actually returns `insufficient_evidence` for this question is measured with the S2-003
-harness and the S2-004 evaluation set.
+S2-012 is tested in its own pull request (`docs/s2-012-insufficient-evidence.md`). S2-011 provides
+what it relies on: an `insufficient_evidence` reply must have no citations, and an uncited
+`answered` reply is rejected as `UNGROUNDED_ANSWER`.
 
 ## OpenAI client (`openai-qa-client.ts`)
 
@@ -142,17 +157,19 @@ passes the size ceiling.
 
 **Limitations**
 
-- **Not yet verified live.** These fields were checked against the docs: the count body omits
-  `max_output_tokens` and `store`, because they don't affect input size and aren't documented for
-  that endpoint. Follow-up review confirmed top-level `text.format` in the official
-  [count API reference](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count).
-  Counting still fails closed on rejection. The smoke test must confirm that the endpoint
-  accepts this body and that `input_tokens` matches the generation response's `usage.input_tokens`.
+- **Not yet verified live.** The official
+  [count endpoint reference](https://developers.openai.com/api/reference/resources/responses/subresources/input_tokens/methods/count)
+  documents `text.format`, so the count body (`model`, `instructions`, `input`, `text`) uses only
+  documented fields. It omits `max_output_tokens` and `store`, which don't affect input size. The
+  smoke test must still confirm that `input_tokens` matches the generation response's
+  `usage.input_tokens`.
 - **Billing and rate limits** of the count endpoint were not stated in the docs read. Each
   question makes one extra API call.
 - **Reasoning models:** reasoning tokens count against `max_output_tokens`. A reply that runs out
   ends as `RESPONSE_INCOMPLETE`; it never exceeds the budget.
-- **Only the OpenAI adapter enforces the budget.** A fake `callModel` in tests does not.
+- **Only the OpenAI adapter enforces the token budget.** A fake `callModel` in tests does not. The
+  service-boundary limits (question type and length, 128 KiB serialized request) apply to every
+  caller, including fakes.
 
 ### Configuration
 
@@ -223,7 +240,8 @@ approves first.
 - **Q&A Route Handler and UI (S2-009):** the route must use `requireApiUser()`, apply the
   question length limit, pass S2-010's `buildReviewDatasetContext` and `createOpenAiQaModel()`
   into `answerQuestion`, and map each error class to a response.
-- **S2-010 wiring:** `buildReviewDatasetContext` is injected because PR #78 is not merged yet.
+- **S2-010 wiring:** PR #78 is merged. `buildReviewDatasetContext` stays injected, so the route
+  passes S2-010's real builder and tests pass synthetic ones.
 - **Live evaluation:** the S2-003 harness and the S2-004 evaluation set measure real model
   behavior. Q&A stays disabled (`QA_ENABLED`) until that run and team review.
 - **Model choice:** `OPENAI_QA_MODEL` is a team decision. Neel suggested `gpt-6-luna` for the

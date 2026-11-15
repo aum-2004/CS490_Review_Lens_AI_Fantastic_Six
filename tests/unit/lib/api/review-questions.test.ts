@@ -103,6 +103,7 @@ it.each([
   ["REVIEW_CONTEXT_TOO_LARGE", "exceed the supported Q&A size"],
   ["REVIEW_CONTEXT_UNAVAILABLE", "couldn't load the saved reviews"],
   ["REQUEST_TOO_LARGE", "Try a shorter question"],
+  ["QA_REQUEST_TOO_LARGE", "Try a shorter question"],
   ["QA_DISABLED", "temporarily unavailable"],
   ["QA_DAILY_LIMIT", "limit of five questions in 24 hours"],
   ["QA_QUOTA_UNAVAILABLE", "Question limits are temporarily unavailable"],

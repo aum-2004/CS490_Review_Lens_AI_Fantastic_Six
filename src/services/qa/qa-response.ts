@@ -5,7 +5,7 @@ import { z } from "zod";
 import { QA_OUTCOMES, type QaModelRequest, type QaOutcome } from "@/services/qa/system-prompt";
 
 /**
- * S2-011 / S2-012: validates the model's reply before anything reaches the user.
+ * S2-011: validates the model's reply before anything reaches the user.
  *
  * The prompt (S2-013) asks for `{"outcome", "answer", "citedReviewIds"}`. The model can still
  * return malformed JSON, unknown outcomes, or invented review IDs, so every reply is checked
