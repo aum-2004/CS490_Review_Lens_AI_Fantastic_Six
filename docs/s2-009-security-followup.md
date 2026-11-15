@@ -1,5 +1,10 @@
 # S2-009 security-review follow-up
 
+> Latest reconciliation: main `08a014b`, including #79, is now integrated in
+> `992b8f1`. See `s2-009-main-reconciliation.md` for current verification and the
+> authorized v4 prompt integration from `ad59a2c`. The earlier merge state and test totals below are
+> historical; the quota design and deployment requirements still apply.
+
 Author: melissa. Code fix: `b079828`. Main reconciliation: `2a622c9` against
 `origin/main` at `cd3e69b`. All work remains local; no push or hosted migration
 was performed. The earlier functional/security reviews were for `2a138d7` and do

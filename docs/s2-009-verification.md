@@ -1,5 +1,19 @@
 # S2-009 verification — 2026-11-13
 
+## Latest main reconciliation — 2026-11-14
+
+Main `08a014b`, including S2-011 #79, was reconciled in `992b8f1`.
+After authorized v4 integration, **1,300 tests / 71 suites passed**, with
+**98.67% changed-line coverage** and
+**100% within changed Q&A services**, passing the unchanged S2-001 policy.
+All 12 production-browser tests and the complete local database suite passed.
+Build, lint, typecheck, formatting and lockfile checks passed. Production audit:
+zero findings; full audit: five existing low deepmerge/Jest-chain entries.
+See `s2-009-main-reconciliation.md` for the story/security review and exact limits.
+The pending-#79 statements below describe earlier snapshots. Main declares v3;
+the user then authorized the actual v4 integration from the separate decline-definition
+branch in `c9844fc`. See the latest reconciliation report for its revalidation.
+
 ## Latest security follow-up
 
 See `s2-009-security-followup.md` for current evidence at code commit `b079828`:
