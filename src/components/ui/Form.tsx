@@ -50,12 +50,17 @@ export function FormLabel(props: React.ComponentProps<typeof Label>) {
   return <Label htmlFor={`${id}-control`} {...props} />;
 }
 
-export function FormControl(props: React.ComponentProps<typeof Slot.Root>) {
+export function FormControl({
+  "aria-describedby": description,
+  ...props
+}: React.ComponentProps<typeof Slot.Root>) {
   const { id, error } = useField();
   return (
     <Slot.Root
       id={`${id}-control`}
-      aria-describedby={error ? `${id}-message` : undefined}
+      aria-describedby={
+        [description, error ? `${id}-message` : undefined].filter(Boolean).join(" ") || undefined
+      }
       aria-invalid={!!error}
       {...props}
     />

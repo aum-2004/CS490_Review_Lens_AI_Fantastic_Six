@@ -1,62 +1,31 @@
 /** @jest-environment node */
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { NextRequest } from "next/server";
+import { POST } from "@/app/api/analysis-targets/[targetId]/questions/route";
+import { answerQuestion } from "@/services/qa/answer-question";
+import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
+import { QA_RESERVED_OUTPUT_TOKENS } from "@/services/qa/system-prompt";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
+import * as qaRequest from "@/services/qa/qa-request";
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
+// Delegate to the real pipeline by default; allow injecting service failures only for
+// the route's error-contract tests (Next's SWC exports cannot be spied on directly).
+jest.mock("@/services/qa/qa-request", () => {
+  const actual = jest.requireActual("@/services/qa/qa-request");
+  return { ...actual, runGroundedQaRequest: jest.fn(actual.runGroundedQaRequest) };
+});
+jest.mock("next/server", () => ({
+  ...jest.requireActual("next/server"),
+  connection: jest.fn().mockResolvedValue(undefined),
+}));
 
-// S2-011 is not on this main-based branch yet. Do not introduce a production
-// dependency or duplicate its implementation to make this suite run. Once the actual
-// source is present these tests load it; incomplete/broken dependencies then fail normally.
-const qaAvailable = existsSync(
-  resolve(__dirname, "../../../../src/services/qa/answer-question.ts"),
-);
-if (process.env.REQUIRE_QA_INTEGRATION === "true" && !qaAvailable) {
-  throw new Error("Required S2-011 integration source is absent; these checks cannot be accepted.");
-}
-const describeQa = qaAvailable ? describe : describe.skip;
-
-// Test-local structural subsets only, not a new shared API/model response contract.
-interface ModelRequest {
-  targetId: string;
-  instructions: string;
-  input: string;
-  reviewIds: string[];
-  maxOutputTokens: number;
-}
-type ModelCaller = (request: ModelRequest) => Promise<{ text: string }>;
-interface AnswerModule {
-  answerQuestion: (
-    targetId: unknown,
-    question: string,
-    dependencies: {
-      buildReviewDatasetContext: typeof buildReviewDatasetContext;
-      callModel: ModelCaller;
-    },
-  ) => Promise<{ targetId: string; answer: string; citedReviewIds: string[] }>;
-}
-interface ClientModule {
-  createOpenAiQaModel: (options: {
-    fetcher: typeof fetch;
-    env: Readonly<Record<string, string | undefined>>;
-  }) => ModelCaller;
-}
-function answerQuestion(...args: Parameters<AnswerModule["answerQuestion"]>) {
-  return jest.requireActual<AnswerModule>("@/services/qa/answer-question").answerQuestion(...args);
-}
-function createOpenAiQaModel(options: Parameters<ClientModule["createOpenAiQaModel"]>[0]) {
-  return jest
-    .requireActual<ClientModule>("@/services/qa/openai-qa-client")
-    .createOpenAiQaModel(options);
-}
 function reservedOutputTokens() {
-  return jest.requireActual<{ QA_RESERVED_OUTPUT_TOKENS: number }>("@/services/qa/system-prompt")
-    .QA_RESERVED_OUTPUT_TOKENS;
+  return QA_RESERVED_OUTPUT_TOKENS;
 }
 
 const USER = "11111111-1111-4111-8111-111111111111";
@@ -100,6 +69,9 @@ function setup() {
     created_at: "2026-11-12T12:00:00Z",
   }));
   const reads: string[] = [];
+  const quotaReads: string[] = [];
+  const reservations = new Map<string, number>();
+  let quotaUnavailable = false;
   let failReviews = false;
   const db = createClient("http://fixture.supabase", "dummy-publishable", {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -107,6 +79,22 @@ function setup() {
       fetch: async (input) => {
         const url = new URL(String(input));
         reads.push(url.pathname);
+        if (url.pathname.endsWith("/rpc/reserve_review_question")) {
+          const caller = (await getAuthenticatedUser())!.id;
+          quotaReads.push(caller);
+          if (quotaUnavailable)
+            return new Response(
+              JSON.stringify({ code: "PGRST202", message: "PRIVATE_QUOTA_DIAGNOSTIC" }),
+              { status: 404 },
+            );
+          const used = reservations.get(caller) ?? 0;
+          if (used >= 5)
+            return new Response(JSON.stringify({ code: "P0001", message: "QA_DAILY_LIMIT" }), {
+              status: 400,
+            });
+          reservations.set(caller, used + 1);
+          return new Response(JSON.stringify(4 - used));
+        }
         if (failReviews && url.pathname.endsWith("/reviews"))
           return new Response(JSON.stringify({ message: "PRIVATE_DB_DIAGNOSTIC" }), {
             status: 500,
@@ -133,44 +121,43 @@ function setup() {
   jest.mocked(createSupabaseServerClient).mockResolvedValue(db);
   jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: USER, email: "PRIVATE_ACCOUNT_EMAIL" });
   const outgoing: Record<string, unknown>[] = [];
+  const generationFetcher = jest.fn(
+    async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const payload = JSON.parse(String(init?.body));
+      outgoing.push(payload);
+      const reviews = JSON.parse(payload.input.split("\n")[1]);
+      return new Response(
+        JSON.stringify({
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              content: [
+                {
+                  type: "output_text",
+                  text: JSON.stringify({
+                    outcome: "answered",
+                    answer: reviews[0].text,
+                    citedReviewIds: [reviews[0].id],
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+      );
+    },
+  );
   const countRequests: Record<string, unknown>[] = [];
-  let inputTokens = 1000;
-  let failCount = false;
-  const fetcher = jest.fn(async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-    const payload = JSON.parse(String(init?.body));
-    if (String(_input) === "https://api.openai.com/v1/responses/input_tokens") {
-      countRequests.push(payload);
-      return failCount
-        ? new Response("PRIVATE_COUNT_DIAGNOSTIC", { status: 503 })
-        : new Response(
-            JSON.stringify({ object: "response.input_tokens", input_tokens: inputTokens }),
-          );
+  let inputTokens = 100;
+  const fetcher = jest.fn(async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+    if (String(url).endsWith("/input_tokens")) {
+      countRequests.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({ object: "response.input_tokens", input_tokens: inputTokens }),
+      );
     }
-    if (String(_input) !== "https://api.openai.com/v1/responses") {
-      throw new Error("Unexpected provider endpoint in deterministic fixture.");
-    }
-    outgoing.push(payload);
-    const reviews = JSON.parse(payload.input.split("\n")[1]);
-    return new Response(
-      JSON.stringify({
-        status: "completed",
-        output: [
-          {
-            type: "message",
-            content: [
-              {
-                type: "output_text",
-                text: JSON.stringify({
-                  outcome: "answered",
-                  answer: reviews[0].text,
-                  citedReviewIds: [reviews[0].id],
-                }),
-              },
-            ],
-          },
-        ],
-      }),
-    );
+    return generationFetcher(url, init);
   });
   const deps = {
     buildReviewDatasetContext,
@@ -179,33 +166,414 @@ function setup() {
       env: {
         QA_ENABLED: "true",
         OPENAI_API_KEY: "synthetic-key-not-live",
-        OPENAI_QA_MODEL: "synthetic-model",
+        OPENAI_QA_MODEL: "gpt-4.1-mini",
       },
     }),
   };
   return {
     rows,
     reads,
+    quotaReads,
+    failQuota: () => {
+      quotaUnavailable = true;
+    },
     outgoing,
-    countRequests,
     fetcher,
+    generationFetcher,
+    countRequests,
+    setInputTokens: (tokens: number) => {
+      inputTokens = tokens;
+    },
     deps,
-    setInputTokens: (value: number) => {
-      inputTokens = value;
-    },
-    failCount: () => {
-      failCount = true;
-    },
     failReviews: () => {
       failReviews = true;
     },
   };
 }
-beforeEach(() => jest.resetAllMocks());
+beforeEach(() => {
+  jest.resetAllMocks();
+  jest
+    .mocked(qaRequest.runGroundedQaRequest)
+    .mockImplementation(jest.requireActual("@/services/qa/qa-request").runGroundedQaRequest);
+});
 
-describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)", () => {
+describe("production questions route with actual context, orchestration and provider adapter", () => {
+  const originalFetch = global.fetch;
+  const originalEnv = {
+    QA_ENABLED: process.env.QA_ENABLED,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+    OPENAI_QA_MODEL: process.env.OPENAI_QA_MODEL,
+  };
+  beforeEach(() => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    process.env.QA_ENABLED = "true";
+    process.env.OPENAI_API_KEY = "synthetic-not-live";
+    process.env.OPENAI_QA_MODEL = "gpt-4.1-mini";
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  function post(targetId = A, body: unknown = { question: "  What do reviewers say?  " }) {
+    return POST(
+      new NextRequest(`http://localhost/api/analysis-targets/${targetId}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      { params: Promise.resolve({ targetId }) },
+    );
+  }
+  function fixture() {
+    const fixture = setup();
+    global.fetch = fixture.fetcher as typeof fetch;
+    return fixture;
+  }
+
+  it.each([
+    ["QA_REQUEST_TOO_LARGE", 413, "QA_REQUEST_TOO_LARGE", undefined],
+    ["QA_QUESTION_TOO_LONG", 400, "INVALID_QUESTION", "Questions can be up to 2,000 characters."],
+    [
+      "QA_QUESTION_INVALID_TYPE",
+      400,
+      "INVALID_QUESTION",
+      "Enter a question about this target's reviews.",
+    ],
+  ] as const)(
+    "maps service validation %s without consuming quota or calling the provider",
+    async (code, status, responseCode, fieldMessage) => {
+      const { fetcher, quotaReads } = fixture();
+      jest
+        .mocked(qaRequest.runGroundedQaRequest)
+        .mockRejectedValueOnce(
+          new qaRequest.QaInputValidationError(code, "PRIVATE_VALIDATION_DETAIL"),
+        );
+      const response = await post();
+      const payload = await response.json();
+      expect(response.status).toBe(status);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(payload.error.code).toBe(responseCode);
+      if (fieldMessage) expect(payload.error.fieldErrors).toEqual({ question: fieldMessage });
+      expect(JSON.stringify(payload)).not.toContain("PRIVATE_VALIDATION_DETAIL");
+      expect(JSON.stringify(jest.mocked(console.error).mock.calls)).not.toContain(
+        "PRIVATE_VALIDATION_DETAIL",
+      );
+      expect(quotaReads).toEqual([]);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it("returns target-tagged answers and excludes previous-target and cross-user evidence", async () => {
+    const { outgoing } = fixture();
+    const first = await post(A);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("cache-control")).toBe("private, no-store");
+    expect(await first.json()).toMatchObject({
+      success: true,
+      data: {
+        targetId: A,
+        outcome: "answered",
+        answer: expect.stringContaining("ALPHA_PRIVATE_REVIEW_MARKER"),
+      },
+    });
+    const second = await post(B);
+    expect(second.status).toBe(200);
+    const response = await second.json();
+    expect(response.data.targetId).toBe(B);
+    expect(JSON.stringify(outgoing[1]) + JSON.stringify(response)).toContain("BETA_SERVICE_MARKER");
+    expect(JSON.stringify(outgoing[1]) + JSON.stringify(response)).not.toMatch(
+      /ALPHA_PRIVATE|alpha-review|OTHER_PRIVATE|other-review/,
+    );
+  });
+
+  it("denies foreign, missing and malformed targets identically before reading reviews", async () => {
+    const { fetcher, reads } = fixture();
+    const responses = [];
+    for (const target of [C, MISSING, "invalid"]) {
+      const response = await post(target);
+      expect(response.status).toBe(404);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      responses.push(await response.json());
+    }
+    expect(responses[0]).toEqual(responses[1]);
+    expect(responses[1]).toEqual(responses[2]);
+    expect(reads.some((path) => path.endsWith("/reviews"))).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each(["text/plain", "application/json"])(
+    "checks ownership before inspecting or reading a foreign target's %s body",
+    async (contentType) => {
+      const { fetcher, reads, quotaReads } = fixture();
+      const request = new NextRequest(`http://localhost/api/analysis-targets/${C}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        body: "not valid JSON",
+      });
+      const response = await POST(request, { params: Promise.resolve({ targetId: C }) });
+
+      // Without the route's ownership guard, these return 415 or 400 before the
+      // context builder can deny access. A later builder check cannot satisfy this contract.
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        error: { code: "TARGET_NOT_FOUND" },
+      });
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(request.bodyUsed).toBe(false);
+      expect(reads.some((path) => path.endsWith("/reviews"))).toBe(false);
+      expect(qaRequest.runGroundedQaRequest).not.toHaveBeenCalled();
+      expect(quotaReads).toEqual([]);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["missing", "unavailable"])(
+    "denies %s sessions without data or provider access",
+    async (kind) => {
+      const { fetcher, reads } = fixture();
+      if (kind === "missing") jest.mocked(getAuthenticatedUser).mockResolvedValue(null);
+      else
+        jest.mocked(getAuthenticatedUser).mockRejectedValue(new Error("PRIVATE_AUTH_DIAGNOSTIC"));
+      const response = await post();
+      expect(response.status).toBe(kind === "missing" ? 401 : 503);
+      expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_AUTH_DIAGNOSTIC");
+      expect(reads).toEqual([]);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([{}, { question: " " }, { question: "q".repeat(2001) }])(
+    "rejects invalid questions (%#. case)",
+    async (body) => {
+      const { fetcher, reads } = fixture();
+      const response = await post(A, body);
+      expect(response.status).toBe(400);
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(reads.some((path) => path.endsWith("/reviews"))).toBe(false);
+    },
+  );
+
+  it("ignores browser ownership and evidence claims and uses only persisted authorized reviews", async () => {
+    const { outgoing } = fixture();
+    const response = await post(A, {
+      question: "Question",
+      ownerId: OTHER,
+      userId: OTHER,
+      targetId: C,
+      reviews: ["FORGED_BROWSER_EVIDENCE"],
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { targetId: A } });
+    expect(JSON.stringify(outgoing[0])).toContain("ALPHA_PRIVATE_REVIEW_MARKER");
+    expect(JSON.stringify(outgoing[0])).not.toMatch(
+      /FORGED_BROWSER_EVIDENCE|OTHER_PRIVATE|other-review/,
+    );
+  });
+
+  it.each(["text/plain", "application/x-www-form-urlencoded", "multipart/form-data"])(
+    "rejects browser form content type %s before context or provider access",
+    async (contentType) => {
+      const { fetcher, reads } = fixture();
+      const response = await POST(
+        new NextRequest("http://localhost/api/questions", {
+          method: "POST",
+          headers: { "Content-Type": contentType },
+          body: JSON.stringify({ question: "Question" }),
+        }),
+        { params: Promise.resolve({ targetId: A }) },
+      );
+      expect(response.status).toBe(415);
+      expect(reads.some((path) => path.endsWith("/reviews"))).toBe(false);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["invalid json", JSON.stringify({ question: "q".repeat(17000) })])(
+    "rejects malformed or oversized bodies (%#. case)",
+    async (body) => {
+      const { fetcher } = fixture();
+      const response = await POST(
+        new NextRequest("http://localhost/api/questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        }),
+        { params: Promise.resolve({ targetId: A }) },
+      );
+      expect(response.status).toBe(400);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["empty", "unavailable", "oversized"])(
+    "does not invoke a model after %s context",
+    async (kind) => {
+      const { fetcher, rows, failReviews } = fixture();
+      if (kind === "empty") rows.splice(0, 1);
+      if (kind === "unavailable") failReviews();
+      if (kind === "oversized") rows[0].review_text = "x".repeat(33000);
+      const response = await post();
+      expect(response.status).toBe(kind === "unavailable" ? 503 : kind === "empty" ? 409 : 413);
+      expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_DB_DIAGNOSTIC");
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "insufficient_evidence",
+    "declined_general_knowledge",
+    "declined_other_entity",
+    "declined_other_platform",
+  ])("projects %s into a distinct UI outcome", async (outcome) => {
+    const { generationFetcher: fetcher } = fixture();
+    fetcher.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                content: [
+                  {
+                    type: "output_text",
+                    text: JSON.stringify({
+                      outcome,
+                      answer: "Controlled response",
+                      citedReviewIds: [],
+                    }),
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+    );
+    const response = await post();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        targetId: A,
+        outcome: outcome === "insufficient_evidence" ? outcome : "out_of_scope",
+      },
+    });
+  });
+
+  it("maps provider failures without exposing provider details", async () => {
+    const { fetcher } = fixture();
+    fetcher.mockImplementation(
+      async () => new Response("PRIVATE_PROVIDER_DIAGNOSTIC", { status: 500 }),
+    );
+    const response = await post();
+    expect(response.status).toBe(503);
+    expect(console.error).toHaveBeenCalledWith("Analysis target child operation failed", {
+      operation: "ask-question",
+      category: "MODEL_UNAVAILABLE",
+    });
+    expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_PROVIDER_DIAGNOSTIC");
+  });
+
+  it("returns an unexpected server failure safely and logs only its category", async () => {
+    const { fetcher } = fixture();
+    jest
+      .mocked(createSupabaseServerClient)
+      .mockRejectedValueOnce(new Error("PRIVATE_DATABASE_DIAGNOSTIC"));
+    const response = await post();
+    expect(response.status).toBe(500);
+    expect(
+      JSON.stringify(await response.json()) + JSON.stringify(jest.mocked(console.error).mock.calls),
+    ).not.toContain("PRIVATE_DATABASE_DIAGNOSTIC");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects foreign citations at the actual route", async () => {
+    const { generationFetcher: fetcher } = fixture();
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    fetcher.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            status: "completed",
+            output: [
+              {
+                type: "message",
+                content: [
+                  {
+                    type: "output_text",
+                    text: JSON.stringify({
+                      outcome: "answered",
+                      answer: "Untrusted response",
+                      citedReviewIds: ["other-review"],
+                    }),
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+    );
+    const response = await post();
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(await response.json())).not.toContain("Untrusted response");
+  });
+
+  it("keeps paid calls disabled by configuration", async () => {
+    const { fetcher, quotaReads } = fixture();
+    process.env.QA_ENABLED = "false";
+    const response = await post();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: "QA_DISABLED" } });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(quotaReads).toEqual([]);
+  });
+
+  it("caps one account across targets before either provider endpoint can run", async () => {
+    const { outgoing, countRequests } = fixture();
+    for (let i = 0; i < 5; i++) expect((await post(i % 2 ? B : A)).status).toBe(200);
+    const denied = await post(B);
+    expect(denied.status).toBe(429);
+    expect(denied.headers.get("cache-control")).toBe("private, no-store");
+    expect(denied.headers.get("retry-after")).toBe("86400");
+    expect(await denied.json()).toMatchObject({ error: { code: "QA_DAILY_LIMIT" } });
+    expect(countRequests).toHaveLength(5);
+    expect(outgoing).toHaveLength(5);
+    jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: OTHER, email: null });
+    expect((await post(C)).status).toBe(200);
+    expect(outgoing).toHaveLength(6);
+  });
+
+  it("makes no counting or generation request when quota storage is unavailable", async () => {
+    const { failQuota, fetcher } = fixture();
+    failQuota();
+    const response = await post(A);
+    expect(response.status).toBe(503);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ error: { code: "QA_QUOTA_UNAVAILABLE" } });
+    expect(JSON.stringify(payload)).not.toContain("PRIVATE_QUOTA_DIAGNOSTIC");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each(["counting", "generation"])(
+    "does not refund reservations after %s-provider failures",
+    async (stage) => {
+      const { fetcher, generationFetcher } = fixture();
+      const failedStage = stage === "counting" ? fetcher : generationFetcher;
+      failedStage.mockRejectedValue(new Error("PRIVATE_PROVIDER_DIAGNOSTIC"));
+      for (let i = 0; i < 5; i++) expect((await post(A)).status).toBe(503);
+      expect((await post(A)).status).toBe(429);
+      expect(failedStage).toHaveBeenCalledTimes(5);
+    },
+  );
+});
+
+describe("actual S2-010/S2-011 integration (required)", () => {
   it("passes the actual authenticated builder through actual answer/prompt/provider serialization", async () => {
-    const { deps, outgoing, countRequests } = setup();
+    const { deps, outgoing } = setup();
     const answer = await answerQuestion(A, "What do the reviews say?", deps);
     expect(answer.targetId).toBe(A);
     expect(answer.citedReviewIds).toEqual(["alpha-review"]);
@@ -216,20 +584,14 @@ describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)"
     );
     expect(outgoing[0]).toMatchObject({ store: false, max_output_tokens: reservedOutputTokens() });
     expect(outgoing[0].instructions).not.toContain("ALPHA_PRIVATE_REVIEW_MARKER");
-    const { model, instructions, input, text } = outgoing[0];
-    expect(countRequests).toEqual([{ model, instructions, input, text }]);
   });
 
   it("excludes the previous target from both the entire outgoing provider body and returned answer", async () => {
-    const { deps, outgoing, countRequests } = setup();
+    const { deps, outgoing } = setup();
     await answerQuestion(A, "Question", deps);
     const answer = await answerQuestion(B, "Question", deps);
     expect(JSON.stringify(outgoing[1])).toContain("BETA_SERVICE_MARKER");
     expect(JSON.stringify(outgoing[1]) + JSON.stringify(answer)).not.toMatch(
-      /ALPHA_PRIVATE_REVIEW_MARKER|alpha-review|Alpha bakery|OTHER_PRIVATE/,
-    );
-    expect(JSON.stringify(countRequests[1])).toContain("BETA_SERVICE_MARKER");
-    expect(JSON.stringify(countRequests[1])).not.toMatch(
       /ALPHA_PRIVATE_REVIEW_MARKER|alpha-review|Alpha bakery|OTHER_PRIVATE/,
     );
   });
@@ -317,50 +679,76 @@ describeQa("actual S2-010/S2-011 integration (deferred until S2-011 is present)"
     },
   );
 
-  it("rejects an oversized question at the service boundary before counting or generation", async () => {
+  it("rejects an oversized question at the merged service boundary before any provider invocation", async () => {
     const { deps, fetcher } = setup();
-    // The shared service boundary (qa-request.ts) now stops this before the OpenAI adapter's
-    // REQUEST_TOO_LARGE ceiling is reached.
-    await expect(answerQuestion(A, "Q".repeat(140000), deps)).rejects.toMatchObject({
-      name: "QaInputValidationError",
+    await expect(answerQuestion(A, "Q ".repeat(80000), deps)).rejects.toMatchObject({
       code: "QA_QUESTION_TOO_LONG",
     });
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it.each([14_500, 14_501])("checks provider input count %i before generation", async (tokens) => {
-    const { deps, setInputTokens, countRequests, outgoing, fetcher } = setup();
-    setInputTokens(tokens);
-    if (tokens === 14_500) {
-      await expect(answerQuestion(A, "Question", deps)).resolves.toMatchObject({ targetId: A });
-      expect(outgoing).toHaveLength(1);
-      expect(outgoing[0].max_output_tokens).toBe(1500);
-      expect(fetcher).toHaveBeenCalledTimes(2);
-    } else {
-      await expect(answerQuestion(A, "Question", deps)).rejects.toMatchObject({
-        code: "REQUEST_TOO_LARGE",
-      });
-      expect(outgoing).toEqual([]);
-      expect(fetcher).toHaveBeenCalledTimes(1);
+  it("counts the same complete input used for generation and excludes previous-target evidence from both calls", async () => {
+    const { deps, countRequests, outgoing } = setup();
+    await answerQuestion(A, "Question", deps);
+    await answerQuestion(B, "Question", deps);
+    expect(countRequests).toHaveLength(2);
+    for (let i = 0; i < 2; i++) {
+      const { model, instructions, input, text } = outgoing[i];
+      expect(countRequests[i]).toEqual({ model, instructions, input, text });
     }
-    expect(countRequests).toHaveLength(1);
+    expect(JSON.stringify(countRequests[1])).not.toMatch(
+      /ALPHA_PRIVATE|alpha-review|OTHER_PRIVATE/,
+    );
+    expect(JSON.stringify(countRequests[1])).toContain("BETA_SERVICE_MARKER");
   });
 
-  it.each(["unavailable", "invalid"])(
-    "does not generate when the provider count is %s",
-    async (kind) => {
-      const { deps, failCount, setInputTokens, countRequests, outgoing, fetcher } = setup();
-      if (kind === "unavailable") failCount();
-      else setInputTokens(Number.NaN);
-      await expect(answerQuestion(A, "Question", deps)).rejects.toMatchObject({
-        code: kind === "unavailable" ? "MODEL_UNAVAILABLE" : "BUDGET_CHECK_FAILED",
-        message: expect.not.stringContaining("PRIVATE_COUNT_DIAGNOSTIC"),
-      });
-      expect(countRequests).toHaveLength(1);
-      expect(outgoing).toEqual([]);
-      expect(fetcher).toHaveBeenCalledTimes(1);
-    },
-  );
+  it("does not generate after an over-budget count", async () => {
+    const { deps, setInputTokens, generationFetcher, countRequests } = setup();
+    setInputTokens(16000);
+    await expect(answerQuestion(A, "Question", deps)).rejects.toMatchObject({
+      code: "REQUEST_TOO_LARGE",
+    });
+    expect(countRequests).toHaveLength(1);
+    expect(generationFetcher).not.toHaveBeenCalled();
+  });
+
+  it("the actual route fails closed when the token-count provider is unavailable", async () => {
+    const { fetcher, generationFetcher } = setup();
+    const originalFetch = global.fetch;
+    fetcher.mockRejectedValue(new Error("PRIVATE_COUNT_DIAGNOSTIC"));
+    global.fetch = fetcher as typeof fetch;
+    const originalEnabled = process.env.QA_ENABLED;
+    const originalKey = process.env.OPENAI_API_KEY;
+    const originalModel = process.env.OPENAI_QA_MODEL;
+    const log = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      process.env.QA_ENABLED = "true";
+      process.env.OPENAI_API_KEY = "synthetic-not-live";
+      process.env.OPENAI_QA_MODEL = "gpt-4.1-mini";
+      const response = await POST(
+        new NextRequest("http://localhost/api/questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: "Question" }),
+        }),
+        { params: Promise.resolve({ targetId: A }) },
+      );
+      expect(response.status).toBe(503);
+      expect(JSON.stringify(await response.json())).not.toContain("PRIVATE_COUNT_DIAGNOSTIC");
+      expect(generationFetcher).not.toHaveBeenCalled();
+    } finally {
+      global.fetch = originalFetch;
+      for (const [key, value] of Object.entries({
+        QA_ENABLED: originalEnabled,
+        OPENAI_API_KEY: originalKey,
+        OPENAI_QA_MODEL: originalModel,
+      })) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      log.mockRestore();
+    }
+  });
 
   it("rejects a foreign citation after real authorization and context construction", async () => {
     const { deps } = setup();

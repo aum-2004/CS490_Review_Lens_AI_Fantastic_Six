@@ -110,24 +110,25 @@ Stop the server with `Ctrl+C`.
 
 ## Available scripts
 
-| Command                          | What it does                                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `npm run dev`                    | Starts the development server at <http://localhost:3000>                                     |
-| `npm run build`                  | Creates an optimized production build in `.next/`                                            |
-| `npm run start`                  | Serves the production build (run `npm run build` first)                                      |
-| `npm run lint`                   | Runs ESLint across the project                                                               |
-| `npm run format`                 | Formats supported project files with Prettier                                                |
-| `npm run format:check`           | Verifies formatting without changing files                                                   |
-| `npm run typecheck`              | Generates Next.js route types, then runs TypeScript without emitting                         |
-| `npm run test`                   | Runs Jest unit and component tests; no browser is required                                   |
-| `npm run test:watch`             | Re-runs relevant Jest tests while files change                                               |
-| `npm run test:coverage`          | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
-| `npm run test:qa`                | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)          |
-| `npm run coverage:changed`       | Runs Jest with coverage, then the S2-001 changed-code coverage gate against `origin/main`    |
-| `npm run coverage:changed:check` | Runs only the gate, reusing an existing `coverage/coverage-final.json`                       |
-| `npm run test:e2e`               | Starts the app and runs Playwright tests in headless Chromium                                |
-| `npm run test:e2e:auth`          | Runs authentication browser tests against an isolated local test provider                    |
-| `npm run test:db`                | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
+| Command                          | What it does                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run dev`                    | Starts the development server at <http://localhost:3000>                                          |
+| `npm run build`                  | Creates an optimized production build in `.next/`                                                 |
+| `npm run start`                  | Serves the production build (run `npm run build` first)                                           |
+| `npm run lint`                   | Runs ESLint across the project                                                                    |
+| `npm run format`                 | Formats supported project files with Prettier                                                     |
+| `npm run format:check`           | Verifies formatting without changing files                                                        |
+| `npm run typecheck`              | Generates Next.js route types, then runs TypeScript without emitting                              |
+| `npm run test`                   | Runs Jest unit and component tests; no browser is required                                        |
+| `npm run test:watch`             | Re-runs relevant Jest tests while files change                                                    |
+| `npm run test:coverage`          | Runs Jest and writes an HTML/text coverage report to `coverage/`                                  |
+| `npm run test:qa`                | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)               |
+| `npm run coverage:changed`       | Runs Jest with coverage, then the S2-001 changed-code coverage gate against `origin/main`         |
+| `npm run coverage:changed:check` | Runs only the gate, reusing an existing `coverage/coverage-final.json`                            |
+| `npm run test:e2e`               | Starts the app and runs Playwright tests in headless Chromium                                     |
+| `npm run test:e2e:auth`          | Runs authentication browser tests against an isolated local test provider                         |
+| `npm run test:db`                | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/`      |
+| `npm run check:migrations`       | Rejects malformed SQL migration names and duplicate Supabase timestamp versions before deployment |
 
 ### Run automated tests
 
@@ -175,19 +176,59 @@ to read a failure, and how to request an exclusion.
 
 ### Deterministic Q&A test harness (S2-003)
 
-Q&A tests never call OpenAI, the network, or a live Supabase project. The harness swaps the model
-seam (`QaModelCaller`) for a scripted fake, records every request sent to it, and blocks all
-network access while a test runs.
+Q&A tests never call OpenAI, the network, or a live Supabase project. Each question runs through
+the **real** Q&A pipeline with only the infrastructure underneath it faked. The harness records
+every request sent to the model and to Supabase, and blocks all network access while a test runs.
 
-| Path                                   | Contents                                                                             |
-| -------------------------------------- | ------------------------------------------------------------------------------------ |
-| `tests/helpers/qa-harness/`            | Harness: fake model, network guard, assertions, golden-case runner                   |
-| `tests/helpers/qa-harness/contract.ts` | Harness-owned copy of the S2-010/011/013 Q&A types (pending team agreement)          |
-| `tests/fixtures/qa/datasets.ts`        | Synthetic datasets: normal, empty, mixed ratings, Target A/B, User B, malformed rows |
-| `tests/fixtures/qa/golden-cases.ts`    | Table of golden Q&A cases                                                            |
-| `tests/unit/qa-harness/`               | Harness self-tests, golden-case suite, determinism proof                             |
+**What is real and what is faked.**
 
-Run it with `npm run test:qa`. It is also part of `npm test`, so CI runs it with no secrets.
+| Layer                                                                        | In the harness                                                                     |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `answerQuestion` (S2-011), `runGroundedQaRequest`, input limits              | **Real**                                                                           |
+| `buildReviewDatasetContext` (S2-010), ownership guard, target repository     | **Real** (wrapped only to count calls; never replaced)                             |
+| `getAuthenticatedUser` (S1-009)                                              | **Real**: verifies a fake session against a fake `/auth/v1/user`                   |
+| supabase-js query builders and response parsing                              | **Real** client; only its `fetch` is replaced                                      |
+| `buildQaModelRequest` / system prompt (S2-013), `parseQaModelReply` (S2-011) | **Real**                                                                           |
+| `createOpenAiQaModel` (S2-011)                                               | **Real** in the provider-boundary suite, over a fake `fetch`                       |
+| `createSupabaseServerClient` (cookies, Next headers)                         | Faked: Jest module mock returning the fake Supabase client                         |
+| Supabase HTTP (auth + PostgREST)                                             | Faked: `fake-supabase.ts` over the fixture rows                                    |
+| The model (`callModel`)                                                      | Faked: scripted `fake-model.ts`, or the OpenAI adapter over `fake-openai-fetch.ts` |
+
+> **The fake Supabase does not emulate Row Level Security.** Rows are filtered only by the
+> query's own filters, so every cross-user and wrong-target denial these tests prove comes from
+> the **application-layer** checks (session verification, `getOwnedTargetOrThrow`, the S2-010
+> row checks). RLS itself is tested against real PostgreSQL by `npm run test:db`.
+
+| Path                                             | Contents                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `tests/helpers/qa-harness/`                      | Harness: real-pipeline adapter, fakes, network guard, assertions, golden-case runner |
+| `tests/helpers/qa-harness/contract.ts`           | Re-exports of the production Q&A types and constants, plus harness-owned error table |
+| `tests/helpers/qa-harness/contract-alignment.ts` | Compile-time checks that harness types and error codes match production              |
+| `tests/helpers/qa-harness/fake-supabase.ts`      | Real supabase-js client over a fake `fetch`: fake session, PostgREST subset          |
+| `tests/helpers/qa-harness/fake-openai-fetch.ts`  | Fake OpenAI Responses endpoints for `createOpenAiQaModel({ fetcher })`               |
+| `tests/fixtures/qa/datasets.ts`                  | Synthetic datasets: normal, empty, mixed ratings, Target A/B, User B, malformed rows |
+| `tests/fixtures/qa/golden-cases.ts`              | Table of golden Q&A cases                                                            |
+| `tests/unit/qa-harness/`                         | Golden suite, integration and provider-boundary suites, harness self-tests           |
+
+**Run it.** `npm run test:qa` runs every harness suite. It is also part of `npm test`, so CI runs
+it with no secrets. To run only the real-pipeline integration suites:
+
+```bash
+npx jest --runInBand tests/unit/qa-harness/real-pipeline.integration.test.ts \
+  tests/unit/qa-harness/provider-boundary.test.ts tests/unit/qa-harness/golden-cases.test.ts
+```
+
+**Required preamble.** The real pipeline imports `server-only` modules, and the context builder
+takes no client factory, so the fake Supabase is injected with a module mock. Jest hoists
+`jest.mock` only in test files, so every test file that imports the harness starts with:
+
+```ts
+/** @jest-environment node */
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+```
+
+Without the second line, creating a harness throws an error that prints this preamble.
 
 **Script a fake model reply.** Rules are checked in order; the first match wins. Matchers:
 `question` (exact), `questionIncludes`, `targetId`, `predicate`. A call that matches no rule fails
@@ -211,14 +252,34 @@ it("answers from the reviews", async () => {
 ```
 
 Other replies: `reply.insufficientEvidence()`, `reply.raw("not json")`, `reply.empty()`,
-`reply.providerError("MODEL_UNAVAILABLE")`, `reply.timeout(ms)` (use Jest fake timers), and
-`reply.echoContext()`, which echoes everything the app sent so leaks show up in the answer.
+`reply.providerError("MODEL_UNAVAILABLE")` (throws the real `QaModelError`), `reply.timeout(ms)`
+(use Jest fake timers), and `reply.echoContext()`, which echoes everything the app sent so leaks
+show up in the answer.
+
+**Control identity and persisted data.** `qa().setActor(QA_USERS.userB)` switches the verified
+session; `qa().setActor(null)` signs out. `qa().supabase.setAuthMode("rejected" | "unavailable")`
+makes Supabase Auth answer 401 or 500. `qa().supabase.tables` holds the mutable rows, and
+`qa().supabase.failTable("reviews", 500)` fails a table. Each `ask` result reports `calls` (model),
+`contextBuilds` (real builder calls) and `supabaseRequests` (auth and REST, with the resolved actor).
+
+**Test the provider boundary.** Swap `callModel` for the real adapter over a fake fetch. Pass the
+synthetic env; never a real key:
+
+```ts
+const provider = createFakeOpenAiFetch({ count: openAi.count(14_501) });
+const callModel = createOpenAiQaModel({ fetcher: provider.fetcher, env: FAKE_OPENAI_ENV });
+const qa = setupQaTestHarness({ pipeline: (input) => realQaPipeline({ ...input, callModel }) });
+// ...then inspect provider.countCalls() / provider.generationCalls() bodies.
+```
 
 **Add a golden case.** Append an entry to `QA_GOLDEN_CASES` in `tests/fixtures/qa/golden-cases.ts`
-with one or more steps of `{ actor, target, question, reply, expect }`. The runner automatically
-checks the system prompt, that only the active target's reviews were sent, that no reviewer
-names were sent, and that no other dataset's data reached the request or the answer. Assertions
-cover behaviour and structure, never exact model wording.
+with one or more steps of `{ actor, auth?, target, question, reply, expect }` (`actor` may be
+`"anonymous"`). The runner automatically checks the real system prompt and prompt version, that
+only the active target's reviews were sent, that no reviewer names were sent, that no other
+dataset's data reached the request or the answer, and that no review row was read before an
+authorization or input-validation error. `contextLoaded: false` additionally requires that the
+context builder never ran and Supabase was never touched. Assertions cover behaviour and
+structure, never exact model wording.
 
 **What the context and prompt checks verify.**
 
@@ -226,35 +287,30 @@ cover behaviour and structure, never exact model wording.
   `id`, `rating`, `date` and `text` must match the persisted review at the same position, with
   nothing dropped, added or reordered, and no extra fields.
 - `expectSystemPromptApplied` checks the JSON-encoded target name, the platform label, and the
-  named rules in `QA_SYSTEM_PROMPT_INVARIANTS` (`contract.ts`): grounded in the supplied reviews,
-  no outside knowledge, say so when evidence is insufficient, and decline out-of-scope,
-  other-entity and other-platform questions. Each rule must be stated within one sentence, but
-  any wording is accepted.
+  named rules in `QA_SYSTEM_PROMPT_INVARIANTS` (`contract.ts`) against the real S2-013 prompt:
+  grounded in the supplied reviews, no outside knowledge, say so when evidence is insufficient,
+  and decline out-of-scope, other-entity and other-platform questions. Each rule must be stated
+  within one sentence, but any wording is accepted.
 
-**Replies with citations.** Following S2-011 (#79), an `answered` reply must cite at least one
-review from the request. Every other outcome (`insufficient_evidence` and the three declines) must
-cite none. A reply that breaks this is rejected (`UNGROUNDED_ANSWER` or `UNEXPECTED_CITATIONS`),
-never repaired by dropping its citations.
+**Two different size limits.** A question over 2,000 characters (after trimming) is rejected at
+the service boundary as `QaInputValidationError`/`QA_QUESTION_TOO_LONG` before any data is loaded.
+The provider token budget is separate: the OpenAI adapter rejects a request whose counted input
+tokens plus the reserved output exceed the cap as `QaPromptError`/`REQUEST_TOO_LARGE`, before the
+generation call. Both have their own tests.
 
-**Pipeline.** Until S2-010 (#78) and S2-011 (#79) are merged, golden cases run against a small
-test-only _contract reference pipeline_ (`reference-pipeline.ts`). The follow-up PR replaces it
-with an adapter that calls the real
-`answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })`:
+**Replies with citations.** Following S2-011, an `answered` reply must cite at least one review
+from the request. Every other outcome (`insufficient_evidence` and the three declines) must cite
+none. A reply that breaks this is rejected (`UNGROUNDED_ANSWER` or `UNEXPECTED_CITATIONS`), never
+repaired by dropping its citations.
 
-- `buildReviewDatasetContext` is the **real** S2-010 builder, so its authentication and ownership
-  checks stay under test. It is never replaced with a fake.
-- Only the infrastructure beneath it is faked: a fake Supabase client holding the fixture rows
-  and a fake verified auth session for the test user.
-- `callModel` is the harness's fake model.
+**Contract alignment.** Production types and constants are re-exported, never copied. Values a
+teammate may change (`SYSTEM_PROMPT_VERSION`, budgets, outcome lists) are imported at runtime and
+asserted in tests. `contract-alignment.ts` fails `npm run typecheck` if a harness error code is not
+a member of its production error's code type, or if the reply payload or evidence-row shapes drift.
 
-Open question for that PR: #79 enforces the token budget (`REQUEST_TOO_LARGE`) inside the OpenAI
-adapter, below `callModel`, so with a fake model an oversized question reaches the model. The
-reference pipeline still rejects it before the call, as the `qa-edge-long-question` case expects.
-
-> **Limitation:** until that integration lands, CI checks the prompt contract and evidence layout
-> against the reference pipeline's placeholder prompt, **not** the real S2-013 prompt. The
-> invariants are pending agreement with the S2-013 owner, and passing these tests is not S2-003
-> end-to-end acceptance.
+> **Limitation:** golden cases prove what the application does around the model (what it sends,
+> what it accepts, when it refuses to call). They do not prove a real model would choose the
+> scripted outcome; that needs an approved live-model evaluation (S2-004/S2-014/S2-015).
 
 ### Run database tests
 
@@ -264,9 +320,19 @@ throwaway PostgreSQL database, applies a small test-only stand-in for Supabase A
 `tests/db/*.test.sql` file and the two-session owner-budget regression, and drops the database. The tests use two
 users, A and B, to prove cross-user access and direct source changes are denied at the database.
 
-It needs PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
+Before creating a database or executing SQL, the runner checks migration filename/version
+uniqueness. Distinct names with the same 14-digit prefix fail, matching Supabase's migration
+identity rule. CI runs this check in both application and database jobs. Run it separately with
+`npm run check:migrations` before deploying or combining branches; raw SQL execution alone cannot
+detect a Supabase history-version collision.
+
+It needs Node 24+ and PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
 `brew services start postgresql@16`). Connection settings come from the standard `PG*` variables.
 CI runs them in the "Database tests" job against a PostgreSQL 16 container.
+
+For WSL without a Linux Node installation, set `MIGRATION_CHECK_NODE` to the mounted
+Windows `node.exe` executable when invoking the database runner. This changes only the
+preflight executable; PostgreSQL still runs inside the local Linux test environment.
 
 The concurrency test holds the fifth owner reservation uncommitted on one target,
 starts the sixth on a different target in another session, observes its advisory

@@ -30,6 +30,7 @@ export default defineConfig({
         NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54329",
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "dummy-publishable-key",
         NEXT_TELEMETRY_DISABLED: "1",
+        QA_ENABLED: "false",
       },
     },
   ],
