@@ -43,17 +43,16 @@ The regression test invokes the guard directly and requires the rejection, provi
 cannot silently return fabricated aggregate data. A temporary no-commit merge with PR #80 passed
 TypeScript checking; PR #80 itself was not modified or pushed.
 
-## Dependency status for Phase 2
+## Dependency status
 
-The branch normally merged `origin/main` at `905d10f`, which includes S2-010 / PR #78 and S2-011 /
-PR #79. At that point:
+The branch normally merged `origin/main` at `43670b2`, whose main parent `2a9e54b` includes the
+merged S2-009 / PR #84 production questions route. S2-003, S2-009, S2-010, S2-011, S2-013, S2-014,
+and S2-015 are now exercised together. No S2-009 production code was recreated on this branch.
 
-- S2-003 / PR #83, S2-013 / PR #76, S2-010 / PR #78, and S2-011 / PR #79 were merged and are
-  exercised here.
-- S2-009 / PR #84 remained open and unmerged, so its production questions route was not copied or
-  recreated here.
-- S2-019 / issue #70 remained open. This branch tests request-to-request isolation but does not
-  implement unrelated active-target state management.
+S2-006 / PR #80 remains separate and unmerged. The read-only Phase 1 fixture retains the reviewed
+forward-compatible throwing `aggregateReviews()` guard without copying or changing PR #80's
+production implementation. S2-019 / issue #70 also remains separate; the route suite verifies
+request-to-request isolation but does not implement unrelated client active-target state.
 
 ## Phase 2 coverage available on merged production code
 
@@ -131,6 +130,38 @@ Nine deterministic production-answer cases additionally prove that:
 - an echoing controlled model produces validated answers containing only the authorized active
   dataset.
 
+## Production questions-route coverage after #84
+
+`tests/unit/services/ai/cross-user-ai-context-route.test.ts` adds seven deterministic cases through
+the actual merged `POST /api/analysis-targets/[targetId]/questions` handler. Together with the
+parameterized User A and User B success case, the complete S2-016 focused suite now contains 31
+tests and preserves all 24 previously approved cases.
+
+The route-level cases prove that:
+
+- User A / Target A and User B / Target B each receive a no-store response derived only from their
+  authorized persisted evidence;
+- the complete provider-neutral model request contains exactly the current six production fields
+  and excludes foreign review IDs, text, private markers, reviewer identity, review/source URLs,
+  source review IDs, source metadata, persistence timestamps, and target source URLs;
+- foreign and missing targets return the same safe 404 body after ownership lookup, without a
+  reviews query, quota reservation, Q&A configuration read, or model invocation;
+- consecutive User A → User B → User A requests rebuild context and issue target-scoped review
+  queries in that order without stale evidence in any request or route response;
+- a Target A identifier typed into User B's question remains attacker-controlled question text and
+  does not select Target A reviews or enter the application-supplied evidence portion of the model
+  request;
+- malformed model output fails closed as `INVALID_MODEL_RESPONSE`; and
+- a model reply carrying a foreign citation fails closed as `UNGROUNDED_ANSWER`, without exposing
+  the unvalidated controlled reply through the route response.
+
+The tests leave the production route, ownership guard, S2-010 context builder, S2-011
+`answerQuestion()`, and production reply validator intact. They mock only the authenticated user,
+the Supabase SDK's synthetic HTTP transport, quota persistence, and the permitted model boundary.
+The model boundary uses Deep's recording fake, and the shared network guard removes provider and
+Supabase environment configuration and fails any attempted live network access. `QA_ENABLED` is
+never enabled.
+
 ## Application enforcement and semantic limitations
 
 The deterministic tests distinguish structural application guarantees from semantic model quality:
@@ -149,33 +180,46 @@ The deterministic tests distinguish structural application guarantees from seman
   require the S2-004 evaluation set and approved model evaluation; these deterministic tests do not
   claim a model can never repeat attacker-supplied information.
 
-## Remaining route-level acceptance
+## Remaining acceptance limitations
 
-Once S2-009 / #84 is merged and reconciled with #78/#79, a route-level case must also verify this
-behavior through the actual questions endpoint. Any cache or retained conversation state must be
-request-scoped or keyed by both authenticated user and active target; a target ID alone is not an
-adequate cross-user key.
+The deterministic production-route boundary is now covered. Final acceptance still requires human
+security review and passing GitHub CI. These tests prove structural evidence isolation and
+fail-closed application behavior; they do not prove that an arbitrary real model cannot hallucinate
+private-looking text, independently reproduce attacker-supplied text, or make a semantically
+unsupported claim while citing an allowed review. Those properties remain evaluation and model-risk
+questions rather than route-authorization guarantees.
+
+Any future cache, retained message history, tool payload, or conversation state must be inspected by
+the same complete-request assertions and scoped by authenticated user plus active target. The
+current production request contract contains no message history or tool payloads.
 
 ## Verification
 
-Current local results after reconciling `origin/main` at `54c3a3a` and the S2-006 compatibility
-fix:
+Current local results after reconciling `origin/main` at `2a9e54b` and adding route-level coverage:
 
-- Focused S2-016: 2 suites, 24 tests passed (the original 23 security cases plus the fail-closed
-  aggregation compatibility guard).
-- Full Jest suite: 69 suites, 1,228 tests passed; no tests or suites skipped.
+- Focused S2-016: 3 suites, 31 tests passed (all previously approved 24 cases preserved plus seven
+  production-route cases).
+- Relevant S2-009 route, quota, API client, and component tests: 4 suites, 108 tests passed.
+- Next route type generation and strict TypeScript checking passed.
+- Full Jest with coverage: 82 suites, 1,494 tests passed; no tests or suites skipped.
 - A temporary no-commit merge with S2-006 / PR #80 passed route type generation and TypeScript
   checking. Jest discovery from the hidden nested Windows worktree found no tests, so behavior was
   verified by the standalone 24-test run instead; the temporary worktree was removed.
-- Full coverage collection passed all 1,228 tests at 93.71% statements/lines. The S2-001
-  changed-code gate reported no coverable changed production lines and passed.
+- Full coverage collection passed at 94.10% statements/lines, 93.68% branches, and 93.18%
+  functions. The S2-001 changed-code gate compared against merge-base `2a9e54b`, reported no
+  coverable changed production lines, and passed.
 - ESLint passed.
 - TypeScript typecheck passed.
-- Focused Prettier checks passed.
-- Repository-wide `npm run format:check` reported only the existing generated
-  `supabase/.temp/linked-project.json`; that file was not modified.
+- Targeted Prettier and whitespace checks passed.
 - The production build passed, including TypeScript, page-data collection, and generation of all 12
-  static pages.
+  static pages. Its first sandboxed attempt could not download the configured Inter font; the same
+  build passed when rerun with approved network access.
+- The database runner validated migration filenames and timestamp uniqueness, then could not run
+  PostgreSQL/RLS tests because the local machine does not have the required `createdb` executable.
+  No migration was deployed.
+- The first coverage attempt exposed stale local `node_modules` resolving upstream
+  `deepmerge@4.3.1` instead of main's committed `4.3.1+reviewlens.1` patch. `npm ci` reconciled the
+  merged lockfile without changing tracked dependency files; the dependency integrity tests and the
+  complete coverage run then passed.
 
-Passing the available checks removes the #78 builder and #79 answer-integration blockers, but it does
-not remove the #84 route-integration blocker or make S2-016 ready for complete acceptance.
+GitHub CI and Shawn's final security review remain required after the route-level commit is pushed.
