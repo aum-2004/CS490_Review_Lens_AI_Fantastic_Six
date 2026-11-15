@@ -1,5 +1,14 @@
 # S2-009 verification — 2026-11-13
 
+## Latest migration-version review fix
+
+The user checked shared migration history and quota-object existence: no matching
+history rows, quota table NULL and quota function NULL. The unapplied quota was
+renamed to `20261115043442_limit_paid_review_questions.sql` without changing SQL.
+S2-006's summary migration is untouched. The new `check:migrations` preflight runs
+in application CI and before database-test SQL. See `s2-009-migration-versions.md`
+for collision regressions, combined-deployment validation and current evidence.
+
 ## Latest reviewer follow-up
 
 Main `54c3a3a` (#89) was merged in `6272d01`; main's exact v4 prompt is retained.

@@ -55,7 +55,11 @@ Paid calls require `QA_ENABLED=true`, server-only `OPENAI_API_KEY` and an explic
 `OPENAI_QA_MODEL`. See `.env.example` and `docs/s2-011-answers.md`. No keys or paid
 calls were used for validation.
 
-Apply the quota migration before enabling paid calls. Each account is limited to
+Apply `20261115043442_limit_paid_review_questions.sql` before enabling paid calls.
+The original version was renamed only after the user verified no shared history
+row or quota objects existed. Run `npm run check:migrations` before combining or
+deploying migrations; see `s2-009-migration-versions.md`.
+Each account is limited to
 five durable reservations per rolling 24 hours across all targets. Storage failure
 blocks both provider requests; exhausted quota returns a safe 429. Failed provider
 attempts retain their reservation. See `docs/s2-009-security-followup.md` for the

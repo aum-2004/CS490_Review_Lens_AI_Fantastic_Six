@@ -110,24 +110,25 @@ Stop the server with `Ctrl+C`.
 
 ## Available scripts
 
-| Command                          | What it does                                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `npm run dev`                    | Starts the development server at <http://localhost:3000>                                     |
-| `npm run build`                  | Creates an optimized production build in `.next/`                                            |
-| `npm run start`                  | Serves the production build (run `npm run build` first)                                      |
-| `npm run lint`                   | Runs ESLint across the project                                                               |
-| `npm run format`                 | Formats supported project files with Prettier                                                |
-| `npm run format:check`           | Verifies formatting without changing files                                                   |
-| `npm run typecheck`              | Generates Next.js route types, then runs TypeScript without emitting                         |
-| `npm run test`                   | Runs Jest unit and component tests; no browser is required                                   |
-| `npm run test:watch`             | Re-runs relevant Jest tests while files change                                               |
-| `npm run test:coverage`          | Runs Jest and writes an HTML/text coverage report to `coverage/`                             |
-| `npm run test:qa`                | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)          |
-| `npm run coverage:changed`       | Runs Jest with coverage, then the S2-001 changed-code coverage gate against `origin/main`    |
-| `npm run coverage:changed:check` | Runs only the gate, reusing an existing `coverage/coverage-final.json`                       |
-| `npm run test:e2e`               | Starts the app and runs Playwright tests in headless Chromium                                |
-| `npm run test:e2e:auth`          | Runs authentication browser tests against an isolated local test provider                    |
-| `npm run test:db`                | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/` |
+| Command                          | What it does                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run dev`                    | Starts the development server at <http://localhost:3000>                                          |
+| `npm run build`                  | Creates an optimized production build in `.next/`                                                 |
+| `npm run start`                  | Serves the production build (run `npm run build` first)                                           |
+| `npm run lint`                   | Runs ESLint across the project                                                                    |
+| `npm run format`                 | Formats supported project files with Prettier                                                     |
+| `npm run format:check`           | Verifies formatting without changing files                                                        |
+| `npm run typecheck`              | Generates Next.js route types, then runs TypeScript without emitting                              |
+| `npm run test`                   | Runs Jest unit and component tests; no browser is required                                        |
+| `npm run test:watch`             | Re-runs relevant Jest tests while files change                                                    |
+| `npm run test:coverage`          | Runs Jest and writes an HTML/text coverage report to `coverage/`                                  |
+| `npm run test:qa`                | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)               |
+| `npm run coverage:changed`       | Runs Jest with coverage, then the S2-001 changed-code coverage gate against `origin/main`         |
+| `npm run coverage:changed:check` | Runs only the gate, reusing an existing `coverage/coverage-final.json`                            |
+| `npm run test:e2e`               | Starts the app and runs Playwright tests in headless Chromium                                     |
+| `npm run test:e2e:auth`          | Runs authentication browser tests against an isolated local test provider                         |
+| `npm run test:db`                | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/`      |
+| `npm run check:migrations`       | Rejects malformed SQL migration names and duplicate Supabase timestamp versions before deployment |
 
 ### Run automated tests
 
@@ -264,9 +265,19 @@ throwaway PostgreSQL database, applies a small test-only stand-in for Supabase A
 `tests/db/*.test.sql` file and the two-session owner-budget regression, and drops the database. The tests use two
 users, A and B, to prove cross-user access and direct source changes are denied at the database.
 
-It needs PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
+Before creating a database or executing SQL, the runner checks migration filename/version
+uniqueness. Distinct names with the same 14-digit prefix fail, matching Supabase's migration
+identity rule. CI runs this check in both application and database jobs. Run it separately with
+`npm run check:migrations` before deploying or combining branches; raw SQL execution alone cannot
+detect a Supabase history-version collision.
+
+It needs Node 24+ and PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
 `brew services start postgresql@16`). Connection settings come from the standard `PG*` variables.
 CI runs them in the "Database tests" job against a PostgreSQL 16 container.
+
+For WSL without a Linux Node installation, set `MIGRATION_CHECK_NODE` to the mounted
+Windows `node.exe` executable when invoking the database runner. This changes only the
+preflight executable; PostgreSQL still runs inside the local Linux test environment.
 
 The concurrency test holds the fifth owner reservation uncommitted on one target,
 starts the sixth on a different target in another session, observes its advisory

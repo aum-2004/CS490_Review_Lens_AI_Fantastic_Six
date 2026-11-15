@@ -1,5 +1,10 @@
 # S2-009 security-review follow-up
 
+> Migration-version fix: the unapplied quota is now
+> `20261115043442_limit_paid_review_questions.sql`, with unchanged SQL. The user's
+> shared-history/object checks and automatic duplicate-version guard are recorded
+> in `s2-009-migration-versions.md`. Keep Q&A disabled until hosted deployment/checks.
+
 > Reviewer follow-up: main `54c3a3a` (#89) is reconciled in `6272d01`, with
 > main's exact v4 prompt and tests retained. New ownership-before-body route tests
 > reject removal of the route ownership check. See `s2-009-review-followup.md`.
@@ -27,7 +32,7 @@ durable quota reservation, then the provider's counting/generation path. Invalid
 unauthorized, context-failed, disabled or misconfigured requests reach no quota
 reservation and no provider. A reservation failure makes neither provider request.
 
-`supabase/migrations/20261113000000_limit_paid_review_questions.sql` introduces:
+`supabase/migrations/20261115043442_limit_paid_review_questions.sql` introduces:
 
 - A small reservation table containing only an ID, verified owner ID and timestamp.
   It stores no question, review text, response or chat history. Expired rows are

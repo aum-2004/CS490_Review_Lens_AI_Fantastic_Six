@@ -98,7 +98,7 @@ claim of a clean full audit or independent human security approval.
 ## Remaining acceptance
 
 Keep `QA_ENABLED=false` until the team reviews/applies
-`20261113000000_limit_paid_review_questions.sql` and verifies hosted quota/RLS.
+`20261115043442_limit_paid_review_questions.sql` and verifies hosted quota/RLS.
 Obtain current-head teammate and separate security review under
 `AI-Assisted-Development.md` section 7, including the new quota RPC and route.
 Hosted/auth and live-model acceptance remain separate; no claim of semantic

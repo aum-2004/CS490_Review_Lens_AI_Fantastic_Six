@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Runs the database tests against a throwaway PostgreSQL database.
 #
-# Requires PostgreSQL 15+ client tools (psql, createdb, dropdb) and a server you can connect to
+# Requires Node 24+, PostgreSQL 15+ client tools (psql, createdb, dropdb) and a server you can connect to
 # as a role that may create databases. Connection settings come from the standard PG* variables
 # (PGHOST, PGPORT, PGUSER, PGPASSWORD); the defaults work with a local Homebrew PostgreSQL.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
+
+# Reject Supabase version collisions before creating a database or executing any SQL.
+# WSL users can point MIGRATION_CHECK_NODE at their installed Windows node.exe.
+"${MIGRATION_CHECK_NODE:-node}" --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrations/check-migration-versions.mjs
 
 db="reviewlens_test_$$"
 export PGOPTIONS="${PGOPTIONS:-} -c client_min_messages=warning"

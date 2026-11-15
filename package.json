@@ -18,6 +18,7 @@
     "test:coverage": "jest --coverage --runInBand",
     "coverage:changed": "jest --coverage --runInBand --coverageReporters=json --coverageReporters=text-summary && npm run coverage:changed:check --",
     "coverage:changed:check": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/coverage/check-changed-coverage.ts",
+    "check:migrations": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrations/check-migration-versions.mjs",
     "test:qa": "jest --runInBand tests/unit/qa-harness",
     "test:e2e": "playwright test",
     "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
