@@ -47,6 +47,9 @@ it("starts once and shows processing without claiming success", async () => {
 it("blocks another submission after success and explains why", async () => {
   render(workspace(succeeded));
   expect(screen.getAllByText("Ingested")).toHaveLength(2);
+  expect(screen.getByText(/Last completed run/)).toHaveTextContent(
+    "3 reviews saved. 0 records were skipped.",
+  );
   const button = screen.getByRole("button", { name: "Ingestion complete" });
   expect(button).toBeDisabled();
   fireEvent.click(button);
@@ -107,7 +110,9 @@ it("polls a restored active run and refreshes persisted reviews on completion", 
   expect(fetchMock).toHaveBeenCalledWith("/api/analysis-targets/target-a/ingestion/refresh", {
     method: "POST",
   });
-  expect(screen.getByText("Last completed run: 3 reviews saved.")).toBeInTheDocument();
+  expect(screen.getByText(/Last completed run/)).toHaveTextContent(
+    "3 reviews saved. 0 records were skipped.",
+  );
   expect(screen.getAllByText("Ingested")).toHaveLength(2);
   expect(router.refresh).toHaveBeenCalled();
 });
