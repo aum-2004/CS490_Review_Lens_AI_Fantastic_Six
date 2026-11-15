@@ -280,6 +280,48 @@ describe("S2-015 real answerQuestion integration", () => {
     });
   });
 
+  it("runs a described external business through other-entity production validation", async () => {
+    const describedEntityCase = {
+      id: "s2-015-described-other-entity",
+      question: "What do customers think about the place across the street?",
+      expectedCategory: "decline_other_entity_or_product",
+      expectedReviewIds: [],
+      explanation:
+        "A described external business is outside the active Restaurant A review dataset.",
+    } as const satisfies EntityPlatformRefusalCase;
+    const model = modelFor(
+      describedEntityCase,
+      reply.declined("declined_other_entity", SCOPE_CLEAR_ANSWER),
+    );
+
+    const { answers, evaluation, executionErrors } = await evaluateCases(
+      [describedEntityCase],
+      model,
+    );
+
+    expect(executionErrors).toEqual([]);
+    expect(answers[0]).toEqual({
+      outcome: "declined_other_entity",
+      answer: SCOPE_CLEAR_ANSWER,
+      citedReviewIds: [],
+      promptVersion: SYSTEM_PROMPT_VERSION,
+      targetId: dataset.target.id,
+    });
+    expect(evaluation.results[0]).toEqual({
+      caseId: describedEntityCase.id,
+      failures: [],
+      passed: true,
+    });
+    expect(model.calls).toHaveLength(1);
+    expectSystemPromptApplied(model.calls[0].request, dataset, {
+      promptVersion: SYSTEM_PROMPT_VERSION,
+    });
+    expectContextOnlyForTarget(model.calls[0].request, dataset);
+    expectNoReviewerIdentity(model.calls[0].request, dataset);
+    expect(database.requests).toHaveLength(2);
+    expect(network.attempts).toEqual([]);
+  });
+
   it("fails the mixed case when production returns platform-first priority", async () => {
     const mixedCase = {
       id: "s2-015-mixed-wrong-priority",

@@ -40,7 +40,7 @@ contract in a normal follow-up.
 `tests/unit/services/qa/entity-platform-refusal.integration.test.ts` exercises:
 
 - the real S2-010 `buildReviewDatasetContext()`;
-- the real S2-013 request construction and `s2-013.v3` system prompt;
+- the real S2-013 request construction and `s2-013.v4` system prompt;
 - the real S2-011 `answerQuestion()` orchestration and `parseQaModelReply()` validation;
 - the S2-015 evaluator over the production `QaAnswer`;
 - the production system prompt, prompt version, evidence projection, and decline-priority helper;
@@ -70,6 +70,12 @@ reviews?”, verifies S2-013's entity-before-platform priority. It is intentiona
 shared S2-004 fixture. Comparisons remain permitted when the authorized dataset actually supports
 every material claim; S2-015 does not reject comparisons merely because they are comparisons.
 
+The v4 reconciliation also adds one test-local described-entity regression: “What do customers
+think about the place across the street?” It runs through the same real production pipeline and
+requires `declined_other_entity`. This complements the three named S2-004 entities without changing
+or duplicating the shared fixture. As with every scripted fake-model case, it verifies wiring and
+contract enforcement, not independent model classification.
+
 ## Independent semantic boundary
 
 The semantic assessor must be a documented human review or approved semantic evaluator. It must
@@ -92,18 +98,20 @@ PR #79 is merged. The following formerly blocked checks now run without skips:
    independent semantic assessment.
 3. The mixed Restaurant B/Amazon question passes through real `answerQuestion()` and produces
    entity-first `declined_other_entity`.
-4. An `answered` payload for an other-entity question fails the production response/evaluation
+4. The described “place across the street” question passes through real `answerQuestion()` and
+   produces `declined_other_entity`.
+5. An `answered` payload for an other-entity question fails the production response/evaluation
    path.
-5. An `answered` payload for an other-platform question fails that path.
-6. `declined_other_platform` for an other-entity question fails `expectDeclined()`.
-7. `declined_other_entity` for an other-platform question fails `expectDeclined()`.
-8. Platform-first decline for the mixed question fails the priority assertion.
-9. A decline carrying citations is rejected by real S2-011 validation.
-10. A malformed model reply is rejected as `INVALID_MODEL_RESPONSE` without leaking its content.
-11. Independent semantic assessment can still fail a production-valid structured decline for
+6. An `answered` payload for an other-platform question fails that path.
+7. `declined_other_platform` for an other-entity question fails `expectDeclined()`.
+8. `declined_other_entity` for an other-platform question fails `expectDeclined()`.
+9. Platform-first decline for the mixed question fails the priority assertion.
+10. A decline carrying citations is rejected by real S2-011 validation.
+11. A malformed model reply is rejected as `INVALID_MODEL_RESPONSE` without leaking its content.
+12. Independent semantic assessment can still fail a production-valid structured decline for
     unclear target/platform scope, unsupported entity or platform claims, or an unsupported
     comparison.
-12. A production parsing failure is isolated per case and does not prevent the next case running.
+13. A production parsing failure is isolated per case and does not prevent the next case running.
 
 The Restaurant B, Coffee Shop C, and Product X countertop-blender cases remain specifically
 identified external entities and produce `declined_other_entity`. General open-ended
@@ -113,13 +121,14 @@ before platform before general.
 
 ## Remaining acceptance
 
-No separate S2-013 prompt-clarification follow-up was present on `origin/main` after PR #79 merged.
-This branch does not independently modify Aryan's prompt. If that follow-up lands, merge `main`
-normally and rerun this suite against the new prompt version.
+On 2026-11-14 this branch merged `origin/main` at `54c3a3a` in merge commit `cb73fe4`, taking
+Aryan's reviewed S2-013 v4 clarification without independently changing his production prompt. The
+deterministic suite was rerun against that version.
 
 PR #77 must remain Draft and issue #66 must remain open until an explicitly approved
-configured-model evaluation runs the same six shared cases and mixed case, requiring the mapped
-outcome, zero citations, and independently assessed scope clarity and claim safety.
+configured-model evaluation runs the same six shared cases, mixed case, and described-entity case,
+requiring the mapped outcome, zero citations, and independently assessed scope clarity and claim
+safety.
 
 ## What deterministic tests do not prove
 
