@@ -100,7 +100,7 @@ security-focused reviews under AI-Assisted-Development section 7, and complete t
 acceptance. No remote review, PR edit, push, merge or issue closure was performed
 by this local implementation session. Keep #70 open until those gates are met.
 
-AI assistance: [scoped original-message record and verification notes](../ai-transcripts/2026-11-15_shawn_S2-019_codex.md).
+AI assistance: [recovered complete available story dialogue](../ai-transcripts/2026-11-15_shawn_S2-019_codex.md).
 
 ## Integrated acceptance checkpoint after S2-016 merged
 
@@ -127,3 +127,27 @@ security-focused review and final team acceptance. PR #92 still had no GitHub
 review submissions at the start of this follow-up. Earlier CI #213 passed for
 f1b28062; it does not certify the new local merge/update. Keep #70 open until merge
 and final acceptance, and do not mark approvals or remote checks complete locally.
+
+## Transcript compliance correction
+
+The original excerpt-and-notes submission did not satisfy section 6. The primary
+retained VS Code session was subsequently located. The transcript is now a direct,
+redacted export of all available user/assistant messages in the explicitly listed
+S2-019 story turns, with original tool records preserving failed commands, errors,
+corrections and validation. It includes planning, implementation, draft publication,
+current-main integration, the authorized push and this compliance correction.
+
+This is a complete story-scoped record through its explicit snapshot cutoff, not
+a selection of response excerpts or a claim to export unrelated project stories.
+System/developer instructions, hidden reasoning, duplicate event notifications,
+internal approval-reviewer logs and binary attachments are excluded. No missing
+messages were reconstructed. Exported message counts are checked against the
+selected direct-session source records; a reproducible utility and count audit
+are retained locally outside the repository. Privacy redactions do not replace
+or summarize original dialogue. The previous excerpt file remains in Git history
+and an unchanged external checkpoint.
+
+The recovered source corrects the earlier statement that direct-session recovery
+was unavailable. No policy exception is claimed or needed for the recovery approach;
+the reviewer should verify this revised evidence against section 6. Functional
+feedback reported no blocking defect. Independent security review is still required.
