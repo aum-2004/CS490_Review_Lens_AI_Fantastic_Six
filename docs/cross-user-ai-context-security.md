@@ -27,6 +27,22 @@ The ReviewStore-based Phase 1 tests remain valid for the production review-servi
 Phase 2 suite now separately adapts the fixture to S2-010's session-scoped, bounded Supabase query
 implementation and calls the real context builder rather than replacing its security behavior.
 
+### ReviewStore forward compatibility
+
+S2-006 / PR #80 proposes adding `aggregateReviews(targetId)` to `ReviewStore`. The S2-016
+`createCrossUserSecurityStore()` remains a read-only cross-user isolation fixture and must not
+fabricate summary results. Its store is therefore typed as the current `ReviewStore` intersected
+with a narrow `aggregateReviews(targetId): Promise<never>` guard. This shape:
+
+- remains assignable to the current main interface without an excess-property error;
+- satisfies PR #80's expanded interface when the branches are combined; and
+- throws the fixed `UNEXPECTED_AGGREGATE_REVIEWS_ERROR` if aggregation is unexpectedly invoked,
+  without performing an ownership check or review lookup.
+
+The regression test invokes the guard directly and requires the rejection, proving the fixture
+cannot silently return fabricated aggregate data. A temporary no-commit merge with PR #80 passed
+TypeScript checking; PR #80 itself was not modified or pushed.
+
 ## Dependency status for Phase 2
 
 The branch normally merged `origin/main` at `905d10f`, which includes S2-010 / PR #78 and S2-011 /
@@ -142,12 +158,17 @@ adequate cross-user key.
 
 ## Verification
 
-Current local results after the `origin/main` merge and real-answer reconciliation:
+Current local results after reconciling `origin/main` at `54c3a3a` and the S2-006 compatibility
+fix:
 
-- Focused S2-016: 2 suites, 23 tests passed (7 Phase 1, 7 real-builder request cases, and 9
-  production-answer cases).
-- Relevant S2-003/S2-010/S2-011/S2-016: 18 suites, 416 tests passed.
-- Full Jest suite: 67 suites, 1,100 tests passed; no tests or suites skipped.
+- Focused S2-016: 2 suites, 24 tests passed (the original 23 security cases plus the fail-closed
+  aggregation compatibility guard).
+- Full Jest suite: 69 suites, 1,228 tests passed; no tests or suites skipped.
+- A temporary no-commit merge with S2-006 / PR #80 passed route type generation and TypeScript
+  checking. Jest discovery from the hidden nested Windows worktree found no tests, so behavior was
+  verified by the standalone 24-test run instead; the temporary worktree was removed.
+- Full coverage collection passed all 1,228 tests at 93.71% statements/lines. The S2-001
+  changed-code gate reported no coverable changed production lines and passed.
 - ESLint passed.
 - TypeScript typecheck passed.
 - Focused Prettier checks passed.

@@ -11,7 +11,10 @@ import {
   BETA_PRIVATE_REVIEW_MARKER,
   crossUserAiContextFixture,
 } from "../../../fixtures/cross-user-ai-context.synthetic";
-import { createCrossUserSecurityStore } from "../../../helpers/cross-user-ai-context";
+import {
+  createCrossUserSecurityStore,
+  UNEXPECTED_AGGREGATE_REVIEWS_ERROR,
+} from "../../../helpers/cross-user-ai-context";
 import { TargetNotFoundError } from "@/services/analysis-targets/target-ownership";
 import { getReviewsForTarget, type ReviewStore } from "@/services/reviews/review-service";
 
@@ -91,6 +94,17 @@ describe("S2-016 cross-user AI-context security foundation", () => {
     await captureTargetDenial(store, users.userB.id, targets.targetA.id);
 
     expect(ownershipChecks).toEqual([{ targetId: targets.targetA.id, userId: users.userB.id }]);
+    expect(reviewLookups).toEqual([]);
+  });
+
+  test("the read-only security fixture rejects unexpected review aggregation", async () => {
+    const { store, ownershipChecks, reviewLookups } = createCrossUserSecurityStore();
+
+    await expect(store.aggregateReviews(targets.targetB.id)).rejects.toThrow(
+      UNEXPECTED_AGGREGATE_REVIEWS_ERROR,
+    );
+
+    expect(ownershipChecks).toEqual([]);
     expect(reviewLookups).toEqual([]);
   });
 
