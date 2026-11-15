@@ -1,8 +1,8 @@
 # S2-010: Review dataset context for Q&A
 
-> Current consuming branch (2026-11-14): S2-009 now includes merged main `08a014b`
+> Current consuming branch (2026-11-14): S2-009 now includes merged main `54c3a3a`
 > and uses this unchanged builder through the real production Q&A route. Current
-> checks and remaining hosted/human acceptance are in `s2-009-main-reconciliation.md`.
+> checks and remaining hosted/human acceptance are in `s2-009-review-followup.md`.
 > Earlier standalone-story checklists below retain their original scope.
 
 Issue: [#61](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/61).

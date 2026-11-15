@@ -1,9 +1,9 @@
 # S2-010 integration evidence and S2-011 handoff
 
-> Current consuming branch (2026-11-14): S2-009 has reconciled main `08a014b`,
-> including merged S2-010/S2-011/S2-012/S2-013. Its production route calls the real
+> Current consuming branch (2026-11-14): S2-009 has reconciled main `54c3a3a`,
+> including S2-013 follow-up #89 and merged S2-010/S2-011/S2-012/S2-013. Its production route calls the real
 > services, applies durable account quota, and runs integration tests without skips.
-> See `s2-009-main-reconciliation.md` for current evidence. The handoff and
+> See `s2-009-review-followup.md` for current evidence. The handoff and
 > standalone-branch checkpoints below are historical.
 
 Refs #61. S2-010 remains an independent, main-based change. No S2-011 or S2-013

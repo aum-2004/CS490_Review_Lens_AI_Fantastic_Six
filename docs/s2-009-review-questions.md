@@ -40,12 +40,11 @@ their meaning. Errors use safe application copy without provider diagnostics.
 With user authorization, existing services/tests/docs were imported from S2-011 at
 `78c914e` (includes S2-013 prompt and provider-authoritative token counting) and S2-010 at `6835c29`. S2-013
 at `14effdf` was inspected; its implementation is already included by S2-011.
-Current `main` at `08a014b` contains merged S2-010/S2-011/S2-012/S2-013 and was
-reconciled locally in `992b8f1`. The original Q&A services match main except the
-user-authorized v4 prompt integration in `c9844fc`, from the separate unmerged
-`feature/S2-013-decline-definitions` branch at `ad59a2c`. Main itself still declares
-v3; this branch now uses the actual v4 source and tests, not a renamed constant.
-See `s2-009-main-reconciliation.md` for current checks and remaining acceptance.
+Current main `54c3a3a` contains S2-010/S2-011/S2-012/S2-013 and follow-up #89.
+It was reconciled in `6272d01`. The original Q&A services and v4 prompt/tests now
+match main exactly. The separate v4 prompt delta no longer appears in the PR.
+See `s2-009-review-followup.md` for the latest checks and ownership-before-body
+regression, and `s2-009-main-reconciliation.md` for earlier integration evidence.
 Integration tests now import actual modules
 unconditionally, so missing dependencies fail instead of skipping. Their synthetic
 model name was replaced with a tokenizer-supported model; provider I/O remains fake.

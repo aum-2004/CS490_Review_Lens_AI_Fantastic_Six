@@ -1,5 +1,16 @@
 # S2-009 verification — 2026-11-13
 
+## Latest reviewer follow-up
+
+Main `54c3a3a` (#89) was merged in `6272d01`; main's exact v4 prompt is retained.
+Added ownership-before-body route tests and verified they reject removal of the
+route's ownership check. See `s2-009-review-followup.md` for current results.
+The full restored run passed **1,302 tests / 71 suites**; the changed-code gate
+passed at **98.64% overall** and **100% changed Q&A service lines**. Lint,
+typecheck, formatting and whitespace checks passed. Production source and SQL
+are unchanged from the previously tested/published head.
+Earlier statements about an unmerged v4 dependency are historical.
+
 ## Latest main reconciliation — 2026-11-14
 
 Main `08a014b`, including S2-011 #79, was reconciled in `992b8f1`.

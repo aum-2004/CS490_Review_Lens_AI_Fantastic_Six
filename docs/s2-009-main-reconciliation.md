@@ -1,5 +1,11 @@
 # S2-009 main reconciliation and review — 2026-11-14
 
+> Follow-up: main `54c3a3a` now includes #89 and is merged locally in `6272d01`.
+> The prompt and its tests match main exactly; the unmerged-v4 statements below
+> describe the earlier snapshot. See `s2-009-review-followup.md` for the ownership-
+> before-body regression and latest checks. Published `e1bf613` passed both CI jobs;
+> this newer follow-up remains local until authorized for push.
+
 Author: melissa. AI assistance: Codex. Branch: `s2-009`.
 Main reconciliation: `992b8f1` against `08a014b`.
 Authorized v4 integration: `c9844fc` from `ad59a2c`.

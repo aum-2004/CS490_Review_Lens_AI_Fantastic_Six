@@ -1,5 +1,10 @@
 # S2-009 security-review follow-up
 
+> Reviewer follow-up: main `54c3a3a` (#89) is reconciled in `6272d01`, with
+> main's exact v4 prompt and tests retained. New ownership-before-body route tests
+> reject removal of the route ownership check. See `s2-009-review-followup.md`.
+> Earlier reconciliation checkpoints below describe their original snapshots.
+
 > Latest reconciliation: main `08a014b`, including #79, is now integrated in
 > `992b8f1`. See `s2-009-main-reconciliation.md` for current verification and the
 > authorized v4 prompt integration from `ad59a2c`. The earlier merge state and test totals below are
