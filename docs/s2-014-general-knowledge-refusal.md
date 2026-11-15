@@ -10,12 +10,14 @@ The integrated boundaries are:
 
 - S2-004 / PR #72: the shared scope-guard fixture;
 - S2-003 / PR #83: the recording fake model and behavior assertions;
-- S2-013 / PR #76: the production system prompt and request construction;
+- S2-013 / PRs #76 and #89: the production `s2-013.v4` system prompt, clarified decline
+  definitions, and request construction;
 - S2-010 / PR #78: authenticated `buildReviewDatasetContext()`; and
 - S2-011 / PR #79: `answerQuestion()` and production model-response validation.
 
-S2-014 does not modify or copy those production modules. Aryan owns the pending S2-013 wording
-clarification and prompt-version bump.
+S2-014 does not modify or copy those production modules. On 2026-11-14 this branch merged
+`origin/main` at `54c3a3a`, taking Aryan's reviewed S2-013 clarification and prompt-version bump
+without changing his production prompt.
 
 ## Classification agreement
 
@@ -102,19 +104,19 @@ The integration verifies:
 The human-scope booleans in these deterministic tests record an explicit judgment about the fixed
 fixture response text. They are not inferred from the outcome and are not a production classifier.
 
+`invalid_decline_response` remains a fail-closed evaluator defense for direct callers. In the real
+S2-011 path, production response validation rejects a contradictory cited decline before it can
+reach the evaluator, as the integration test demonstrates.
+
 ## Remaining acceptance work
 
-The deterministic production-code path is complete and ready for final review. Two behavior-level
-dependencies remain before full story acceptance:
-
-1. Aryan's agreed S2-013 clarification must land with its prompt-version bump. S2-014 should then
-   merge `main` and rerun this suite against the revised prompt without independently editing it.
-2. An explicitly approved configured-model evaluation must run the same four cases through the
-   production prompt and context, requiring both the mapped outcome and independently assessed
-   scope clarity.
+The deterministic production-code path is reconciled with `s2-013.v4` and ready for Aryan's final
+deterministic-code review. One behavior-level dependency remains before full story acceptance: an
+explicitly approved configured-model evaluation must run the same four cases through the
+production prompt and context, requiring both the mapped outcome and independently assessed scope
+clarity. No live or paid model call was made during this reconciliation.
 
 Scripted fake-model replies prove application wiring, authorization, request construction, response
 validation, and evaluator behavior. They do not prove that a configured model will independently
 classify and decline the questions reliably. PR #75 therefore remains Draft and issue #65 remains
-open until the pending prompt clarification, configured-model evaluation, teammate approval, and PR
-CI are complete.
+open until the approved configured-model evaluation, teammate approval, and PR CI are complete.
