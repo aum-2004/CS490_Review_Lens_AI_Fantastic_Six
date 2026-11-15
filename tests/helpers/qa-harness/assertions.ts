@@ -193,9 +193,19 @@ export function expectContextOnlyForTarget(
   }
 }
 
+function serializedRequest(request: QaModelRequest, excludeQuestion: boolean): string {
+  return Object.entries(request)
+    .map(([key, value]) =>
+      key === "input" && excludeQuestion
+        ? applicationSuppliedInput(request)
+        : (JSON.stringify(value) ?? String(value)),
+    )
+    .join("\n");
+}
+
 /** S2-013 data minimisation: reviewer names and source URLs never reach the model. */
 export function expectNoReviewerIdentity(request: QaModelRequest, dataset: QaFixtureDataset): void {
-  const haystack = `${request.instructions}\n${request.input}`;
+  const haystack = serializedRequest(request, false);
   for (const review of dataset.reviews) {
     if (review.reviewerName && haystack.includes(review.reviewerName)) {
       fail(`Reviewer name for review ${review.id} was sent to the model.`);
@@ -206,14 +216,39 @@ export function expectNoReviewerIdentity(request: QaModelRequest, dataset: QaFix
   }
 }
 
+function stringLeaves(value: unknown): string[] {
+  if (typeof value === "string") return value.trim() === "" ? [] : [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (isRecord(value)) return Object.values(value).flatMap(stringLeaves);
+  return [];
+}
+
 function forbiddenNeedles(dataset: QaFixtureDataset): string[] {
   return [
     dataset.target.id,
     dataset.target.name,
+    dataset.target.ownerId,
+    dataset.target.sourceUrl,
+    dataset.target.googlePlaceId,
+    dataset.target.createdAt,
+    dataset.owner.id,
+    dataset.owner.email,
     ...dataset.markers,
-    ...dataset.reviews.map((review) => review.id),
-    ...dataset.reviews.map((review) => review.text).filter((text) => text.trim().length >= 12),
-  ];
+    ...dataset.reviews.flatMap((review) => [
+      review.id,
+      review.analysisTargetId,
+      review.text,
+      review.sourceReviewId,
+      review.reviewerName,
+      review.reviewDate,
+      review.reviewUrl,
+      review.createdAt,
+      ...stringLeaves(review.sourceMetadata),
+    ]),
+  ].filter(
+    (needle, index, all): needle is string =>
+      typeof needle === "string" && needle.trim() !== "" && all.indexOf(needle) === index,
+  );
 }
 
 function findLeaks(haystack: string, foreign: readonly QaFixtureDataset[]): string[] {
@@ -229,21 +264,16 @@ function findLeaks(haystack: string, foreign: readonly QaFixtureDataset[]): stri
 }
 
 /**
- * S2-016 / S2-018 / S2-019: nothing from another target or another user (markers, review IDs,
- * review text, target ID or name) appears anywhere the application controls in the request.
- * The user's own question is excluded: a user may type a foreign ID, and that alone is not a leak.
+ * S2-016 / S2-018 / S2-019: no persisted value from another target or user (including review and
+ * source IDs, metadata string leaves, reviewer/source fields, review text, markers, and target
+ * fields) appears anywhere the application controls in the request. The user's own question is
+ * excluded: a user may type a foreign ID, and that alone is not a leak.
  */
 export function expectNoForeignData(
   request: QaModelRequest,
   foreign: readonly QaFixtureDataset[],
 ): void {
-  const haystack = [
-    request.targetId,
-    request.promptVersion,
-    request.instructions,
-    applicationSuppliedInput(request),
-    ...request.reviewIds,
-  ].join("\n");
+  const haystack = serializedRequest(request, true);
   const leaks = findLeaks(haystack, foreign);
   if (leaks.length > 0) fail(`Foreign data reached the model request:\n- ${leaks.join("\n- ")}`);
 }

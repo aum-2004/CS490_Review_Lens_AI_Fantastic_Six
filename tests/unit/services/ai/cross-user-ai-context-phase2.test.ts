@@ -10,7 +10,9 @@ import { runGroundedQaRequest } from "@/services/qa/qa-request";
 import { SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
 import type { Review } from "@/services/reviews/review-service";
 import {
+  ALPHA_PRIVATE_METADATA_MARKER,
   ALPHA_PRIVATE_REVIEW_MARKER,
+  BETA_PRIVATE_METADATA_MARKER,
   BETA_PRIVATE_REVIEW_MARKER,
   crossUserAiContextFixture,
   type SyntheticAuthenticatedUser,
@@ -45,7 +47,7 @@ const datasetA: QaFixtureDataset = {
   owner: users.userA,
   target: targets.targetA,
   reviews: reviews.targetA,
-  markers: [ALPHA_PRIVATE_REVIEW_MARKER],
+  markers: [ALPHA_PRIVATE_REVIEW_MARKER, ALPHA_PRIVATE_METADATA_MARKER],
   description: "S2-016 synthetic User A / Target A dataset.",
 };
 
@@ -54,7 +56,7 @@ const datasetB: QaFixtureDataset = {
   owner: users.userB,
   target: targets.targetB,
   reviews: reviews.targetB,
-  markers: [BETA_PRIVATE_REVIEW_MARKER],
+  markers: [BETA_PRIVATE_REVIEW_MARKER, BETA_PRIVATE_METADATA_MARKER],
   description: "S2-016 synthetic User B / Target B dataset.",
 };
 

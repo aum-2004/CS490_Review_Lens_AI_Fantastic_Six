@@ -151,6 +151,11 @@ describe("request-side assertions", () => {
   it.each([
     ["a foreign marker", userBPrivate.markers[0]],
     ["a foreign review ID", userBPrivate.reviews[1].id],
+    ["a foreign source-review ID", String(userBPrivate.reviews[0].sourceReviewId)],
+    [
+      "a foreign source-metadata value",
+      String(userBPrivate.reviews[0].sourceMetadata?.syntheticDataset),
+    ],
     ["foreign review text", JSON.stringify(userBPrivate.reviews[1].text)],
     ["a foreign target ID", userBPrivate.target.id],
     ["a foreign target name", userBPrivate.target.name],

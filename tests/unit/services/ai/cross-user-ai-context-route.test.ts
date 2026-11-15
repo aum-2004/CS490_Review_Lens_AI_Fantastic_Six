@@ -8,13 +8,16 @@ import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { createOpenAiQaModel, readOpenAiQaConfig } from "@/services/qa/openai-qa-client";
 import { reserveQuestionQuota } from "@/services/qa/question-quota";
 import {
+  ALPHA_PRIVATE_METADATA_MARKER,
   ALPHA_PRIVATE_REVIEW_MARKER,
+  BETA_PRIVATE_METADATA_MARKER,
   BETA_PRIVATE_REVIEW_MARKER,
   crossUserAiContextFixture,
   type SyntheticAuthenticatedUser,
 } from "../../../fixtures/cross-user-ai-context.synthetic";
 import type { QaFixtureDataset } from "../../../fixtures/qa/datasets";
 import {
+  QaHarnessAssertionError,
   applicationSuppliedInput,
   createFakeQaModel,
   createFakeSupabase,
@@ -25,6 +28,7 @@ import {
   installNetworkGuard,
   reply,
   type NetworkGuard,
+  type QaModelRequest,
   type QaReplySpec,
 } from "../../../helpers/qa-harness";
 
@@ -55,7 +59,7 @@ const datasetA: QaFixtureDataset = {
   owner: users.userA,
   target: targets.targetA,
   reviews: reviews.targetA,
-  markers: [ALPHA_PRIVATE_REVIEW_MARKER],
+  markers: [ALPHA_PRIVATE_REVIEW_MARKER, ALPHA_PRIVATE_METADATA_MARKER],
   description: "S2-016 synthetic User A / Target A route dataset.",
 };
 
@@ -64,7 +68,7 @@ const datasetB: QaFixtureDataset = {
   owner: users.userB,
   target: targets.targetB,
   reviews: reviews.targetB,
-  markers: [BETA_PRIVATE_REVIEW_MARKER],
+  markers: [BETA_PRIVATE_REVIEW_MARKER, BETA_PRIVATE_METADATA_MARKER],
   description: "S2-016 synthetic User B / Target B route dataset.",
 };
 
@@ -111,11 +115,10 @@ function requestsFor(
 }
 
 function expectOnlySafeFieldsReachedModel(
-  harness: ReturnType<typeof createRouteHarness>,
+  request: QaModelRequest,
   active: QaFixtureDataset,
   foreign: QaFixtureDataset,
 ) {
-  const request = harness.model.lastCall().request;
   const serialized = JSON.stringify(request);
 
   expect(Object.keys(request).sort()).toEqual(
@@ -125,6 +128,7 @@ function expectOnlySafeFieldsReachedModel(
   expectNoForeignData(request, [foreign]);
   expectNoReviewerIdentity(request, active);
   expect(serialized).not.toContain(active.target.sourceUrl);
+  if (active.target.googlePlaceId) expect(serialized).not.toContain(active.target.googlePlaceId);
   expect(serialized).not.toContain("sourceReviewId");
   expect(serialized).not.toContain("reviewerName");
   expect(serialized).not.toContain("reviewUrl");
@@ -134,7 +138,9 @@ function expectOnlySafeFieldsReachedModel(
     if (review.sourceReviewId) expect(serialized).not.toContain(review.sourceReviewId);
     if (review.reviewerName) expect(serialized).not.toContain(review.reviewerName);
     if (review.reviewUrl) expect(serialized).not.toContain(review.reviewUrl);
-    expect(serialized).not.toContain(JSON.stringify(review.sourceMetadata));
+    for (const value of Object.values(review.sourceMetadata ?? {})) {
+      if (typeof value === "string") expect(serialized).not.toContain(value);
+    }
   }
 }
 
@@ -185,7 +191,7 @@ describe("S2-016 production questions-route cross-user security", () => {
         if (review.reviewerName) expect(JSON.stringify(body)).not.toContain(review.reviewerName);
         expect(JSON.stringify(body)).not.toContain(JSON.stringify(review.sourceMetadata));
       }
-      expectOnlySafeFieldsReachedModel(harness, active, foreign);
+      expectOnlySafeFieldsReachedModel(harness.model.lastCall().request, active, foreign);
       expect(requestsFor(harness, "reviews")).toHaveLength(1);
       expect(requestsFor(harness, "reviews")[0].params.analysis_target_id).toBe(
         `eq.${active.target.id}`,
@@ -231,13 +237,9 @@ describe("S2-016 production questions-route cross-user security", () => {
     const bodies = await Promise.all([firstA.json(), responseB.json(), secondA.json()]);
     expect([firstA.status, responseB.status, secondA.status]).toEqual([200, 200, 200]);
     expect(harness.model.calls).toHaveLength(3);
-    expectOnlySafeFieldsReachedModel(harness, datasetA, datasetB);
-    expectContextOnlyForTarget(harness.model.calls[0].request, datasetA);
-    expectNoForeignData(harness.model.calls[0].request, [datasetB]);
-    expectContextOnlyForTarget(harness.model.calls[1].request, datasetB);
-    expectNoForeignData(harness.model.calls[1].request, [datasetA]);
-    expectContextOnlyForTarget(harness.model.calls[2].request, datasetA);
-    expectNoForeignData(harness.model.calls[2].request, [datasetB]);
+    expectOnlySafeFieldsReachedModel(harness.model.calls[0].request, datasetA, datasetB);
+    expectOnlySafeFieldsReachedModel(harness.model.calls[1].request, datasetB, datasetA);
+    expectOnlySafeFieldsReachedModel(harness.model.calls[2].request, datasetA, datasetB);
     expect(JSON.stringify(bodies[0]) + JSON.stringify(bodies[2])).not.toContain(
       BETA_PRIVATE_REVIEW_MARKER,
     );
@@ -260,7 +262,7 @@ describe("S2-016 production questions-route cross-user security", () => {
     expect(extractQuestion(request.input)).toBe(adversarialQuestion);
     expect(request.input).toContain(targets.targetA.id);
     expect(applicationSuppliedInput(request)).not.toContain(targets.targetA.id);
-    expectOnlySafeFieldsReachedModel(harness, datasetB, datasetA);
+    expectOnlySafeFieldsReachedModel(harness.model.lastCall().request, datasetB, datasetA);
     expect(requestsFor(harness, "reviews")).toHaveLength(1);
     expect(requestsFor(harness, "reviews")[0].params.analysis_target_id).toBe(
       `eq.${targets.targetB.id}`,
@@ -271,6 +273,68 @@ describe("S2-016 production questions-route cross-user security", () => {
       expect(JSON.stringify(body)).not.toContain(review.text);
     }
   });
+
+  test.each([
+    [
+      "Alpha source-review ID in Beta instructions",
+      users.userB,
+      datasetB,
+      datasetA,
+      "instructions",
+      reviews.targetA[0].sourceReviewId,
+    ],
+    [
+      "Alpha metadata marker in Beta instructions",
+      users.userB,
+      datasetB,
+      datasetA,
+      "instructions",
+      ALPHA_PRIVATE_METADATA_MARKER,
+    ],
+    [
+      "Alpha metadata marker in another Beta application field",
+      users.userB,
+      datasetB,
+      datasetA,
+      "promptVersion",
+      ALPHA_PRIVATE_METADATA_MARKER,
+    ],
+    [
+      "Beta source-review ID in Alpha instructions",
+      users.userA,
+      datasetA,
+      datasetB,
+      "instructions",
+      reviews.targetB[0].sourceReviewId,
+    ],
+    [
+      "Beta metadata marker in Alpha instructions",
+      users.userA,
+      datasetA,
+      datasetB,
+      "instructions",
+      BETA_PRIVATE_METADATA_MARKER,
+    ],
+  ] as const)(
+    "the complete-request assertion rejects %s without relying on a field name",
+    async (_label, user, active, foreign, field, forbiddenValue) => {
+      const harness = createRouteHarness();
+      harness.setAuthenticatedUser(user);
+
+      const response = await post(active.target.id, "Summarize authorized reviews.");
+      expect(response.status).toBe(200);
+      const cleanRequest = harness.model.lastCall().request;
+      expect(() => expectNoForeignData(cleanRequest, [foreign])).not.toThrow();
+
+      const contaminatedRequest: QaModelRequest = {
+        ...cleanRequest,
+        [field]: `${cleanRequest[field]}\n${forbiddenValue}`,
+      };
+      expect(() => expectNoForeignData(contaminatedRequest, [foreign])).toThrow(
+        QaHarnessAssertionError,
+      );
+    },
+  );
 
   test("malformed model output fails closed without exposing its unvalidated text", async () => {
     const malformed = `not JSON ${ALPHA_PRIVATE_REVIEW_MARKER}`;
@@ -284,7 +348,7 @@ describe("S2-016 production questions-route cross-user security", () => {
     expect(body).toMatchObject({ success: false, error: { code: "INVALID_MODEL_RESPONSE" } });
     expect(JSON.stringify(body)).not.toContain(malformed);
     expect(JSON.stringify(body)).not.toContain(ALPHA_PRIVATE_REVIEW_MARKER);
-    expectOnlySafeFieldsReachedModel(harness, datasetB, datasetA);
+    expectOnlySafeFieldsReachedModel(harness.model.lastCall().request, datasetB, datasetA);
     expect(reserveQuestionQuota).toHaveBeenCalledTimes(1);
   });
 
@@ -301,7 +365,7 @@ describe("S2-016 production questions-route cross-user security", () => {
     expect(JSON.stringify(body)).not.toContain(contaminated);
     expect(JSON.stringify(body)).not.toContain(reviews.targetA[0].id);
     expect(JSON.stringify(body)).not.toContain(ALPHA_PRIVATE_REVIEW_MARKER);
-    expectOnlySafeFieldsReachedModel(harness, datasetB, datasetA);
+    expectOnlySafeFieldsReachedModel(harness.model.lastCall().request, datasetB, datasetA);
     expect(reserveQuestionQuota).toHaveBeenCalledTimes(1);
   });
 });

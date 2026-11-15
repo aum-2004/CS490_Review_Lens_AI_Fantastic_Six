@@ -7,7 +7,9 @@ import { GET as getReviewsRoute } from "@/app/api/analysis-targets/[targetId]/re
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import {
+  ALPHA_PRIVATE_METADATA_MARKER,
   ALPHA_PRIVATE_REVIEW_MARKER,
+  BETA_PRIVATE_METADATA_MARKER,
   BETA_PRIVATE_REVIEW_MARKER,
   crossUserAiContextFixture,
 } from "../../../fixtures/cross-user-ai-context.synthetic";
@@ -69,6 +71,20 @@ describe("S2-016 cross-user AI-context security foundation", () => {
     expect(JSON.stringify(reviews.targetB)).toContain(BETA_PRIVATE_REVIEW_MARKER);
     expect(JSON.stringify(reviews.targetB)).not.toContain(ALPHA_PRIVATE_REVIEW_MARKER);
   });
+
+  test.each([
+    ["Alpha", reviews.targetA, ALPHA_PRIVATE_METADATA_MARKER],
+    ["Beta", reviews.targetB, BETA_PRIVATE_METADATA_MARKER],
+  ])(
+    "keeps the %s private metadata marker exclusively in source metadata",
+    (_label, rows, marker) => {
+      expect(JSON.stringify(rows.map((review) => review.sourceMetadata))).toContain(marker);
+      const withoutMetadata = rows.map((review) =>
+        Object.fromEntries(Object.entries(review).filter(([key]) => key !== "sourceMetadata")),
+      );
+      expect(JSON.stringify(withoutMetadata)).not.toContain(marker);
+    },
+  );
 
   test.each([
     ["User A", users.userA.id, targets.targetA.id, ALPHA_PRIVATE_REVIEW_MARKER],

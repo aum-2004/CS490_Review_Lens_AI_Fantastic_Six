@@ -4,8 +4,8 @@
 
 The reusable synthetic fixture in
 `tests/fixtures/cross-user-ai-context.synthetic.ts` represents two authenticated users, two owned
-AnalysisTargets, and persisted reviews with distinctive private markers in both review text and
-metadata. The focused tests in
+AnalysisTargets, and persisted reviews with distinct private markers in review text plus separate
+markers that occur only in source metadata. The focused tests in
 `tests/unit/services/ai/cross-user-context-security.test.ts` exercise the existing production review
 service contract.
 
@@ -132,25 +132,31 @@ Nine deterministic production-answer cases additionally prove that:
 
 ## Production questions-route coverage after #84
 
-`tests/unit/services/ai/cross-user-ai-context-route.test.ts` adds seven deterministic cases through
-the actual merged `POST /api/analysis-targets/[targetId]/questions` handler. Together with the
-parameterized User A and User B success case, the complete S2-016 focused suite now contains 31
-tests and preserves all 24 previously approved cases.
+`tests/unit/services/ai/cross-user-ai-context-route.test.ts` now contains 12 deterministic cases
+through the actual merged `POST /api/analysis-targets/[targetId]/questions` handler. The complete
+S2-016 focused suite contains 38 tests and preserves all 31 cases reviewed before Shawn's final
+request-assertion finding.
 
 The route-level cases prove that:
 
 - User A / Target A and User B / Target B each receive a no-store response derived only from their
   authorized persisted evidence;
-- the complete provider-neutral model request contains exactly the current six production fields
-  and excludes foreign review IDs, text, private markers, reviewer identity, review/source URLs,
-  source review IDs, source metadata, persistence timestamps, and target source URLs;
+- the complete provider-neutral model request contains exactly the current six production fields;
+  a separate dynamic scan covers every application-controlled field and excludes foreign review
+  IDs and text, source-review IDs, metadata marker values, reviewer identity, review/source URLs,
+  persistence timestamps, target identity, and target source fields;
 - foreign and missing targets return the same safe 404 body after ownership lookup, without a
   reviews query, quota reservation, Q&A configuration read, or model invocation;
 - consecutive User A → User B → User A requests rebuild context and issue target-scoped review
-  queries in that order without stale evidence in any request or route response;
+  queries in that order, with the complete safe-field and foreign-data assertions applied
+  independently to all three model calls;
 - a Target A identifier typed into User B's question remains attacker-controlled question text and
   does not select Target A reviews or enter the application-supplied evidence portion of the model
   request;
+- mutation-sensitive negative cases prove the request oracle fails when a foreign source-review ID
+  or metadata-only marker is appended without its field name to model instructions, when the
+  metadata marker is placed in another application-controlled request field, and in the reverse
+  User B → User A direction;
 - malformed model output fails closed as `INVALID_MODEL_RESPONSE`; and
 - a model reply carrying a foreign citation fails closed as `UNGROUNDED_ANSWER`, without exposing
   the unvalidated controlled reply through the route response.
@@ -195,13 +201,16 @@ current production request contract contains no message history or tool payloads
 
 ## Verification
 
-Current local results after reconciling `origin/main` at `2a9e54b` and adding route-level coverage:
+Current local results for the final request-assertion correction:
 
-- Focused S2-016: 3 suites, 31 tests passed (all previously approved 24 cases preserved plus seven
-  production-route cases).
-- Relevant S2-009 route, quota, API client, and component tests: 4 suites, 108 tests passed.
+- Focused S2-016: 3 suites, 38 tests passed (all previously reviewed 31 cases preserved plus seven
+  metadata-exclusivity and mutation-sensitive cases).
+- Focused S2-016 plus the shared S2-003 assertion suite: 4 suites, 56 tests passed.
+- Relevant context-builder, answer, and quota suites: 3 suites, 76 tests passed. The unchanged
+  S2-009 route, quota, API client, and component set had previously passed 4 suites / 108 tests;
+  every route test was also included in the current full run.
 - Next route type generation and strict TypeScript checking passed.
-- Full Jest with coverage: 82 suites, 1,494 tests passed; no tests or suites skipped.
+- Full Jest with coverage: 82 suites, 1,503 tests passed; no tests or suites skipped.
 - A temporary no-commit merge with S2-006 / PR #80 passed route type generation and TypeScript
   checking. Jest discovery from the hidden nested Windows worktree found no tests, so behavior was
   verified by the standalone 24-test run instead; the temporary worktree was removed.
@@ -210,7 +219,8 @@ Current local results after reconciling `origin/main` at `2a9e54b` and adding ro
   coverable changed production lines, and passed.
 - ESLint passed.
 - TypeScript typecheck passed.
-- Targeted Prettier and whitespace checks passed.
+- Targeted Prettier passed. Repository-wide `format:check` reported only the existing generated
+  `supabase/.temp/linked-project.json`; that file was not modified. Whitespace checking passed.
 - The production build passed, including TypeScript, page-data collection, and generation of all 12
   static pages. Its first sandboxed attempt could not download the configured Inter font; the same
   build passed when rerun with approved network access.
@@ -222,4 +232,4 @@ Current local results after reconciling `origin/main` at `2a9e54b` and adding ro
   merged lockfile without changing tracked dependency files; the dependency integrity tests and the
   complete coverage run then passed.
 
-GitHub CI and Shawn's final security review remain required after the route-level commit is pushed.
+GitHub CI and Shawn's final security re-review remain required after this correction is pushed.

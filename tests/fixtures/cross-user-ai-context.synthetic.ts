@@ -3,6 +3,8 @@ import type { Review } from "@/services/reviews/review-service";
 
 export const ALPHA_PRIVATE_REVIEW_MARKER = "ALPHA_PRIVATE_REVIEW_MARKER";
 export const BETA_PRIVATE_REVIEW_MARKER = "BETA_PRIVATE_REVIEW_MARKER";
+export const ALPHA_PRIVATE_METADATA_MARKER = "ALPHA_PRIVATE_METADATA_MARKER";
+export const BETA_PRIVATE_METADATA_MARKER = "BETA_PRIVATE_METADATA_MARKER";
 
 export interface SyntheticAuthenticatedUser {
   id: string;
@@ -50,7 +52,7 @@ const reviewsA: Review[] = [
     reviewDate: "2026-10-01T12:00:00.000Z",
     reviewUrl: "https://www.google.com/maps/reviews/synthetic-alpha-1",
     sourceMetadata: {
-      securityMarker: ALPHA_PRIVATE_REVIEW_MARKER,
+      securityMarker: ALPHA_PRIVATE_METADATA_MARKER,
       syntheticDataset: "alpha",
     },
     createdAt: "2026-11-03T12:00:00.000Z",
@@ -80,7 +82,7 @@ const reviewsB: Review[] = [
     reviewDate: "2026-10-03T12:00:00.000Z",
     reviewUrl: "https://www.google.com/maps/reviews/synthetic-beta-1",
     sourceMetadata: {
-      securityMarker: BETA_PRIVATE_REVIEW_MARKER,
+      securityMarker: BETA_PRIVATE_METADATA_MARKER,
       syntheticDataset: "beta",
     },
     createdAt: "2026-11-04T12:00:00.000Z",
