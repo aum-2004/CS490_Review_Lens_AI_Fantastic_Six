@@ -305,6 +305,33 @@ describe("production questions route with actual context, orchestration and prov
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it.each(["text/plain", "application/json"])(
+    "checks ownership before inspecting or reading a foreign target's %s body",
+    async (contentType) => {
+      const { fetcher, reads, quotaReads } = fixture();
+      const request = new NextRequest(`http://localhost/api/analysis-targets/${C}/questions`, {
+        method: "POST",
+        headers: { "Content-Type": contentType },
+        body: "not valid JSON",
+      });
+      const response = await POST(request, { params: Promise.resolve({ targetId: C }) });
+
+      // Without the route's ownership guard, these return 415 or 400 before the
+      // context builder can deny access. A later builder check cannot satisfy this contract.
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({
+        success: false,
+        error: { code: "TARGET_NOT_FOUND" },
+      });
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(request.bodyUsed).toBe(false);
+      expect(reads.some((path) => path.endsWith("/reviews"))).toBe(false);
+      expect(qaRequest.runGroundedQaRequest).not.toHaveBeenCalled();
+      expect(quotaReads).toEqual([]);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(["missing", "unavailable"])(
     "denies %s sessions without data or provider access",
     async (kind) => {
