@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAnalysisTargetById } from "@/services/analysis-targets/analysis-target-repository";
 
 import { ReviewPersistenceError } from "./errors";
-import type { Review, ReviewStore } from "./review-service";
+import type { Review, ReviewAggregate, ReviewStore } from "./review-service";
 import type { NormalizedReview } from "./types";
 
 interface ReviewRow {
@@ -21,6 +21,7 @@ interface ReviewRow {
 
 const TABLE = "reviews";
 const INSERT_RPC = "insert_reviews";
+const SUMMARY_RPC = "get_review_summary";
 
 /**
  * Rows requested per page when reading reviews. Supabase's Data API returns at most the
@@ -81,6 +82,34 @@ export function createSupabaseReviewStore(client: SupabaseClient): ReviewStore {
       }
 
       return (data as ReviewRow[]).map(toReview);
+    },
+
+    async aggregateReviews(targetId): Promise<ReviewAggregate> {
+      // The invoker-security RPC performs the ownership check and computes count/average in
+      // PostgreSQL. It deliberately selects no review text, identity, metadata, or other columns.
+      const { data, error } = await client.rpc(SUMMARY_RPC, { p_target_id: targetId });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (error || !row || typeof row !== "object") {
+        throw new ReviewPersistenceError("summary", { cause: error });
+      }
+
+      const result = row as {
+        review_count?: number | string;
+        average_rating?: number | string | null;
+      };
+      const reviewCount = Number(result.review_count);
+      const averageRating =
+        result.average_rating === null || result.average_rating === undefined
+          ? null
+          : Number(result.average_rating);
+      if (!Number.isSafeInteger(reviewCount) || reviewCount < 0) {
+        throw new ReviewPersistenceError("summary");
+      }
+      if (averageRating !== null && !Number.isFinite(averageRating)) {
+        throw new ReviewPersistenceError("summary");
+      }
+
+      return { reviewCount, averageRating };
     },
 
     async listReviews(targetId) {
