@@ -1,106 +1,71 @@
 /**
- * S2-003 harness-owned copy of the Q&A model-boundary contract.
+ * S2-003 Q&A harness contract.
  *
- * ┌──────────────────────────────────────────────────────────────────────────────────────────┐
- * │ PENDING TEAM AGREEMENT. Nothing here is production code and nothing here is authoritative. │
- * └──────────────────────────────────────────────────────────────────────────────────────────┘
+ * The production types and constants are re-exported from their owners, never copied:
  *
- * The real definitions live in unmerged PRs and are NOT imported, so this harness can merge to
- * `main` independently:
+ * - `QaModelRequest`, `QA_OUTCOMES`, `QA_DECLINE_PRIORITY`, budgets, platform labels and
+ *   `SYSTEM_PROMPT_VERSION`: S2-013 (`src/services/qa/system-prompt.ts`).
+ * - `QaModelReply`, `QaModelCaller`: S2-011 (`src/services/qa/answer-question.ts`).
+ * - `QaAnswer`: S2-011 (`src/services/qa/qa-response.ts`).
+ * - `QaReviewContextBuilder`: S2-011 (`src/services/qa/qa-request.ts`); the real S2-010
+ *   `buildReviewDatasetContext` satisfies it.
  *
- * - `QaModelRequest`, `QA_OUTCOMES`, `QA_DECLINE_PRIORITY`, input format, budget constants:
- *   Aryan, S2-013 (`src/services/qa/system-prompt.ts`, PR #76, as carried by #79).
- * - `QaModelReply`, `QaModelCaller`, `QaAnswer`, reply validation rules, and the entry point
- *   `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })`: Aryan, S2-011
- *   (`src/services/qa/answer-question.ts`, `qa-response.ts`, PR #79).
- * - `buildReviewDatasetContext(targetId)` and its errors: Shawn, S2-010
- *   (`src/services/qa/review-context.ts`, PR #78).
+ * Constants are imported at runtime (so a teammate bumping the prompt version or a budget does
+ * not break the harness); tests assert on them where it matters. What stays harness-owned is
+ * listed below: the input layout the harness parses, the semantic prompt invariants, and the
+ * error-name/code table. `contract-alignment.ts` checks at compile time that the harness-owned
+ * types and error codes still fit the production ones.
  *
- * Every item below mirrors PR #79 head `e55c48a` and PR #78 head `6835c29` (2026-11-13). PR #82
- * was closed and consolidated into #78; nothing here depends on it. When #78 and #79 merge, the
- * S2-003 follow-up PR adds compile-time checks that these copies are assignable to and from the
- * real types, then replaces each copy with a re-export. Do not extend this file with new
- * production behaviour; propose changes to the owning story instead.
- *
- * Integration plan (PR 2): call the real `answerQuestion` with the REAL
- * `buildReviewDatasetContext`, so its authentication and ownership checks stay under test. Mock
- * only the infrastructure beneath it: a fake Supabase client (persisted rows), a fake verified
- * auth session for the actor, and the fake model as `callModel`. Never pass a fake builder.
+ * Importing this module loads `server-only` modules, so every test file that imports the harness
+ * starts with the preamble documented in `index.ts`.
  */
 
-/** Mirror of S2-013 `QA_OUTCOMES`. */
-export const QA_OUTCOMES = [
-  "answered",
-  "insufficient_evidence",
-  "declined_general_knowledge",
-  "declined_other_entity",
-  "declined_other_platform",
-] as const;
+import type { QaReviewContextBuilder } from "@/services/qa/qa-request";
+import type { QaModelCaller } from "@/services/qa/answer-question";
+import type { QaAnswer } from "@/services/qa/qa-response";
+import { QA_DECLINE_PRIORITY, type QaOutcome } from "@/services/qa/system-prompt";
 
-export type QaOutcome = (typeof QA_OUTCOMES)[number];
+export {
+  QA_DECLINE_PRIORITY,
+  QA_MAX_REQUEST_TOKENS,
+  QA_OUTCOMES,
+  QA_RESERVED_OUTPUT_TOKENS,
+  REVIEW_PLATFORM_LABELS,
+  SYSTEM_PROMPT_VERSION,
+} from "@/services/qa/system-prompt";
+export type { QaDeclineOutcome, QaModelRequest, QaOutcome } from "@/services/qa/system-prompt";
+export type { QaModelCaller, QaModelReply } from "@/services/qa/answer-question";
+export type { QaAnswer } from "@/services/qa/qa-response";
+export type { QaReviewContextBuilder } from "@/services/qa/qa-request";
 
-/** Mirror of S2-013 `QA_DECLINE_PRIORITY` (the decline outcomes). */
-export const QA_DECLINE_OUTCOMES = [
-  "declined_other_entity",
-  "declined_other_platform",
-  "declined_general_knowledge",
-] as const satisfies readonly QaOutcome[];
+/** The S2-013 decline outcomes, in priority order. Alias kept for harness readability. */
+export const QA_DECLINE_OUTCOMES = QA_DECLINE_PRIORITY;
 
-export type QaDeclineOutcome = (typeof QA_DECLINE_OUTCOMES)[number];
-
-export function isDeclineOutcome(outcome: QaOutcome): outcome is QaDeclineOutcome {
-  return (QA_DECLINE_OUTCOMES as readonly QaOutcome[]).includes(outcome);
+export function isDeclineOutcome(
+  outcome: QaOutcome,
+): outcome is (typeof QA_DECLINE_PRIORITY)[number] {
+  return (QA_DECLINE_PRIORITY as readonly QaOutcome[]).includes(outcome);
 }
 
-/** Mirror of S2-013 `QaModelRequest`: the provider-neutral request handed to the model seam. */
-export interface QaModelRequest {
-  promptVersion: string;
-  targetId: string;
-  /** System-level instructions (the ReviewLens system prompt). */
-  instructions: string;
-  /** User-turn content: the review dataset followed by the question. */
-  input: string;
-  /** IDs of the reviews included in `input`. */
-  reviewIds: string[];
-  maxOutputTokens: number;
-}
-
-/** Mirror of S2-011 `QaModelReply`: the raw provider reply, before validation. */
-export interface QaModelReply {
-  text: string;
-  usage?: { inputTokens: number; outputTokens: number };
-  /** Input tokens counted by S2-011's pre-call budget check (`token-budget.ts`). */
-  countedInputTokens?: number;
-}
-
-/** Mirror of S2-011 `QaModelCaller`: the single model seam the harness replaces. */
-export type QaModelCaller = (request: QaModelRequest) => Promise<QaModelReply>;
-
-/** The JSON object the S2-013 prompt asks the model to return (mirror of `QA_REPLY_JSON_SCHEMA`). */
+/**
+ * The JSON object the S2-013 prompt asks the model to return. Harness-owned so replies can be
+ * scripted; `contract-alignment.ts` checks its keys against S2-011 `QA_REPLY_JSON_SCHEMA`.
+ */
 export interface QaModelReplyPayload {
   outcome: QaOutcome;
   answer: string;
   citedReviewIds: string[];
 }
 
-/** Mirror of S2-011 `QaAnswer`: the validated answer returned to callers. */
-export interface QaAnswer {
-  outcome: QaOutcome;
-  answer: string;
-  citedReviewIds: string[];
-  promptVersion: string;
-  targetId: string;
-}
-
 /**
- * Mirror of the S2-013 user-turn layout. The harness reads the question back out of `input` so
- * scripts can match on it. PENDING AGREEMENT: ask S2-013 to export a parser or add a `question`
- * field to `QaModelRequest`, so the harness does not depend on prompt formatting.
+ * The S2-013 user-turn layout. S2-013 exports no parser, so the harness reads the question back
+ * out of `input` itself. The golden suite runs every request through the real
+ * `buildQaModelRequest`, so a layout change fails loudly here rather than silently.
  */
 export const QA_INPUT_QUESTION_HEADER = "QUESTION (JSON string):";
 
 /**
- * Mirror of the S2-013 evidence section that opens `input`:
+ * The S2-013 evidence section that opens `input`:
  *
  *   REVIEW DATASET (<n> reviews, JSON array):
  *   [{"id":…,"rating":…,"date":…,"text":…}, …]
@@ -128,11 +93,10 @@ export const QA_EVIDENCE_ROW_FIELDS = [
 /**
  * S2-013 system-prompt contract as stable semantic invariants, not exact prose.
  *
- * PENDING AGREEMENT (Aryan, S2-013). Each invariant lists alternatives. An alternative is satisfied
- * when ONE sentence of the whitespace-normalised prompt matches ALL of its patterns, so a rule must
- * be stated together, not assembled from words scattered across the prompt. Rewording the prompt is
- * fine as long as each rule is still stated. Until the S2-003 integration PR runs these against the
- * real S2-013 prompt, CI checks them only against the reference pipeline's placeholder prompt.
+ * Each invariant lists alternatives. An alternative is satisfied when ONE sentence of the
+ * whitespace-normalised prompt matches ALL of its patterns, so a rule must be stated together,
+ * not assembled from words scattered across the prompt. Rewording the prompt is fine as long as
+ * each rule is still stated. The golden suite checks these against the real S2-013 prompt.
  *
  * The target name (JSON-encoded) and platform label are checked separately, per target.
  */
@@ -147,7 +111,9 @@ export const QA_SYSTEM_PROMPT_INVARIANTS = [
     id: "grounded-in-reviews",
     rule: "Answers are based only on the supplied reviews.",
     alternatives: [
-      [/\bonly\b/i, /\b(supplied|provided)\b/i, /\breviews?\b/i, /\b(answer|base|evidence)/i],
+      // "answer|base", not "evidence": S2-013 rule 7 says a comparison is allowed "only if the
+      // supplied reviews ... contain the evidence", which is not the grounding rule.
+      [/\bonly\b/i, /\b(supplied|provided)\b/i, /\breviews?\b/i, /\b(answer|base)/i],
     ],
   },
   {
@@ -184,60 +150,65 @@ export const QA_SYSTEM_PROMPT_INVARIANTS = [
 export type QaPromptInvariantId = (typeof QA_SYSTEM_PROMPT_INVARIANTS)[number]["id"];
 
 /**
- * Mirror of S2-013 request-budget constants (application budget, not a model limit).
- *
- * In #79 the budget is enforced inside the OpenAI adapter (`createOpenAiQaModel` →
- * `token-budget.ts`), i.e. BELOW the `callModel` seam. With a fake `callModel`, the real pipeline
- * therefore does not reject an oversized question before the model call. See the open question in
- * `reference-pipeline.ts` and the `qa-edge-long-question` golden case.
- */
-export const QA_MAX_REQUEST_TOKENS = 16_000;
-export const QA_RESERVED_OUTPUT_TOKENS = 1_500;
-
-/** Mirror of S2-013 `REVIEW_PLATFORM_LABELS`. */
-export const REVIEW_PLATFORM_LABELS = { google_maps: "Google Maps" } as const;
-
-/**
- * Error names and codes the pipeline throws (S2-010, S2-011, S2-013, S1-013). Golden cases assert
- * on `name` and `code`, never on message text, so they hold for both the reference pipeline and
- * the real one.
+ * Error names and codes the real pipeline throws (S1-013, S2-010, S2-011, S2-013). Golden cases
+ * assert on `name` and `code`, never on message text. `contract-alignment.ts` fails the type
+ * check if any code here is not a member of its production error's code type.
  */
 export const QA_PIPELINE_ERRORS = {
+  // S1-013 ownership guard (via S2-010).
   targetNotFound: { name: "TargetNotFoundError", code: "TARGET_NOT_FOUND" },
+  // S2-010 context builder.
+  authRequired: { name: "ReviewContextError", code: "AUTH_REQUIRED" },
+  authUnavailable: { name: "ReviewContextError", code: "AUTH_UNAVAILABLE" },
   noReviewData: { name: "ReviewContextError", code: "NO_REVIEW_DATA" },
+  contextTooLarge: { name: "ReviewContextError", code: "REVIEW_CONTEXT_TOO_LARGE" },
   contextUnavailable: { name: "ReviewContextError", code: "REVIEW_CONTEXT_UNAVAILABLE" },
+  // S2-011 service boundary (`qa-request.ts`), checked before the context builder runs.
+  questionInvalidType: { name: "QaInputValidationError", code: "QA_QUESTION_INVALID_TYPE" },
+  questionTooLong: { name: "QaInputValidationError", code: "QA_QUESTION_TOO_LONG" },
+  // S2-013 request builder, and REQUEST_TOO_LARGE from the OpenAI adapter's token budget.
   emptyQuestion: { name: "QaPromptError", code: "EMPTY_QUESTION" },
   requestTooLarge: { name: "QaPromptError", code: "REQUEST_TOO_LARGE" },
+  // S2-011 token budget.
+  budgetCheckFailed: { name: "QaBudgetError", code: "BUDGET_CHECK_FAILED" },
+  // S2-011 reply validation.
   invalidModelResponse: { name: "QaResponseError", code: "INVALID_MODEL_RESPONSE" },
   ungroundedAnswer: { name: "QaResponseError", code: "UNGROUNDED_ANSWER" },
-  /** #79: any outcome other than "answered" that carries citations is rejected, not repaired. */
+  /** Any outcome other than "answered" that carries citations is rejected, not repaired. */
   unexpectedCitations: { name: "QaResponseError", code: "UNEXPECTED_CITATIONS" },
+  // S2-011 provider adapter.
+  qaDisabled: { name: "QaModelError", code: "QA_DISABLED" },
+  apiKeyNotConfigured: { name: "QaModelError", code: "API_KEY_NOT_CONFIGURED" },
   modelTimeout: { name: "QaModelError", code: "MODEL_TIMEOUT" },
   modelUnavailable: { name: "QaModelError", code: "MODEL_UNAVAILABLE" },
   modelRateLimited: { name: "QaModelError", code: "MODEL_RATE_LIMITED" },
+  modelAuth: { name: "QaModelError", code: "MODEL_AUTH" },
+  modelRejected: { name: "QaModelError", code: "MODEL_REJECTED" },
+  modelFailed: { name: "QaModelError", code: "MODEL_FAILED" },
+  modelRefused: { name: "QaModelError", code: "MODEL_REFUSED" },
+  responseIncomplete: { name: "QaModelError", code: "RESPONSE_INCOMPLETE" },
 } as const satisfies Record<string, { name: string; code: string }>;
 
 export type QaPipelineErrorKey = keyof typeof QA_PIPELINE_ERRORS;
 export type QaPipelineErrorShape = (typeof QA_PIPELINE_ERRORS)[QaPipelineErrorKey];
 
-/** A test identity. In the real pipeline this becomes the mocked verified Supabase session. */
+/** A test identity. The harness turns it into a fake verified Supabase session. */
 export interface QaActor {
   readonly id: string;
   readonly email: string;
 }
 
 /**
- * Harness-defined orchestration entry point. The harness calls whatever implements this: the
- * contract reference pipeline in PR 1, and in PR 2 an adapter that installs a fake verified auth
- * session for `actor` and a fake Supabase client holding the fixture rows, then calls
- * `answerQuestion(targetId, question, { buildReviewDatasetContext, callModel })` with the REAL
- * S2-010 `buildReviewDatasetContext`, so authentication and ownership remain under test. Only the
- * infrastructure under the builder and the model are faked; the builder itself never is.
+ * The orchestration under test. The default is `realQaPipeline` (`real-pipeline.ts`), which calls
+ * the real `answerQuestion`. `buildReviewDatasetContext` is ALWAYS the real S2-010 builder (the
+ * harness wraps it only to count calls); a pipeline must not replace it. The actor's session is
+ * already installed in the fake Supabase client before the pipeline runs; `actor` is informative.
  */
 export interface QaPipelineInput {
-  readonly actor: QaActor;
+  readonly actor: QaActor | null;
   readonly targetId: unknown;
-  readonly question: string;
+  readonly question: unknown;
+  readonly buildReviewDatasetContext: QaReviewContextBuilder;
   readonly callModel: QaModelCaller;
 }
 

@@ -1,5 +1,10 @@
 /** @jest-environment node */
 
+// S2-003 harness preamble: the real Q&A pipeline imports `server-only` modules, and the fake
+// Supabase is injected through this module mock (the context builder has no client seam).
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+
 import { getQaDataset } from "../../fixtures/qa/datasets";
 import { QA_GOLDEN_CASES } from "../../fixtures/qa/golden-cases";
 import {
