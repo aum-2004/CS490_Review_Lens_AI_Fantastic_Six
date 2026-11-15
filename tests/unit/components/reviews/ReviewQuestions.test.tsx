@@ -1,3 +1,4 @@
+import { Activity } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import {
@@ -15,7 +16,12 @@ jest.mock("@/lib/api/review-questions", () => ({
   askReviewQuestion: jest.fn(),
 }));
 const ask = jest.mocked(askReviewQuestion);
-const props = { targetId: "target-a", targetName: "Bakery", reviewsAvailable: true };
+const props = {
+  userId: "user-a",
+  targetId: "target-a",
+  targetName: "Bakery",
+  reviewsAvailable: true,
+};
 const answer: ReviewAnswer = {
   targetId: "target-a",
   outcome: "answered",
@@ -29,6 +35,7 @@ function submit(question = "  What do reviewers like?  ") {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  ask.mockReset();
   ask.mockResolvedValue(answer);
 });
 
@@ -206,4 +213,150 @@ it("bounds request duration and presents a retryable timeout", async () => {
   } finally {
     jest.useRealTimers();
   }
+});
+
+describe("S2-019 preserved-page lifecycle", () => {
+  it("clears answers, drafts and errors when a page is hidden and restored", async () => {
+    const view = (mode: "visible" | "hidden") => (
+      <Activity mode={mode}>
+        <ReviewQuestions {...props} />
+      </Activity>
+    );
+    const { rerender } = render(view("visible"));
+    submit("Private draft A");
+    await screen.findByText(answer.answer);
+    rerender(view("hidden"));
+    rerender(view("visible"));
+    expect(screen.queryByText(answer.answer)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Question/)).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+    ask.mockRejectedValueOnce(new ReviewQuestionError("FAILED", "Old error"));
+    submit();
+    await screen.findByRole("alert");
+    rerender(view("hidden"));
+    rerender(view("visible"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["success", "failure", "authentication"] as const)(
+    "ignores old %s after restore without unlocking the new request",
+    async (outcome) => {
+      let resolveOld!: (value: ReviewAnswer) => void;
+      let rejectOld!: (reason: unknown) => void;
+      let resolveNew!: (value: ReviewAnswer) => void;
+      ask.mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          resolveOld = resolve;
+          rejectOld = reject;
+        }),
+      );
+      ask.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveNew = resolve;
+        }),
+      );
+      const view = (mode: "visible" | "hidden") => (
+        <Activity mode={mode}>
+          <ReviewQuestions {...props} />
+        </Activity>
+      );
+      const { rerender } = render(view("visible"));
+      submit("Old question");
+      await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+      const oldSignal = ask.mock.calls[0][2];
+      rerender(view("hidden"));
+      expect(oldSignal.aborted).toBe(true);
+      rerender(view("visible"));
+      submit("New question");
+      await waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        if (outcome === "success") resolveOld({ ...answer, answer: "STALE_ANSWER" });
+        else
+          rejectOld(
+            new ReviewQuestionError(
+              outcome === "authentication" ? "AUTHENTICATION_REQUIRED" : "FAILED",
+              "STALE_ERROR",
+            ),
+          );
+      });
+      expect(screen.queryByText(/STALE_/)).not.toBeInTheDocument();
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: /Asking/ })).toBeDisabled();
+      expect(ask.mock.calls[1][2].aborted).toBe(false);
+      await act(async () => resolveNew({ ...answer, answer: "CURRENT_ANSWER" }));
+      expect(await screen.findByText("CURRENT_ANSWER")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+    },
+  );
+
+  it("resets on authenticated user changes with the same target/navigation keys", async () => {
+    const { rerender } = render(<ReviewQuestions {...props} />);
+    submit();
+    await screen.findByText(answer.answer);
+    rerender(<ReviewQuestions {...props} userId="user-b" />);
+    expect(screen.queryByText(answer.answer)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/Question/)).toHaveValue("");
+  });
+});
+
+it("cancels validation that completes after the page has been hidden and restored", async () => {
+  const view = (mode: "visible" | "hidden") => (
+    <Activity mode={mode}>
+      <ReviewQuestions {...props} />
+    </Activity>
+  );
+  const { rerender } = render(view("visible"));
+  submit("Draft from the old visit");
+  rerender(view("hidden"));
+  rerender(view("visible"));
+  await act(async () => {});
+  expect(ask).not.toHaveBeenCalled();
+  expect(screen.getByLabelText(/Question/)).toHaveValue("");
+});
+
+it("aborts a pending request when the verified account changes", async () => {
+  let reject!: (cause: unknown) => void;
+  ask.mockReturnValueOnce(
+    new Promise((_done, fail) => {
+      reject = fail;
+    }),
+  );
+  const { rerender } = render(<ReviewQuestions {...props} />);
+  submit();
+  await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  const signal = ask.mock.calls[0][2];
+  rerender(<ReviewQuestions {...props} userId="user-b" />);
+  expect(signal.aborted).toBe(true);
+  await act(async () => reject(new ReviewQuestionError("AUTHENTICATION_REQUIRED", "OLD_USER")));
+  expect(mockReplace).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  submit("New account question");
+  expect(await screen.findByText(answer.answer)).toBeInTheDocument();
+});
+
+it("ignores a late success after hide/show without a replacement submission", async () => {
+  let resolve!: (value: ReviewAnswer) => void;
+  ask.mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  const view = (mode: "visible" | "hidden") => (
+    <Activity mode={mode}>
+      <ReviewQuestions {...props} />
+    </Activity>
+  );
+  const { rerender } = render(view("visible"));
+  submit("Question from the old visit");
+  await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  const signal = ask.mock.calls[0][2];
+  rerender(view("hidden"));
+  expect(signal.aborted).toBe(true);
+  rerender(view("visible"));
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+  await act(async () => resolve({ ...answer, answer: "STALE_SUCCESS_WITHOUT_RESUBMISSION" }));
+  expect(screen.queryByText("STALE_SUCCESS_WITHOUT_RESUBMISSION")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Question from the old visit/)).not.toBeInTheDocument();
+  expect(screen.getByLabelText(/Question/)).toHaveValue("");
+  expect(ask).toHaveBeenCalledTimes(1);
 });

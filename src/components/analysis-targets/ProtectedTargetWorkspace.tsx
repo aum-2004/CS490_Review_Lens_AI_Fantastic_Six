@@ -124,6 +124,7 @@ export async function ProtectedTargetWorkspace({
             <ReviewList reviews={reviews} />
           )}
           <ReviewQuestions
+            userId={user.id}
             targetId={target.id}
             targetName={target.name}
             reviewsAvailable={reviews !== null && reviews.length > 0}

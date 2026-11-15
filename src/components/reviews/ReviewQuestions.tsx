@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useLayoutEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,6 +26,7 @@ import {
 import { reviewQuestionSchema } from "@/lib/validation/review-question";
 
 type Props = {
+  userId: string;
   targetId: string;
   targetName: string;
   reviewsAvailable: boolean;
@@ -40,9 +41,13 @@ const outcomeLabels = {
 
 export function ReviewQuestions(props: Props) {
   const { bfcacheId } = useRouter();
-  // A new target or navigation restores a fresh form, never another target's answer.
+  // Scope state to the verified account as well as the target and navigation.
+  // Back/forward restores bfcacheId; Activity cleanup below handles that transition.
   return (
-    <QuestionForm key={`${props.targetId}:${bfcacheId}:${props.reviewsAvailable}`} {...props} />
+    <QuestionForm
+      key={`${props.userId}:${props.targetId}:${bfcacheId}:${props.reviewsAvailable}`}
+      {...props}
+    />
   );
 }
 
@@ -59,6 +64,7 @@ function QuestionForm({
     ? questionHelpId
     : `${questionHelpId} ${unavailableHelpId}`;
   const request = useRef<AbortController | null>(null);
+  const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<ReviewAnswer | null>(null);
   const [answeredQuestion, setAnsweredQuestion] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -67,25 +73,33 @@ function QuestionForm({
     defaultValues: { question: "" },
   });
 
-  useEffect(
+  const { reset } = form;
+  useLayoutEffect(
     () => () => {
       request.current?.abort();
       request.current = null;
+      // Activity preserves hidden pages; clear all transient Q&A state before restoration.
+      setAnswer(null);
+      setAnsweredQuestion("");
+      setError(null);
+      setPending(false);
+      reset({ question: "" });
     },
-    [],
+    [reset],
   );
 
   const submit = async ({ question }: { question: string }) => {
     if (request.current || !reviewsAvailable) return;
     const controller = new AbortController();
     request.current = controller;
+    setPending(true);
     // The provider now has separate 30s counting and generation deadlines.
     const timeout = setTimeout(() => controller.abort(), 75_000);
     setAnswer(null);
     setError(null);
     try {
       const result = await askReviewQuestion(targetId, question, controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || request.current !== controller) return;
       setAnsweredQuestion(question);
       setAnswer(result);
     } catch (cause) {
@@ -109,7 +123,11 @@ function QuestionForm({
       );
     } finally {
       clearTimeout(timeout);
-      request.current = null;
+      // Old requests must not clear a newer request after Activity restoration.
+      if (request.current === controller) {
+        request.current = null;
+        setPending(false);
+      }
     }
   };
 
@@ -133,7 +151,7 @@ function QuestionForm({
           className="space-y-4"
           noValidate
           onSubmit={(event) => void form.handleSubmit(submit)(event)}
-          aria-busy={form.formState.isSubmitting}
+          aria-busy={pending}
         >
           <p className="text-sm text-muted-foreground">* Required</p>
           <FormField
@@ -149,7 +167,7 @@ function QuestionForm({
                     {...field}
                     aria-required="true"
                     disabled={!reviewsAvailable}
-                    readOnly={form.formState.isSubmitting}
+                    readOnly={pending}
                     placeholder="What do reviewers like about this business?"
                   />
                 </FormControl>
@@ -168,10 +186,10 @@ function QuestionForm({
             <Button
               type="submit"
               className="w-40"
-              disabled={!reviewsAvailable || form.formState.isSubmitting}
+              disabled={!reviewsAvailable || pending}
               aria-describedby={reviewsAvailable ? undefined : unavailableHelpId}
             >
-              {form.formState.isSubmitting ? (
+              {pending ? (
                 <>
                   <Spinner /> Asking…
                 </>
@@ -183,12 +201,12 @@ function QuestionForm({
         </form>
       </Form>
       <div role="status" aria-live="polite" aria-atomic="true" className="space-y-3">
-        {form.formState.isSubmitting && (
+        {pending && (
           <p className="break-words text-sm text-muted-foreground">
             ReviewLens is processing your question for {targetName}…
           </p>
         )}
-        {answer && !form.formState.isSubmitting && (
+        {answer && !pending && (
           <>
             <h3 className="text-lg font-medium">{outcomeLabels[answer.outcome]}</h3>
             <p className="max-w-prose break-words text-sm text-muted-foreground">
