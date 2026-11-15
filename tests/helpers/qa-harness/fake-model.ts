@@ -1,3 +1,5 @@
+import { QaModelError, type QaModelErrorCode } from "@/services/qa/openai-qa-client";
+
 import {
   QA_INPUT_QUESTION_HEADER,
   type QaModelCaller,
@@ -14,18 +16,8 @@ import {
  * - Recorded: every call is captured (deep-copied) with its outcome for assertions.
  * - Loud: an unscripted call throws `UnscriptedQaModelCallError` unless a fallback is configured.
  * - Offline: it never performs I/O. Delays use `setTimeout`, so Jest fake timers control them.
+ * - Real errors: provider failures are the real S2-011 `QaModelError`, not a look-alike.
  */
-
-/** A provider-style failure. `name` matches the real S2-011 `QaModelError` so golden cases agree. */
-export class FakeQaModelError extends Error {
-  constructor(
-    readonly code: string,
-    message = `Fake model failure: ${code}`,
-  ) {
-    super(message);
-    this.name = "QaModelError";
-  }
-}
 
 /** Thrown when the code under test calls the model and no rule or fallback matches. */
 export class UnscriptedQaModelCallError extends Error {
@@ -262,8 +254,9 @@ export const reply = {
   error(createError: () => Error, delayMs?: number): QaReplySpec {
     return { kind: "error", createError, delayMs };
   },
-  providerError(code: string, delayMs?: number): QaReplySpec {
-    return reply.error(() => new FakeQaModelError(code), delayMs);
+  /** Rejects with the real S2-011 `QaModelError` carrying `code`. */
+  providerError(code: QaModelErrorCode, delayMs?: number): QaReplySpec {
+    return reply.error(() => new QaModelError(code, "Scripted by the S2-003 fake model."), delayMs);
   },
   /** Rejects with `QaModelError`/`MODEL_TIMEOUT` after `ms` (use Jest fake timers to advance). */
   timeout(ms = 30_000): QaReplySpec {

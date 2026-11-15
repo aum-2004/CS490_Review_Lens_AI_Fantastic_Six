@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { ReviewSummaryCard } from "@/components/reviews/ReviewSummaryCard";
+import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { RetryTargetsButton } from "./RetryTargetsButton";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requirePageUser } from "@/services/auth/access-control";
@@ -145,6 +146,11 @@ export async function ProtectedTargetWorkspace({
           ) : (
             <ReviewList reviews={reviews} />
           )}
+          <ReviewQuestions
+            targetId={target.id}
+            targetName={target.name}
+            reviewsAvailable={reviews !== null && reviews.length > 0}
+          />
         </div>
       )}
     </>

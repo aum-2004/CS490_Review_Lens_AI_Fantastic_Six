@@ -1,9 +1,15 @@
 /** @jest-environment node */
 
+// S2-003 harness preamble: the real Q&A pipeline imports `server-only` modules, and the fake
+// Supabase is injected through this module mock (the context builder has no client seam).
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+
+import { QaModelError } from "@/services/qa/openai-qa-client";
+
 import {
   createFakeQaModel,
   extractQuestion,
-  FakeQaModelError,
   reply,
   UnscriptedQaModelCallError,
   type QaModelRequest,
@@ -147,7 +153,11 @@ describe("createFakeQaModel", () => {
       { kind: "error", name: "QaModelError", code: "MODEL_UNAVAILABLE" },
       { kind: "error", name: "TypeError", code: undefined },
     ]);
-    expect(new FakeQaModelError("X")).toBeInstanceOf(Error);
+    // Provider failures are the real S2-011 class, not a look-alike.
+    expect(model.calls[0].outcome).toMatchObject({ name: QaModelError.name });
+    await expect(
+      createFakeQaModel({ fallback: reply.providerError("MODEL_REFUSED") }).callModel(request("x")),
+    ).rejects.toBeInstanceOf(QaModelError);
   });
 
   it("builds dynamic replies from the request", async () => {

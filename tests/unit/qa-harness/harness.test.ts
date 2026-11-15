@@ -1,5 +1,10 @@
 /** @jest-environment node */
 
+// S2-003 harness preamble: the real Q&A pipeline imports `server-only` modules, and the fake
+// Supabase is injected through this module mock (the context builder has no client seam).
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+
 import { getQaDataset, QA_MISSING_TARGET_ID, QA_USERS } from "../../fixtures/qa/datasets";
 import {
   createQaTestHarness,
@@ -115,7 +120,7 @@ describe("createQaTestHarness", () => {
   });
 });
 
-describe("reference pipeline citation contract (#79 parseQaModelReply)", () => {
+describe("real S2-011 citation contract (parseQaModelReply through answerQuestion)", () => {
   const cited = [restaurantA.reviews[0].id];
 
   it.each(QA_OUTCOMES.filter((outcome) => outcome !== "answered").map((outcome) => [outcome]))(

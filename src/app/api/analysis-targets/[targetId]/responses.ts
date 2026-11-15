@@ -3,9 +3,14 @@ import { NextResponse } from "next/server";
 /** Shared by the target child routes so every denial has exactly the same shape (S1-013). */
 export const PRIVATE_HEADERS = { "Cache-Control": "private, no-store" };
 
-export function errorResponse(status: number, code: string, message: string) {
+export function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+  fieldErrors?: Record<string, string>,
+) {
   return NextResponse.json(
-    { success: false, error: { code, message } },
+    { success: false, error: { code, message, ...(fieldErrors ? { fieldErrors } : {}) } },
     { status, headers: PRIVATE_HEADERS },
   );
 }

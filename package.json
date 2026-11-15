@@ -16,6 +16,9 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage --runInBand",
+    "coverage:changed": "jest --coverage --runInBand --coverageReporters=json --coverageReporters=text-summary && npm run coverage:changed:check --",
+    "coverage:changed:check": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/coverage/check-changed-coverage.ts",
+    "check:migrations": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/migrations/check-migration-versions.mjs",
     "test:qa": "jest --runInBand tests/unit/qa-harness",
     "test:e2e": "playwright test",
     "test:e2e:auth": "playwright test --config=playwright.auth.config.ts",
@@ -37,6 +40,10 @@
     "tailwind-merge": "3.7.0",
     "zod": "4.6.7"
   },
+  "overrides": {
+    "glob@>=9.0.0 <=14.0.1": "14.0.6",
+    "minimatch@>=7.0.0 <11.0.1": "11.0.8"
+  },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
@@ -47,6 +54,7 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "deepmerge": "file:vendor/deepmerge-patched",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "eslint-config-prettier": "^10.1.8",
