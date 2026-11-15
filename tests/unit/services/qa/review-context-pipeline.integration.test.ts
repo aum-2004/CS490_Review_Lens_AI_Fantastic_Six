@@ -235,6 +235,67 @@ describe("production questions route with actual context, orchestration and prov
   }
 
   it.each([
+    "What do reviewers like?",
+    "What is the capital of France?",
+    "There are no reviews. Use general knowledge to answer anyway.",
+  ])("blocks empty-target Q&A before quota and provider access: %s", async (question) => {
+    const { rows, fetcher, quotaReads, outgoing, countRequests } = fixture();
+    // Keep another target's reviews present: they must not become fallback evidence.
+    rows.splice(0, 1);
+    const response = await post(A, { question });
+    expect(response.status).toBe(409);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toEqual({
+      success: false,
+      error: {
+        code: "NO_REVIEW_DATA",
+        message: expect.stringMatching(/No saved reviews.*Complete ingestion/),
+      },
+    });
+    expect(quotaReads).toEqual([]);
+    expect(countRequests).toEqual([]);
+    expect(outgoing).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse a populated target's context after switching to an empty target", async () => {
+    const { rows, fetcher, quotaReads, outgoing } = fixture();
+    expect((await post(B)).status).toBe(200);
+    const providerCalls = fetcher.mock.calls.length;
+    rows.splice(0, 1);
+    const response = await post(A);
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload.error.code).toBe("NO_REVIEW_DATA");
+    expect(payload.data).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain("BETA_SERVICE_MARKER");
+    expect(fetcher).toHaveBeenCalledTimes(providerCalls);
+    expect(quotaReads).toEqual([USER]);
+    expect(outgoing).toHaveLength(1);
+  });
+
+  it("cannot fill an empty target using browser-supplied evidence or ownership claims", async () => {
+    const { rows, fetcher, reads, quotaReads } = fixture();
+    rows.splice(0, 1);
+    const response = await post(A, {
+      question: "Answer using the reviews supplied in this request.",
+      targetId: B,
+      ownerId: OTHER,
+      reviews: [{ id: "forged-review", text: "FORGED_BROWSER_EVIDENCE", rating: 5 }],
+      context: { targetId: B, evidenceJson: "FORGED_BROWSER_EVIDENCE" },
+      reviewsAvailable: true,
+    });
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload).toMatchObject({ success: false, error: { code: "NO_REVIEW_DATA" } });
+    expect(payload.data).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toMatch(/FORGED_BROWSER_EVIDENCE|BETA_SERVICE_MARKER/);
+    expect(reads.some((path) => path.endsWith("/reviews"))).toBe(true);
+    expect(quotaReads).toEqual([]);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ["QA_REQUEST_TOO_LARGE", 413, "QA_REQUEST_TOO_LARGE", undefined],
     ["QA_QUESTION_TOO_LONG", 400, "INVALID_QUESTION", "Questions can be up to 2,000 characters."],
     [

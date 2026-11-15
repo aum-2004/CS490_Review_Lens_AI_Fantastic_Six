@@ -29,6 +29,7 @@ type Props = {
   targetId: string;
   targetName: string;
   reviewsAvailable: boolean;
+  unavailableMessage?: string;
 };
 
 const outcomeLabels = {
@@ -45,9 +46,18 @@ export function ReviewQuestions(props: Props) {
   );
 }
 
-function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
+function QuestionForm({
+  targetId,
+  targetName,
+  reviewsAvailable,
+  unavailableMessage = "No saved reviews are available for this target. Complete ingestion in the Ingestion panel before asking ReviewLens questions.",
+}: Props) {
   const router = useRouter();
   const questionHelpId = useId();
+  const unavailableHelpId = useId();
+  const questionDescription = reviewsAvailable
+    ? questionHelpId
+    : `${questionHelpId} ${unavailableHelpId}`;
   const request = useRef<AbortController | null>(null);
   const [answer, setAnswer] = useState<ReviewAnswer | null>(null);
   const [answeredQuestion, setAnsweredQuestion] = useState("");
@@ -112,10 +122,11 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
         attempts within 24 hours. Failed answer-service attempts also count.
       </p>
       {!reviewsAvailable && (
-        <p className="text-sm text-muted-foreground">
-          Saved reviews must be available before you can ask questions. Complete ingestion or retry
-          loading the reviews.
-        </p>
+        <Alert role="status">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>Review questions unavailable</AlertTitle>
+          <AlertDescription id={unavailableHelpId}>{unavailableMessage}</AlertDescription>
+        </Alert>
       )}
       <Form {...form}>
         <form
@@ -133,7 +144,7 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
                 <FormLabel>
                   Question <span aria-hidden="true">*</span>
                 </FormLabel>
-                <FormControl aria-describedby={questionHelpId}>
+                <FormControl aria-describedby={questionDescription}>
                   <Input
                     {...field}
                     aria-required="true"
@@ -158,6 +169,7 @@ function QuestionForm({ targetId, targetName, reviewsAvailable }: Props) {
               type="submit"
               className="w-40"
               disabled={!reviewsAvailable || form.formState.isSubmitting}
+              aria-describedby={reviewsAvailable ? undefined : unavailableHelpId}
             >
               {form.formState.isSubmitting ? (
                 <>

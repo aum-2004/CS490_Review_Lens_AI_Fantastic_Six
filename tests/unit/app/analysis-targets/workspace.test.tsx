@@ -103,6 +103,15 @@ it.each([
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
     // Empty review rows do not override the persisted operation result.
     expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
+    const askButton = screen.getByRole("button", { name: "Ask question" });
+    expect(askButton).toBeDisabled();
+    expect(askButton).toHaveAccessibleDescription(
+      status === "failed"
+        ? /most recent ingestion failed.*no saved reviews/
+        : status === "processing"
+          ? /Ingestion is in progress.*Wait for ingestion/
+          : /Ingestion completed.*no saved reviews.*Reload.*contact the project team/,
+    );
   },
 );
 
@@ -130,6 +139,8 @@ it.each(["failed", null] as const)(
     expect(screen.getByText("Previously saved bakery review")).toBeInTheDocument();
     expect(screen.getAllByText(status ? "Failed" : "Not ingested")).toHaveLength(2);
     expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+    expect(screen.queryByText("Review questions unavailable")).not.toBeInTheDocument();
   },
 );
 
@@ -141,6 +152,9 @@ it("opens an owned target with the shared shell, context, empty reviews and inge
   expect(screen.getByText("Google Maps", { exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Start ingestion" })).toBeEnabled();
   expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask question" })).toHaveAccessibleDescription(
+    /No saved reviews.*Complete ingestion in the Ingestion panel/,
+  );
   expect(screen.getAllByText("Not ingested")).toHaveLength(2);
   expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
 });
@@ -197,6 +211,10 @@ it("keeps target context when reviews fail and does not misrepresent failure as 
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
   expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load the saved reviews");
   expect(screen.queryByText(/No saved reviews yet/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Ask question" })).toHaveAccessibleDescription(
+    /couldn't load the saved reviews.*Retry loading/,
+  );
   expect(document.body.textContent).not.toContain("private SQL");
 });
 

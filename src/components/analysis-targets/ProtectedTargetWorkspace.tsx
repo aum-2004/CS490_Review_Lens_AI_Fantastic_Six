@@ -127,6 +127,17 @@ export async function ProtectedTargetWorkspace({
             targetId={target.id}
             targetName={target.name}
             reviewsAvailable={reviews !== null && reviews.length > 0}
+            unavailableMessage={
+              reviews === null
+                ? "We couldn't load the saved reviews, so review questions are unavailable. Retry loading the reviews before asking ReviewLens questions."
+                : ingestion?.state === "failed"
+                  ? "The most recent ingestion failed and no saved reviews are available. Use the Ingestion panel to resolve the failure before asking ReviewLens questions."
+                  : ingestion?.state === "processing"
+                    ? "Ingestion is in progress and no saved reviews are available yet. Wait for ingestion to complete before asking ReviewLens questions."
+                    : ingestion?.state === "succeeded"
+                      ? "Ingestion completed, but no saved reviews are available for this target. Reload the workspace and contact the project team if reviews are still missing."
+                      : undefined
+            }
           />
         </div>
       )}
