@@ -113,7 +113,9 @@ output stops the run immediately.
 Do not perform these steps until Aryan confirms both the dedicated-project hard spending limit and
 final authorization.
 
-1. In the ignored local `.env.local`, temporarily set only the approved configuration:
+1. Create the dedicated, ignored `.env.eval.local` file with only the approved evaluation
+   configuration. Do not put these values in `.env.local`, which remains the normal Next.js
+   development environment with `QA_ENABLED=false`:
 
    ```dotenv
    QA_ENABLED=true
@@ -130,9 +132,14 @@ final authorization.
 3. If any attempt fails, stop. Preserve the directory and obtain explicit PM authorization before
    considering a new run ID. Do not probe model availability, change the model, modify the prompt,
    or rerun completed attempts.
-4. Immediately restore `QA_ENABLED=false` in `.env.local` after the command stops, whether it
-   completes or fails. Keep the dedicated key local and never paste it into results, issues, a PR,
-   logs, or an AI transcript.
+4. Keep `.env.local` at `QA_ENABLED=false`. Delete `.env.eval.local` when it is no longer needed,
+   or leave it ignored and secured locally. Never paste its dedicated key into results, issues, a
+   PR, logs, or an AI transcript.
+
+The npm command loads only `.env.eval.local`; it does not automatically load `.env.local`.
+Conversely, `.env.eval.local` is not one of Next.js's recognized development environment file
+names, so normal `next dev` does not load it. The repository's `.env*` ignore rule keeps the file
+untracked.
 
 The command fails before creating artifacts or touching the provider unless both CLI flags, an
 explicit run ID, `QA_ENABLED=true`, `OPENAI_QA_MODEL=gpt-6-luna`, and a nonblank local API key are

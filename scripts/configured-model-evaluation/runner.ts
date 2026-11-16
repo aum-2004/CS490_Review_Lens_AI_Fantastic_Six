@@ -103,7 +103,8 @@ interface AttemptCounter {
   external: number;
 }
 
-class RequestLedger {
+/** Narrowly exported so guard tests can exercise request caps without changing the 36-attempt plan. */
+export class RequestLedger {
   private current: AttemptCounter | undefined;
   private externalTotal = 0;
   private adapterTotal = 0;

@@ -1,6 +1,6 @@
 /** @jest-environment node */
 
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -11,9 +11,11 @@ import {
 import {
   APPROVED_QA_MODEL,
   EvaluationGuardError,
+  RequestLedger,
   runConfiguredModelEvaluation,
   validatePaidExecution,
 } from "../../../../scripts/configured-model-evaluation/runner";
+import { OPENAI_INPUT_TOKENS_URL, OPENAI_RESPONSES_URL } from "@/services/qa/openai-qa-client";
 
 jest.mock("server-only", () => ({}));
 
@@ -82,6 +84,62 @@ describe("configured-model evaluation runner", () => {
     );
   });
 
+  it("rejects provider request 73 before it reaches the transport", async () => {
+    const transportCalls: string[] = [];
+    const ledger = new RequestLedger(async (input) => {
+      transportCalls.push(String(input));
+      return Response.json({ ok: true });
+    }, false);
+
+    for (let attempt = 0; attempt < 36; attempt += 1) {
+      ledger.beginAttempt();
+      await ledger.fetcher(OPENAI_INPUT_TOKENS_URL);
+      await ledger.fetcher(OPENAI_RESPONSES_URL);
+      expect(ledger.finishAttempt()).toMatchObject({ tokenCount: 1, generation: 1 });
+    }
+
+    expect(transportCalls).toHaveLength(72);
+    ledger.beginAttempt();
+    await expect(ledger.fetcher(OPENAI_INPUT_TOKENS_URL)).rejects.toMatchObject({
+      name: "EvaluationGuardError",
+      code: "RUN_REQUEST_LIMIT",
+    });
+    expect(transportCalls).toHaveLength(72);
+  });
+
+  it("rejects a second token-count request in one attempt before transport dispatch", async () => {
+    const transportCalls: string[] = [];
+    const ledger = new RequestLedger(async (input) => {
+      transportCalls.push(String(input));
+      return Response.json({ ok: true });
+    }, false);
+
+    ledger.beginAttempt();
+    await ledger.fetcher(OPENAI_INPUT_TOKENS_URL);
+    await expect(ledger.fetcher(OPENAI_INPUT_TOKENS_URL)).rejects.toMatchObject({
+      name: "EvaluationGuardError",
+      code: "PER_ATTEMPT_REQUEST_LIMIT",
+    });
+    expect(transportCalls).toEqual([OPENAI_INPUT_TOKENS_URL]);
+  });
+
+  it("rejects a second generation request in one attempt before transport dispatch", async () => {
+    const transportCalls: string[] = [];
+    const ledger = new RequestLedger(async (input) => {
+      transportCalls.push(String(input));
+      return Response.json({ ok: true });
+    }, false);
+
+    ledger.beginAttempt();
+    await ledger.fetcher(OPENAI_INPUT_TOKENS_URL);
+    await ledger.fetcher(OPENAI_RESPONSES_URL);
+    await expect(ledger.fetcher(OPENAI_RESPONSES_URL)).rejects.toMatchObject({
+      name: "EvaluationGuardError",
+      code: "PER_ATTEMPT_REQUEST_LIMIT",
+    });
+    expect(transportCalls).toEqual([OPENAI_INPUT_TOKENS_URL, OPENAI_RESPONSES_URL]);
+  });
+
   it("fails closed unless every paid-execution guard is present and exact", () => {
     const validEnv = {
       QA_ENABLED: "true",
@@ -130,6 +188,44 @@ describe("configured-model evaluation runner", () => {
       }),
     ).toMatchObject(validEnv);
   });
+
+  it.each([
+    ["executePaid without authorizationConfirmed", true, false],
+    ["authorizationConfirmed without executePaid", false, true],
+  ])(
+    "rejects %s before artifact creation or transport dispatch",
+    async (_caseName, executePaid, authorizationConfirmed) => {
+      const outputRoot = await temporaryRoot();
+      const transportCalls: string[] = [];
+
+      await expect(
+        runConfiguredModelEvaluation({
+          mode: "paid",
+          runId: "incomplete-paid-opt-in",
+          outputRoot,
+          executePaid,
+          authorizationConfirmed,
+          env: {
+            QA_ENABLED: "true",
+            OPENAI_QA_MODEL: APPROVED_QA_MODEL,
+            OPENAI_API_KEY: "test-only-not-live",
+          },
+          transportOverride: {
+            fetcher: async (input) => {
+              transportCalls.push(String(input));
+              return Response.json({ ok: true });
+            },
+            external: false,
+          },
+        }),
+      ).rejects.toMatchObject({
+        name: "EvaluationGuardError",
+        code: "PAID_OPT_IN_REQUIRED",
+      });
+      expect(transportCalls).toEqual([]);
+      expect(await readdir(outputRoot)).toEqual([]);
+    },
+  );
 
   it("stops on the first token-count failure, makes no generation request, and preserves artifacts", async () => {
     const outputRoot = await temporaryRoot();
