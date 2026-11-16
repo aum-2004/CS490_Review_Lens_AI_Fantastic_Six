@@ -1,9 +1,10 @@
-# S2-020 functionality and security review
+# S2-020 functionality and security self-review
 
 Reviewed on 2026-11-15 against issue #71, S2-BR-007, S2-BR-010,
 S2-BR-011, S2-BR-025, the supplied requirements, and UI/UX standards.
-This was a separate review pass over the implementation and its surrounding
-boundaries; AI review does not replace the required teammate approval.
+This was an AI-assisted self-review by the same Codex assistant that implemented
+the change, covering the implementation and its surrounding boundaries. It does
+not replace independent teammate review or the required section 7 security approval.
 
 ## Finding addressed
 

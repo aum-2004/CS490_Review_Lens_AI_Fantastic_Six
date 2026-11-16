@@ -1,9 +1,16 @@
-# AI review transcript — melissa — S2-020
+# AI self-review transcript — melissa — S2-020
 
 Date: 2026-11-15. Tool: Codex. Branch: `s2-020`.
+Review classification: AI-assisted self-review by the same Codex assistant that
+implemented the change. Historical messages below use the word "independent" for
+a separate review pass; this was not an independent teammate review or the required
+section 7 security approval.
 Full filesystem paths are omitted at melissa's request. All file references are
 repository-relative. Original implementation transcript:
 [2026-11-15_melissa_S2-020_codex.md](2026-11-15_melissa_S2-020_codex.md).
+Later implementation, integration, and self-review records for `f9cc17a`, `e12c734`,
+and `d46fd91`:
+[2026-11-15_melissa_S2-020_followup_codex.md](2026-11-15_melissa_S2-020_followup_codex.md).
 
 ## User
 
