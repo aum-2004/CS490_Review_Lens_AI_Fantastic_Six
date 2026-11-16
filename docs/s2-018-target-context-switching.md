@@ -1,86 +1,96 @@
-# S2-018: Change Q&A context when the target changes
+﻿# S2-018: Change Q&A context when the target changes
 
 Refs [#69](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/69).
-Owner: Shawn. Clean publication checkpoint: 2026-11-15. Base: main 2a9e54b6.
+Owner: Shawn. Completion checkpoint: 2026-11-15.
 
-## Draft scope
+## Implementation and integration
 
-This PR publishes target-switching regression tests against current production
-code. It does not introduce another context store, duplicate Q&A implementation,
-summary implementation, selector or migration. It is not full S2-018 acceptance.
+The final local implementation integrates main at `d59b5099`, including S2-006's
+persisted summary and S2-019's account/Activity/request lifecycle protections.
+The existing production routes and context builder already provide fresh,
+authorized target context; this story verifies that behavior end to end rather
+than adding a second context cache or another Q&A implementation. No production
+source, migration, dependency or runtime configuration differs from that main.
 
-The older isolated checkout contained a local combination of S2-006 and an earlier
-S2-009 snapshot. That work, summary assertions, browser fixture/configuration and
-unused coordinator prototypes are preserved locally. They are not blindly copied
-into this PR. The Nov 14 transcript records that earlier composed-source evidence;
-its counts are historical and are not verification of this published head.
+The earlier partial draft omitted summary assertions because S2-006 was unmerged.
+That limitation is resolved here. The preserved old composed checkout remains
+untouched; no unmerged production overlays or unused coordinators were copied.
 
 ## Requirement matrix
 
-| Story requirement                           | Current evidence / remaining work                                                                                                                                                                                                        |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New context contains Target B reviews       | Seven production-route cases exercise the real builder, ownership repository, prompt, reply validation and provider adapter with synthetic DB/provider HTTP. They inspect counting and generation bodies across A -> B -> A.             |
-| Target A reviews are no longer supplied     | Distinct IDs and battery-life/customer-service markers, changed persisted rows and fail-closed foreign/missing/empty/logout/unavailable cases.                                                                                           |
-| Summary information corresponds to Target B | Pending final S2-006 #80 integration. It is not present on current main, so this draft does not import its unmerged modules or mark the requirement passed. Original composed-summary tests remain preserved locally for reconciliation. |
-| UI clearly identifies B as active           | Five real workspace/client-form/transport cases inspect the heading, active label, persisted review text, request URL, answer and A -> B -> A reset.                                                                                     |
-| Actual navigation                           | Two production-build Edge browser cases use current main's local auth fixture and real navigation. Answer responses are intercepted; provider serialization is tested separately in Node.                                                |
+| Requirement                               | Completed deterministic evidence                                                                                                                                                                                                                                                         |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New context contains Target B's reviews   | Eight real-route cases exercise ownership, builder, prompt, reply validation and provider adapter over synthetic database/provider HTTP. Both counting and generation bodies are checked across A -> B -> A.                                                                             |
+| Target A's reviews are no longer supplied | Distinct review markers, IDs, fresh persisted rows, complete request inspection, distinct sequential questions and prior-question exclusion. Foreign, missing, unavailable, empty and signed-out requests fail without another provider call.                                            |
+| Summary information corresponds to B      | Real summary GET route/store/service aggregate checks use distinguishable persisted fixture rows. Nine workspace/form cases include real summary service/card, target-specific count/rating/status/skipped records, A -> B -> A, refresh, empty B, and safe B failure without A metrics. |
+| UI clearly identifies B as active         | Actual workspace heading, Q&A target label, review list, summary and question request URL change together. Production-browser navigation covers A -> B -> A, refresh and late responses.                                                                                                 |
 
-Rules: S2-BR-023 (subsequent Q&A uses the newly selected target) and S2-BR-024
-(previous target reviews must not remain in active context).
+Rules: S2-BR-023 and S2-BR-024. S2-019's account and preserved-page regressions are
+retained unchanged. An ingestion failure with saved reviews does not disable Q&A;
+a genuinely empty dataset does. A failed summary read displays a safe error rather
+than stale metrics or a fabricated zero.
 
-## Boundaries and compatibility
+## Security boundaries
 
-The route still verifies identity and parent ownership before reading the body.
-The builder freshly verifies session/ownership and reads persisted target-scoped
-reviews; the browser submits only a question. The provider adapter counts and
-generates independently for each request, with no previous-response conversation
-state. The local DB transport simulates the durable quota RPC; it does not execute
-SQL or prove hosted RLS/quota behavior. Synthetic configuration and injected
-provider fetches make no paid calls.
+- Identity comes from the verified session; parent ownership is checked before
+  child data and rechecked in the context/summary services.
+- Questions contain only the question; browser evidence and owner claims are not
+  accepted as persisted context. Every question rebuilds context from saved rows.
+- Complete counting/generation requests use only the selected target's evidence;
+  previous questions are excluded. No provider conversation/cache is introduced.
+- Missing/foreign targets are indistinguishable; context failures prevent model
+  calls. Summary denial occurs before the aggregate RPC.
+- Private/no-store responses and sanitized errors remain intact.
+- The browser fixture now implements the summary RPC with synthetic data and
+  session/target checks. It is a test double, not an authentication implementation
+  or evidence that hosted RLS or migrations have been verified.
 
-The UI tests use real ProtectedTargetWorkspace, ReviewQuestions and
-askReviewQuestion, while controlling server data dependencies and fetch replies.
-They cover late success/failure, wrong response target and A -> B -> A. Browser
-interception does not certify model behavior. Next Cache Components preserves
-hidden pages; selectors target visible/accessibility state. These tests do not
-claim all preserved DOM is deleted.
+## Verification
 
-S2-019 PR #92 separately fixes Activity hide/restore and account-state races.
-These tests currently pass without copying that PR's production changes; rerun
-both stories after merge. S2-017 #91 supplies the dedicated selector and must keep
-the authenticated active-target identity when it integrates. Existing links are
-used for this draft's browser transitions. S2-006 #80 owns summary behavior.
+- Full Jest with coverage: 88 suites / 1,568 tests passed, zero skips.
+- Line/statement coverage: 94.25%; branches 94.04%; functions 93.29%.
+- Focused switching/workspace plus S2-019 component tests: 37 passed.
+- Final complete production-build Edge auth/workspace/Q&A suite: 33/33 passed.
+- Production-build Edge switching/lifecycle subset: 6 passed.
+- Workspace browser rerun: 8 passed after scoping ingestion badge assertions
+  separately from the newly successful summary card. The earlier broad run found
+  two old count assertions, not a production defect; both are retained and fixed.
+- Production build, explicit typecheck, ESLint, formatting and migration-version
+  validation passed. A temporary uncommitted Turbopack root was needed only for
+  this isolated worktree's linked dependencies; original config was restored.
+- Deliberate mutations were caught: stale summary metrics (3 tests failed), wrong
+  aggregate target (1 failed), and prior question in the next request (1 failed).
+  Every mutation was restored byte-for-byte and focused tests passed afterward.
+- Changed coverage passed during integration; after committing main as a parent,
+  this story has no changed production lines relative to main.
 
-## Run checks
+No paid model calls, live ingestion, hosted database changes or .env.local access.
+Provider behavior is deterministic: browser replies are intercepted, while real
+provider serialization and response validation run separately over fake HTTP.
+This proves structural isolation and switching, not semantic truth of AI answers.
 
-Unit integration:
+## Review, deployment and remaining external steps
 
-    node node_modules/jest/bin/jest.js --runInBand --runTestsByPath tests/unit/services/qa/target-switching.production.test.ts tests/unit/app/analysis-targets/target-switching.production.test.tsx
+Local story requirements are covered against merged main. Before merging #93,
+push only with Shawn's confirmation, obtain fresh head CI and normal/independent
+security reviews, and record team acceptance. The PR and issue are not changed by
+this local completion work.
 
-Browser: use playwright.auth.config.ts with PLAYWRIGHT_AUTH_SERVER=production and
-PLAYWRIGHT_CHANNEL=msedge, after building with the configuration's local dummy
-Supabase settings. Run tests/e2e/auth/target-context-switching.spec.ts. Do not read
-or overwrite .env.local or enable paid providers for deterministic tests.
+S2-017 #91 is still a separate draft selector feature. Existing target routes and
+navigation satisfy the transitions verified here; its merge is not required to
+invent a second selector in S2-018. Its owner must reconcile it with current main;
+rerun these tests when that UI integrates. No claim is made that unmerged #91 or
+S2-020 #94 has been accepted or tested as part of this head.
 
-## Remaining gates
-
-Keep the PR Draft and #69 open. After #80's final integration, restore/adapt the
-preserved summary assertions to prove B's count/rating/status and recomputation
-from persisted rows. Reconcile the workspace with #91 and #92, run current-head
-checks, and obtain normal/security review plus team acceptance before closure.
-The older combined checkout and all existing branches remain preserved.
+Hosted summary/quota migration deployment remains Aryan's documented rollout
+handoff, not something exercised by these fake transports. Keep paid Q&A disabled
+until the hosted prerequisites and team authorization are confirmed.
 
 ## AI assistance
 
-Codex. Original available Nov 12 dialogue is preserved in
-../ai-transcripts/2026-11-12_shawn_S2-018_codex.md. Nov 14 and Nov 15 files are
-explicitly labeled work summaries, not reconstructed full-chat exports.
-
-## Clean draft verification (2026-11-15)
-
-- Full Jest: 81 suites / 1,475 tests passed, zero skips.
-- Focused integration: 12/12 passed.
-- Production-build Edge switching checks: 2/2 passed.
-- Formatting, lint, typecheck and production build passed.
-- Tests and documentation only: no changed production lines.
-- No hosted changes or paid provider calls. Current-head GitHub CI remains a separate gate.
+Codex. The complete available story-scoped original direct-session dialogue is
+recovered with privacy redactions in
+[the recovered transcript](../ai-transcripts/2026-11-15_shawn_S2-018_recovered_codex.md).
+It includes original failed approaches, fixes and tool records, with an explicit
+snapshot cutoff and scope limitations. Historical Nov 12/14/15 files are retained
+for provenance; the summary checkpoints are not substitutes for original dialogue.

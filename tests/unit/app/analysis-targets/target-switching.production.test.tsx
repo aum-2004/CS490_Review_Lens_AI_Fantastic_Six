@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ProtectedTargetWorkspace } from "@/components/analysis-targets/ProtectedTargetWorkspace";
 import { requirePageUser } from "@/services/auth/access-control";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -36,6 +36,8 @@ jest.mock("@/components/analysis-targets/RetryTargetsButton", () => ({
 }));
 
 const listReviews = jest.fn();
+const aggregateReviews = jest.fn();
+const isTargetOwnedBy = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -53,8 +55,12 @@ beforeEach(() => {
     googlePlaceId: "ChIJSynthetic",
     createdAt: "2026-11-01T00:00:00Z",
   });
-  jest.mocked(createSupabaseReviewStore).mockReturnValue({ listReviews } as never);
+  jest
+    .mocked(createSupabaseReviewStore)
+    .mockReturnValue({ listReviews, aggregateReviews, isTargetOwnedBy } as never);
   listReviews.mockResolvedValue([]);
+  aggregateReviews.mockReset().mockResolvedValue({ reviewCount: 0, averageRating: null });
+  isTargetOwnedBy.mockReset().mockResolvedValue(true);
   jest.mocked(getLatestAttempt).mockResolvedValue(null);
 });
 
@@ -88,6 +94,15 @@ async function tree(id: string) {
       createdAt: "2026-11-01",
     },
   ]);
+  aggregateReviews.mockResolvedValue({
+    reviewCount: id === A ? 3 : 1,
+    averageRating: id === A ? 2 : 5,
+  });
+  jest.mocked(getLatestAttempt).mockResolvedValue({
+    status: id === A ? "succeeded" : "failed",
+    skipped_count: id === A ? 2 : 0,
+    saved_count: id === A ? 3 : 1,
+  } as never);
   return ProtectedTargetWorkspace({ params: Promise.resolve({ targetId: id }) });
 }
 async function submit() {
@@ -151,7 +166,9 @@ it.each(["success", "failure"])(
     });
     expect(screen.getByText("B current answer")).toBeInTheDocument();
     expect(screen.queryByText("A stale answer")).not.toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Review questions" })).queryByRole("alert"),
+    ).not.toBeInTheDocument();
   },
 );
 it("rejects a wrong-target server response after switching", async () => {
@@ -159,7 +176,9 @@ it("rejects a wrong-target server response after switching", async () => {
   view.rerender(await tree(B));
   fetchMock.mockResolvedValue(response(A, "PRIVATE_ALPHA_REPLY"));
   await submit();
-  expect(await screen.findByRole("alert")).toHaveTextContent("unexpected response");
+  expect(
+    await within(screen.getByRole("region", { name: "Review questions" })).findByRole("alert"),
+  ).toHaveTextContent("unexpected response");
   expect(screen.queryByText("PRIVATE_ALPHA_REPLY")).not.toBeInTheDocument();
 });
 it("does not resurrect an old A request on A to B to A navigation", async () => {
@@ -180,4 +199,64 @@ it("does not resurrect an old A request on A to B to A navigation", async () => 
   await act(async () => resolve(response(A, "A obsolete answer")));
   expect(screen.queryByText("A obsolete answer")).not.toBeInTheDocument();
   expect(screen.getByText("A fresh answer")).toBeInTheDocument();
+});
+
+function summaryMetric(label: string) {
+  const card = screen
+    .getByRole("heading", { name: "Review summary" })
+    .closest("[aria-labelledby]")!;
+  return within(card as HTMLElement).getByText(label).nextElementSibling;
+}
+function expectSummary(count: string, average: string, status: string, skipped: string) {
+  expect(summaryMetric("Reviews saved")).toHaveTextContent(new RegExp("^" + count + "$"));
+  expect(summaryMetric("Average rating")).toHaveTextContent(average);
+  expect(summaryMetric("Ingestion status")).toHaveTextContent(status);
+  expect(summaryMetric("Skipped records")).toHaveTextContent(new RegExp("^" + skipped + "$"));
+}
+it("switches persisted summary metrics and status with the real workspace and summary service A to B to A", async () => {
+  const view = render(await tree(A));
+  expectSummary("3", "2.0 / 5", "Partially ingested", "2");
+  view.rerender(await tree(B));
+  expectSummary("1", "5.0 / 5", "Failed", "0");
+  expect(aggregateReviews).toHaveBeenLastCalledWith(B);
+  expect(isTargetOwnedBy).toHaveBeenLastCalledWith(B, "verified-user");
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+  view.rerender(await tree(A));
+  expectSummary("3", "2.0 / 5", "Partially ingested", "2");
+  expect(aggregateReviews.mock.calls.map(([id]) => id)).toEqual([A, B, A]);
+});
+it("recomputes summary from newly persisted metrics on a refreshed B workspace", async () => {
+  const view = render(await tree(A));
+  view.rerender(await tree(B));
+  expectSummary("1", "5.0 / 5", "Failed", "0");
+  aggregateReviews.mockResolvedValue({ reviewCount: 4, averageRating: 3.25 });
+  jest
+    .mocked(getLatestAttempt)
+    .mockResolvedValue({ status: "succeeded", skipped_count: 1, saved_count: 4 } as never);
+  view.rerender(await ProtectedTargetWorkspace({ params: Promise.resolve({ targetId: B }) }));
+  expectSummary("4", "3.3 / 5", "Partially ingested", "1");
+  expect(aggregateReviews).toHaveBeenLastCalledWith(B);
+});
+it("replaces A summary with a safe B failure rather than stale or zero-valued metrics", async () => {
+  const view = render(await tree(A));
+  await tree(B);
+  aggregateReviews.mockRejectedValue(new Error("PRIVATE_ALPHA_SUMMARY_FAILURE"));
+  view.rerender(await ProtectedTargetWorkspace({ params: Promise.resolve({ targetId: B }) }));
+  expect(screen.queryByText("Reviews saved")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("We couldn't load the review summary. Please try again."),
+  ).toHaveAttribute("role", "alert");
+  expect(document.body.textContent).not.toContain("PRIVATE_ALPHA_SUMMARY_FAILURE");
+  expect(screen.getByText("BETA customer service")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+});
+it("shows empty B summary and disables Q&A after leaving populated A", async () => {
+  const view = render(await tree(A));
+  await tree(B);
+  listReviews.mockResolvedValue([]);
+  aggregateReviews.mockResolvedValue({ reviewCount: 0, averageRating: null });
+  view.rerender(await ProtectedTargetWorkspace({ params: Promise.resolve({ targetId: B }) }));
+  expectSummary("0", "No ratings yet", "Failed", "0");
+  expect(screen.queryByText("ALPHA battery life")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
 });

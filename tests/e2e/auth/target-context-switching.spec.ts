@@ -19,8 +19,8 @@ async function switchB(page: Page) {
   await page.getByRole("link", { name: "Open A coffee shop" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
 }
-async function ask(page: Page) {
-  await page.getByRole("textbox", { name: /Question/ }).fill("What do reviewers say?");
+async function ask(page: Page, question = "What do reviewers say?") {
+  await page.getByRole("textbox", { name: /Question/ }).fill(question);
   await page.getByRole("button", { name: "Ask question" }).click();
 }
 test("real navigation switches the active label, question URL and visible answer", async ({
@@ -45,6 +45,9 @@ test("real navigation switches the active label, question URL and visible answer
   await ask(page);
   await expect(page.getByText("ALPHA battery life", { exact: true })).toBeVisible();
   await switchB(page);
+  await expect(
+    page.locator('[aria-labelledby="review-summary-title"]').filter({ visible: true }),
+  ).toContainText("Status unavailable");
   await expect(page.getByText(/Active target:/).filter({ visible: true })).toContainText(
     "A coffee shop",
   );
@@ -53,14 +56,25 @@ test("real navigation switches the active label, question URL and visible answer
   await expect(page.getByText("Saved review for A coffee shop", { exact: true })).toBeVisible();
   await ask(page);
   await expect(page.getByText("BETA customer service", { exact: true })).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Breadcrumb" })
+    .getByRole("link", { name: "My Targets" })
+    .click();
+  await page.getByRole("link", { name: "Open A bakery" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
+  await expect(page.getByRole("region", { name: "Review summary" })).toContainText("Ingested");
+  await expect(page.getByText("BETA customer service", { exact: true })).not.toBeVisible();
+  await expect(page.getByRole("textbox", { name: /Question/ })).toHaveValue("");
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Review summary" })).toContainText("4.0 / 5");
+  await ask(page);
   expect(requests).toEqual([
     { target: A, body: { question: "What do reviewers say?" } },
     { target: B, body: { question: "What do reviewers say?" } },
+    { target: A, body: { question: "What do reviewers say?" } },
   ]);
-  await page.goBack();
-  await page.goForward();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
-  await expect(page.getByText("ALPHA battery life", { exact: true })).not.toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
+  await expect(page.getByText("BETA customer service", { exact: true })).not.toBeVisible();
 });
 test("pending A response cannot populate B after client navigation", async ({ page }) => {
   let release!: () => void;

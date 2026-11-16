@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { GET as getSummary } from "@/app/api/analysis-targets/[targetId]/review-summary/route";
 import { POST } from "@/app/api/analysis-targets/[targetId]/questions/route";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
@@ -64,9 +65,24 @@ function setup() {
   const db = createClient("http://fixture.supabase", "dummy-publishable", {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: {
-      fetch: async (input) => {
+      fetch: async (input, init) => {
         if (String(input).includes("/rpc/reserve_review_question")) return new Response("4");
         const url = new URL(String(input));
+        if (url.pathname.endsWith("/rpc/get_review_summary")) {
+          const targetId = JSON.parse(String(init?.body)).p_target_id;
+          reads.push("summary:" + targetId);
+          const selected = rows.filter((row) => row.analysis_target_id === targetId);
+          return new Response(
+            JSON.stringify([
+              {
+                review_count: selected.length,
+                average_rating: selected.length
+                  ? selected.reduce((sum, row) => sum + row.rating, 0) / selected.length
+                  : null,
+              },
+            ]),
+          );
+        }
         reads.push(url.pathname);
         if (failReviews && url.pathname.endsWith("/reviews"))
           return new Response(JSON.stringify({ message: "PRIVATE_DB_DIAGNOSTIC" }), {
@@ -187,12 +203,12 @@ afterEach(() => {
     else process.env[key] = originalEnv[key];
   }
 });
-async function ask(targetId: string) {
+async function ask(targetId: string, question = "What do reviewers say?") {
   return POST(
     new NextRequest("http://reviewlens.test/api/analysis-targets/" + targetId + "/questions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: "What do reviewers say?" }),
+      body: JSON.stringify({ question }),
     }),
     { params: Promise.resolve({ targetId }) },
   );
@@ -200,12 +216,18 @@ async function ask(targetId: string) {
 it("switches A to B to A through the production route, builder, parser and complete provider bodies", async () => {
   const f = setup();
   jest.mocked(createOpenAiQaModel).mockReturnValue(f.deps.callModel);
-  for (const [id, marker, excluded] of [
-    [A, "ALPHA_PRIVATE_REVIEW_MARKER", "BETA_SERVICE_MARKER"],
-    [B, "BETA_SERVICE_MARKER", "ALPHA_PRIVATE_REVIEW_MARKER"],
-    [A, "ALPHA_PRIVATE_REVIEW_MARKER", "BETA_SERVICE_MARKER"],
+  const previousQuestions: string[] = [];
+  for (const [id, marker, excluded, question] of [
+    [A, "ALPHA_PRIVATE_REVIEW_MARKER", "BETA_SERVICE_MARKER", "FIRST_ALPHA_QUESTION battery life?"],
+    [B, "BETA_SERVICE_MARKER", "ALPHA_PRIVATE_REVIEW_MARKER", "BETA_QUESTION customer service?"],
+    [
+      A,
+      "ALPHA_PRIVATE_REVIEW_MARKER",
+      "BETA_SERVICE_MARKER",
+      "RETURN_ALPHA_QUESTION battery life?",
+    ],
   ] as const) {
-    const response = await ask(id);
+    const response = await ask(id, question);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       success: true,
@@ -221,6 +243,13 @@ it("switches A to B to A through the production route, builder, parser and compl
         text: sent.text,
       }),
     );
+    for (const body of [sent, counted]) {
+      expect(JSON.stringify(body)).toContain(question);
+      for (const old of previousQuestions) expect(JSON.stringify(body)).not.toContain(old);
+      expect(JSON.stringify(body)).toContain(marker);
+      expect(JSON.stringify(body)).not.toContain(excluded);
+    }
+    previousQuestions.push(question);
     expect(JSON.stringify(sent)).toContain(marker);
     expect(JSON.stringify(sent)).not.toContain(excluded);
     expect(JSON.stringify(sent)).not.toMatch(/OTHER_PRIVATE|EXCLUDE_|PRIVATE_ACCOUNT_EMAIL/);
@@ -293,3 +322,36 @@ it.each(["missing", "empty", "logout"])(
     expect(JSON.stringify(await response.json())).not.toMatch(/ALPHA_|BETA_|PRIVATE_ACCOUNT/);
   },
 );
+
+async function summary(targetId: string) {
+  return getSummary(
+    new NextRequest("http://reviewlens.test/api/analysis-targets/" + targetId + "/review-summary"),
+    { params: Promise.resolve({ targetId }) },
+  );
+}
+it("switches real summary-route aggregates with Q&A evidence and recomputes changed persisted B rows", async () => {
+  const f = setup();
+  jest.mocked(createOpenAiQaModel).mockReturnValue(f.deps.callModel);
+  f.rows.push({ ...f.rows[0], id: "alpha-extra", rating: 2 });
+  for (const [targetId, count, average] of [
+    [A, 2, 3],
+    [B, 1, 5],
+    [A, 2, 3],
+  ] as const) {
+    expect((await ask(targetId)).status).toBe(200);
+    const response = await summary(targetId);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: { targetId, reviewCount: count, averageRating: average },
+    });
+  }
+  f.rows.find((row) => row.analysis_target_id === B)!.rating = 1;
+  expect(await (await summary(B)).json()).toMatchObject({
+    data: { targetId: B, reviewCount: 1, averageRating: 1 },
+  });
+  const before = f.reads.filter((path) => path.startsWith("summary:")).length;
+  expect((await summary(C)).status).toBe(404);
+  expect(f.reads.filter((path) => path.startsWith("summary:"))).toHaveLength(before);
+});
