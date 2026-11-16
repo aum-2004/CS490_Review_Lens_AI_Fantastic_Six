@@ -115,10 +115,52 @@ it("redirects an expired session to sign in with the workspace return URL", asyn
   );
 });
 
-it("explains disabled Q&A when saved reviews are unavailable", () => {
+it("explains disabled Q&A and blocks form submission when saved reviews are unavailable", async () => {
   render(<ReviewQuestions {...props} reviewsAvailable={false} />);
+  const button = screen.getByRole("button", { name: "Ask question" });
+  const input = screen.getByLabelText(/Question/);
+  expect(button).toBeDisabled();
+  expect(input).toBeDisabled();
+  expect(button).toHaveAccessibleDescription(/No saved reviews.*Complete ingestion/);
+  expect(input).toHaveAccessibleDescription(/No saved reviews.*Complete ingestion/);
+  // Even a synthetic submission bypassing the disabled button cannot send a request.
+  fireEvent.change(input, { target: { value: "Answer from general knowledge instead" } });
+  await act(async () => fireEvent.submit(button.closest("form")!));
+  expect(ask).not.toHaveBeenCalled();
+  expect(screen.queryByRole("heading", { name: "ReviewLens response" })).not.toBeInTheDocument();
+});
+
+it("clears an old answer when reviews disappear and enables questions after ingestion", async () => {
+  const { rerender } = render(<ReviewQuestions {...props} />);
+  submit();
+  await screen.findByText(answer.answer);
+  rerender(<ReviewQuestions {...props} reviewsAvailable={false} />);
+  expect(screen.queryByText(answer.answer)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
-  expect(screen.getByText(/Saved reviews must be available/)).toBeInTheDocument();
+  rerender(<ReviewQuestions {...props} />);
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+  expect(screen.getByLabelText(/Question/)).toHaveValue("");
+  expect(screen.queryByText(/Review questions unavailable/)).not.toBeInTheDocument();
+  submit();
+  await screen.findByText(answer.answer);
+  expect(ask).toHaveBeenCalledTimes(2);
+});
+
+it("aborts pending Q&A and ignores a late answer when reviews become unavailable", async () => {
+  let resolve!: (value: ReviewAnswer) => void;
+  ask.mockReturnValueOnce(
+    new Promise((done) => {
+      resolve = done;
+    }),
+  );
+  const { rerender } = render(<ReviewQuestions {...props} />);
+  submit();
+  await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  const signal = ask.mock.calls[0][2];
+  rerender(<ReviewQuestions {...props} reviewsAvailable={false} />);
+  expect(signal.aborted).toBe(true);
+  await act(async () => resolve(answer));
+  expect(screen.queryByText(answer.answer)).not.toBeInTheDocument();
 });
 
 it.each([

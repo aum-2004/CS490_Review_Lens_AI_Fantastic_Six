@@ -10,6 +10,9 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { createSupabaseReviewStore } from "@/services/reviews/supabase-review-store";
 import { getReviewSummary } from "@/services/reviews/review-summary";
+import { ingestionEnabled, ingestionStorageApproved } from "@/services/ingestion/ingestion-runtime";
+import { ingestionRecoveryConfigured } from "@/services/ingestion/ingestion-recovery";
+import { ingestionErrorMessage } from "@/services/ingestion/ingestion-state";
 import {
   getLatestAttempt,
   type IngestionAttemptRow,
@@ -24,15 +27,15 @@ jest.mock("@/services/analysis-targets/list-analysis-targets", () => ({
   listAnalysisTargets: jest.fn(),
 }));
 jest.mock("@/services/ingestion/ingestion-recovery", () => ({
-  ingestionRecoveryConfigured: () => true,
+  ingestionRecoveryConfigured: jest.fn(),
 }));
 jest.mock("@/services/ingestion/ingestion-attempt-repository", () => ({
   ...jest.requireActual("@/services/ingestion/ingestion-attempt-repository"),
   getLatestAttempt: jest.fn(),
 }));
 jest.mock("@/services/ingestion/ingestion-runtime", () => ({
-  ingestionEnabled: () => true,
-  ingestionStorageApproved: () => true,
+  ingestionEnabled: jest.fn(),
+  ingestionStorageApproved: jest.fn(),
 }));
 const mockRouter = { replace: jest.fn(), refresh: jest.fn() };
 const fetchMock = jest.fn();
@@ -56,6 +59,9 @@ const params = Promise.resolve({ targetId: "owned-target" });
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.mocked(ingestionEnabled).mockReturnValue(true);
+  jest.mocked(ingestionStorageApproved).mockReturnValue(true);
+  jest.mocked(ingestionRecoveryConfigured).mockReturnValue(true);
   global.fetch = fetchMock;
   jest.spyOn(console, "error").mockImplementation(() => {});
   jest.mocked(requirePageUser).mockResolvedValue({ id: "verified-user", email: null });
@@ -121,6 +127,59 @@ const persistedAttempt: IngestionAttemptRow = {
   verified_identity: null,
 };
 
+describe.each([
+  ["INGESTION_DISABLED", ingestionEnabled],
+  ["STORAGE_NOT_APPROVED", ingestionStorageApproved],
+  ["RECOVERY_NOT_CONFIGURED", ingestionRecoveryConfigured],
+] as const)("Q&A when collection is blocked by %s", (code, configurationCheck) => {
+  it("keeps questions available for previously saved reviews", async () => {
+    jest.mocked(configurationCheck).mockReturnValue(false);
+    listReviews.mockResolvedValue([
+      {
+        id: "saved-review",
+        analysisTargetId: "owned-target",
+        rating: 4,
+        text: "Previously saved bakery review",
+        reviewerName: null,
+        reviewDate: null,
+      },
+    ]);
+    render(await ProtectedTargetWorkspace({ params }));
+    expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+    expect(screen.queryByText("Review questions unavailable")).not.toBeInTheDocument();
+  });
+
+  it.each([null, "failed", "processing", "succeeded"] as const)(
+    "explains the unavailable action for ingestion state %s",
+    async (status) => {
+      jest.mocked(configurationCheck).mockReturnValue(false);
+      jest.mocked(getLatestAttempt).mockResolvedValue(
+        status
+          ? {
+              ...persistedAttempt,
+              status,
+              saved_count: 0,
+              error_code: status === "failed" ? "PROVIDER_QUOTA" : null,
+              finished_at: status === "processing" ? null : persistedAttempt.finished_at,
+            }
+          : null,
+      );
+      render(await ProtectedTargetWorkspace({ params }));
+      const askButton = screen.getByRole("button", { name: "Ask question" });
+      const input = screen.getByLabelText(/Question/);
+      expect(askButton).toBeDisabled();
+      expect(input).toBeDisabled();
+      expect(askButton).toHaveAccessibleDescription(
+        `No saved reviews are available for this target. ${ingestionErrorMessage(code)}`,
+      );
+      expect(input).toHaveAccessibleDescription(/Review collection.*unavailable/);
+      expect(askButton).not.toHaveAccessibleDescription(
+        /Complete ingestion|resolve the failure|Wait for ingestion to complete/,
+      );
+    },
+  );
+});
+
 it.each([
   ["succeeded", 0, "Ingested"],
   ["succeeded", 2, "Partially ingested"],
@@ -149,6 +208,15 @@ it.each([
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
     // Empty review rows do not override the persisted operation result.
     expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
+    const askButton = screen.getByRole("button", { name: "Ask question" });
+    expect(askButton).toBeDisabled();
+    expect(askButton).toHaveAccessibleDescription(
+      status === "failed"
+        ? /most recent ingestion failed.*no saved reviews/
+        : status === "processing"
+          ? /Ingestion is in progress.*Wait for ingestion/
+          : /Ingestion completed.*no saved reviews.*Reload.*contact the project team/,
+    );
   },
 );
 
@@ -176,6 +244,8 @@ it.each(["failed", null] as const)(
     expect(screen.getByText("Previously saved bakery review")).toBeInTheDocument();
     expect(screen.getAllByText(status ? "Failed" : "Not ingested")).toHaveLength(2);
     expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+    expect(screen.queryByText("Review questions unavailable")).not.toBeInTheDocument();
   },
 );
 
@@ -187,6 +257,9 @@ it("opens an owned target with the shared shell, context, empty reviews and inge
   expect(screen.getByText("Google Maps", { exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Start ingestion" })).toBeEnabled();
   expect(screen.getByText(/No saved reviews yet/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask question" })).toHaveAccessibleDescription(
+    /No saved reviews.*Complete ingestion in the Ingestion panel/,
+  );
   expect(screen.getAllByText("Not ingested")).toHaveLength(2);
   expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
 });
@@ -454,6 +527,10 @@ it("keeps target context when reviews fail and does not misrepresent failure as 
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
   expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load the saved reviews");
   expect(screen.queryByText(/No saved reviews yet/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ask question" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Ask question" })).toHaveAccessibleDescription(
+    /couldn't load the saved reviews.*Retry loading/,
+  );
   expect(document.body.textContent).not.toContain("private SQL");
 });
 
