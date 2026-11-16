@@ -75,6 +75,62 @@ begin
 end
 $$;
 
+-- Mutations use the database-owner setup role because authenticated intentionally has no direct
+-- INSERT or DELETE privilege on reviews. Summary assertions remain under authenticated below.
+reset role;
+insert into public.reviews (id, analysis_target_id, review_text, rating)
+values (
+  '56000000-0000-4000-8000-000000000101',
+  '56000000-0000-4000-8000-000000000011',
+  'inserted review',
+  5
+);
+set role authenticated;
+
+do $$
+declare
+  summary record;
+begin
+  select * into strict summary
+  from public.get_review_summary('56000000-0000-4000-8000-000000000011');
+  assert summary.review_count = 1002, 'inserted review did not update the count';
+  assert summary.average_rating = 3007.0 / 1002.0,
+    'inserted review did not update the average';
+end
+$$;
+
+reset role;
+delete from public.reviews
+where id = '56000000-0000-4000-8000-000000000101';
+set role authenticated;
+
+do $$
+declare
+  summary record;
+begin
+  select * into strict summary
+  from public.get_review_summary('56000000-0000-4000-8000-000000000011');
+  assert summary.review_count = 1001, 'deleted review was not removed from the count';
+  assert summary.average_rating = 3002.0 / 1001.0,
+    'deleted review was not removed from the average';
+end
+$$;
+
+-- Target B belongs to User B, so switch the simulated JWT before its authorized assertion.
+set request.jwt.claims to '{"sub":"56000000-0000-4000-8000-000000000002"}';
+do $$
+declare
+  summary record;
+begin
+  select * into strict summary
+  from public.get_review_summary('56000000-0000-4000-8000-000000000012');
+  assert summary.review_count = 1, 'Target B summary included another target';
+  assert summary.average_rating = 1, 'Target B average included another target';
+end
+$$;
+
+-- Restore User A before verifying that User A cannot access User B's target.
+set request.jwt.claims to '{"sub":"56000000-0000-4000-8000-000000000001"}';
 do $$
 begin
   perform * from public.get_review_summary('56000000-0000-4000-8000-000000000012');
@@ -84,6 +140,7 @@ exception
 end
 $$;
 
+-- Switch back to User B before verifying that User B cannot access User A's target.
 set request.jwt.claims to '{"sub":"56000000-0000-4000-8000-000000000002"}';
 do $$
 begin
