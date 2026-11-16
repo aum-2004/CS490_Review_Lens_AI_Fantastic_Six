@@ -48,9 +48,9 @@ test("real navigation switches the active label, question URL and visible answer
   await expect(
     page.locator('[aria-labelledby="review-summary-title"]').filter({ visible: true }),
   ).toContainText("Status unavailable");
-  await expect(page.getByText(/Active target:/).filter({ visible: true })).toContainText(
-    "A coffee shop",
-  );
+  await expect(
+    page.getByRole("region", { name: "Review questions" }).getByText(/Active target:/),
+  ).toContainText("A coffee shop");
   await expect(page.getByText("ALPHA battery life", { exact: true })).not.toBeVisible();
   await expect(page.getByRole("textbox", { name: /Question/ })).toHaveValue("");
   await expect(page.getByText("Saved review for A coffee shop", { exact: true })).toBeVisible();
@@ -109,7 +109,7 @@ test("pending A response cannot populate B after client navigation", async ({ pa
   await expect(page.getByText("BETA current service answer", { exact: true })).toBeVisible();
   release();
   await expect(page.getByText("ALPHA late battery answer", { exact: true })).not.toBeVisible();
-  await expect(page.getByText(/Active target:/).filter({ visible: true })).toContainText(
-    "A coffee shop",
-  );
+  await expect(
+    page.getByRole("region", { name: "Review questions" }).getByText(/Active target:/),
+  ).toContainText("A coffee shop");
 });

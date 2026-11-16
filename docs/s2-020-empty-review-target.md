@@ -43,15 +43,22 @@ by the ingestion panel and unavailable-Q&A explanation. Tests cover all three
 configuration blockers across fresh, failed, processing, and completed ingestion,
 and verify that previously saved reviews still permit Q&A under each blocker.
 Review-load failures retain their reload instruction rather than claiming an empty
-dataset. The branch is reconciled with the merged S2-018, S2-019, and S2-006 work;
+dataset. The branch is reconciled with merged S2-017, S2-018, S2-019, and S2-006;
 their files remain identical to current main outside the S2-020 changes.
+
+The empty-target browser case uses the existing creation fixture account so it
+does not add a target to the seeded account used by workspace badge assertions.
+This fixes a test-order failure without weakening the merged badge-count tests.
+Current main includes a single summary-RPC fixture handler and the S2-017 target
+switcher. Earlier warnings about those unmerged branches are historical; there is
+no duplicate handler or unresolved merge conflict in this integrated branch.
 
 Validation on 2026-11-15:
 
 - `npm run lint`, `npm run typecheck`, `npm run format:check`, and `git diff --check`: passed.
-- Full Jest coverage run after reconciling main and reviewer feedback: 86 suites and 1,573 tests passed; overall line coverage 94.31%.
+- Full Jest coverage run after reconciling main through S2-017 and S2-018: 89 suites and 1,596 tests passed; overall line coverage 94.38%.
 - `npm run coverage:changed:check -- --base origin/main`: passed, 100% changed-line coverage.
-- `npm run test:e2e:auth -- review-questions.spec.ts stale-review-context.spec.ts`: all nine tests passed against the reconciled production build. The local runner needed its own fixture/server processes stopped after all test cases completed so teardown could finish.
+- `npm run test:e2e:auth` with `PLAYWRIGHT_AUTH_SERVER=production`: all 36 authenticated browser tests passed. The local runner needed its own fixture/server processes stopped after all test cases completed so teardown could finish.
 - `npm run build`: passed after a network-enabled retry to download the existing Inter font. The initial restricted build failed on that download; browser checks used the font fallback.
 
 Tests use synthetic data and isolated model calls. No live ingestion or model request

@@ -106,3 +106,39 @@ by that review pass.
 
 GitHub CI and security reconfirmation require the updated branch to be pushed. No
 push, remote PR-body update, or reviewer notification was performed.
+
+## Self-review after S2-017 and S2-018 merged
+
+Reconciled main at `5f865ce`, including #91 and #93. Both main updates applied
+without source conflicts; only S2-020 changes remain in the two production
+components. The switcher, summary card, ingestion panel, summary fixture, workspace
+badge assertions, and other merged-story files match main.
+
+The earlier summary-unavailable fixture limitation is resolved by the merged
+summary-RPC handler. Exactly one handler remains. The earlier unmerged S2-017
+badge-count conflict was resolved upstream and is absent in the integrated branch.
+
+The broader browser run exposed one test-order issue: S2-020's new empty target
+polluted the seeded account used by workspace badge-count tests. The test now uses
+the existing creation account. It retains the original badge assertions and does
+not change application behavior or authentication/persistence rules.
+
+Re-read the integrated listing/switching flow, verified user propagation, parent
+ownership guard, fresh review context, empty-data rejection, quota/model ordering,
+and late-response cleanup. The switcher uses encoded target IDs for same-origin
+navigation and renders user names/source text through React. Target lists are
+owner-filtered on the server; independently authorized review context is rebuilt
+for every question. No new blocking functional or security finding was identified.
+This remains AI-assisted self-review, not independent teammate approval.
+
+Final verification of the integrated branch: 89 suites / 1,596 tests passed,
+overall line coverage 94.38%; all 36 authenticated browser cases passed against the
+production build. Lint, typecheck, formatting, build, and scoped diff checks passed.
+The changed-code gate remains at 100%. No additional production-code change was
+needed after this self-review. No unresolved conflicts or duplicate summary-RPC
+handlers remain relative to main at `5f865ce`.
+
+The main merge is applied with no unresolved files but remains uncommitted because
+the local commit approval was declined. The current coverage gate passes at
+163/163; while the merge is pending, its merge-base is `4c866eb`, so that count
+includes incoming S2-017 lines. No push or reviewer notification was performed.

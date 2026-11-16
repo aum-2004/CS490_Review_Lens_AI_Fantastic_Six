@@ -4,16 +4,20 @@ import type { ReviewSummary } from "@/services/reviews/review-summary";
 
 export interface ReviewSummaryCardProps {
   summary: ReviewSummary;
+  targetName: string;
 }
 
-export function ReviewSummaryCard({ summary }: ReviewSummaryCardProps) {
+export function ReviewSummaryCard({ summary, targetName }: ReviewSummaryCardProps) {
   return (
     <Card aria-labelledby="review-summary-title" className="space-y-4">
       <div>
         <h2 id="review-summary-title" className="text-xl font-semibold">
           Review summary
         </h2>
-        <p className="text-sm text-muted-foreground">Persisted reviews for this analysis target.</p>
+        <p className="break-words text-sm text-muted-foreground">
+          Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
+          Maps. Summary of this target&apos;s persisted reviews.
+        </p>
       </div>
       <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>

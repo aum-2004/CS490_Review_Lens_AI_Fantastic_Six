@@ -15,9 +15,12 @@ function summary(overrides: Partial<ReviewSummary> = {}): ReviewSummary {
 }
 
 it("renders persisted count, average, ingestion status, and skipped count", () => {
-  render(<ReviewSummaryCard summary={summary()} />);
+  render(<ReviewSummaryCard summary={summary()} targetName="Bakery" />);
 
   expect(screen.getByRole("heading", { name: "Review summary" })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Review summary" })).toHaveTextContent(
+    "Active target: Bakery · Google Maps",
+  );
   expect(screen.getByText("3")).toBeInTheDocument();
   expect(screen.getByText("4.3 / 5")).toBeInTheDocument();
   expect(screen.getByText("Partially ingested")).toBeInTheDocument();
@@ -27,6 +30,7 @@ it("renders persisted count, average, ingestion status, and skipped count", () =
 it("explains empty ratings and unavailable ingestion details", () => {
   render(
     <ReviewSummaryCard
+      targetName="Bakery"
       summary={summary({
         reviewCount: 0,
         averageRating: null,
@@ -51,6 +55,7 @@ it.each([
   (_caseName, ingestionStatus, skippedCount, label) => {
     render(
       <ReviewSummaryCard
+        targetName="Bakery"
         summary={summary({
           ingestionStatus,
           skippedCount,

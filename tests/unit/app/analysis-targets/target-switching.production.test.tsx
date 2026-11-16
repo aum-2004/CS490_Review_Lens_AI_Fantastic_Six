@@ -129,7 +129,9 @@ it("switches the actual workspace label, review list and question target togethe
   expect(await screen.findByText("A answer")).toBeInTheDocument();
   view.rerender(await tree(B));
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Beta service");
-  expect(screen.getByText(/Active target:/)).toHaveTextContent("Beta service");
+  expect(
+    within(screen.getByRole("region", { name: "Review questions" })).getByText(/Active target:/),
+  ).toHaveTextContent("Beta service");
   expect(screen.queryByText("A answer")).not.toBeInTheDocument();
   expect(screen.queryByText("ALPHA battery life")).not.toBeInTheDocument();
   expect(screen.getByLabelText(/Question/)).toHaveValue("");

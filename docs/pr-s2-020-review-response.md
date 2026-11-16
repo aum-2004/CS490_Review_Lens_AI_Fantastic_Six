@@ -14,11 +14,18 @@ Addressed the functionality and security feedback in
 - **PR links:** the local PR-description draft uses full GitHub blob URLs for all
   transcript and documentation links.
 
-Local verification on `f9cc17a`: 86 suites / 1,573 tests passed, all nine production
-browser tests passed, changed-line coverage against main is 100% (44/44), and lint,
-typecheck, formatting, build, and diff checks passed. Browser tests use the local
-fixture's summary-unavailable state; S2-006 summary behavior has separate unit
-coverage. No live provider or deployed database operations were performed.
+The branch is also reconciled with main through merged S2-017 (#91) and S2-018
+(#93). Their target-switching behavior, corrected badge assertions, and single
+summary-RPC fixture are retained without unrelated changes in the remaining diff.
+S2-020's empty-target browser test now uses an existing separate fixture account so
+it does not affect seeded workspace badge counts.
+
+Latest local verification: 89 suites / 1,596 tests passed, all 36 authenticated
+production-browser tests passed, changed-line coverage is 100%, and lint,
+typecheck, formatting, build, and scoped diff checks passed.
+Browser tests now include summary context, keyboard switching, and cross-user
+denials using the merged local fixture. No live provider or deployed database
+operations were performed.
 
 Once GitHub CI completes on the updated branch, please reconfirm the functionality
 and security fixes against the linked implementation commit.

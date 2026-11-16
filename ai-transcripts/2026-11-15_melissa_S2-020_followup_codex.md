@@ -380,3 +380,112 @@ weakening badge-count checks. The full deterministic run completed successfully:
 Started a rerun of all 19 browser cases against the same verified production build;
 only browser test code changed after the build. Formatting and scoped diff checks
 passed, and lint was rerun for the modified browser test.
+
+The rerun printed all 19 browser cases as passing, including the formerly failing
+badge-count case. The turn was interrupted before the runner's final teardown
+result was collected. A subsequent attempt to resume that session returned
+"Unknown process id"; the old fixture/server processes were no longer present.
+No final exit status is claimed for that interrupted run. The next integration
+below starts fresh verification against the newly merged S2-017 implementation.
+The merged S2-018 transcript's raw user-home-path scan returned zero matches, as
+did the scan of this updated melissa transcript.
+
+## Reconciliation after S2-017 merged and functional/security self-review
+
+User:
+
+> s2-017 was merged please remove any redunancy and conflict in this branch.
+> once done re-review from a functional/security perspective and make any necessary adjustments.
+
+Assistant:
+
+> I’ll finish reconciling the branch with current `main`, including S2-017, then review the combined functionality and security. I’ll preserve S2-020’s behavior, update its transcript and PR notes, and verify any fixes without pushing.
+
+Tool record: the worktree contained the interrupted, cleanly applied S2-018 merge
+plus the documented browser-test-isolation fix. Fetched origin; main advanced to
+`5f865ce` (S2-017 #91). This merge already consolidates the summary-RPC handler and
+retains S2-018's corrected workspace badge assertions. The earlier warning about
+the unmerged S2-017 branch describes historical state, not current main.
+
+Read the bundled Next.js component/useRouter guidance and inspected incoming main.
+Finished the pending S2-018 checkpoint with approval as `31aceb1` ("Merge S2-018
+main and isolate empty-target browser fixture"), preserving transcript and document
+updates. Then ran `git merge --no-commit --no-ff origin/main`; Git automatically
+merged the workspace and its tests without conflicts.
+
+Assistant:
+
+> The S2-017 merge applied cleanly. Current `main` already resolves the two overlaps from the earlier reviewer comment: it has one summary-RPC handler and corrected workspace badge assertions. I’m preserving those versions along with S2-017’s target switcher and S2-019’s Q&A safeguards.
+>
+> The test-isolation fix is also retained. I’m now reviewing the switching and authorization flow and running the combined checks.
+
+Tool record: verified that the switcher, summary fixture and workspace browser
+assertions match main. Only S2-020 production differences remain in
+`ProtectedTargetWorkspace` and `ReviewQuestions`. Re-read target listing and its
+owner filter, parent ownership checks, question route, review-context guard, the
+switcher's encoded same-origin links, and pending-request cleanup. Verified that
+the workspace still passes the session-verified user ID and that empty contexts
+fail before quota/model invocation. This is an AI-assisted self-review, not an
+independent teammate or section 7 approval.
+
+Started a fresh full Jest coverage run, lint and typecheck against the integrated
+branch. Lint and typecheck passed. Started the production build before rerunning
+browser integration checks. No live provider or deployed database calls were made.
+
+Assistant:
+
+> The production build, lint, typecheck, and formatting checks passed. The functional/security review has found no new blocking issue: the switcher lists owned targets, the workspace passes the verified user ID, and each Q&A request still loads authorized reviews before quota or model access.
+>
+> I’m running the full authenticated browser suite, including the new switcher tests, alongside the full unit/integration suite.
+
+Tool record: ran the complete `test:e2e:auth` suite against the integrated production
+build with local synthetic services. All 36 cases passed, including seeded-account
+badge counts after the isolated empty-target creation, keyboard target switching,
+summary context, delayed replies, account changes, and cross-user denials. Stopped
+only the two fixture/server processes started by this run after all cases completed
+so teardown could finish. The runner exited 0 with "36 passed (1.9m)".
+
+Assistant:
+
+> All 36 authenticated browser tests passed, including keyboard target switching, summary changes, empty-target Q&A, delayed responses, and cross-user denials. The earlier badge-count failure is gone.
+>
+> The full unit/integration run is still finishing. After that, I’ll record the results and complete the local merge commit. There are no unresolved Git conflicts.
+
+Assistant:
+
+> The combined browser suite is green, including the badge assertions and target-switching checks. I’ve also confirmed there is exactly one summary-RPC fixture handler and no unresolved merge entries.
+>
+> The full coverage run is still active. I’m waiting for its result before recording the final verification and completing the merge.
+
+Final tool result: full Jest coverage completed successfully in 371.3s. All 89
+suites and 1,596 tests passed. Statements/lines: 94.38%; branches: 94.35%; functions:
+93.37%. Retained the successful production build, lint, typecheck, formatting, and
+36-browser-test results from this integrated checkout. Updated the PR description,
+reviewer-response draft, implementation notes, and self-review report with the new
+baseline and removed obsolete summary-fixture limitations. Historical results above
+remain unchanged. No further production adjustment was necessary beyond preserving
+S2-020's existing behavior and fixing its browser-account isolation.
+
+Assistant:
+
+> The full suite passed: 1,596 tests across 89 suites, plus all 36 authenticated browser tests. The functional/security self-review found no additional blocking issue.
+>
+> I’ve updated the transcript, PR description, reviewer response, and verification notes. The remaining diff is scoped to S2-020; I’m completing the local merge commit and checking coverage against the new `main` baseline.
+
+Tool record: requested approval to stage the updated notes and finish the local
+S2-017 merge commit. The command was rejected by the user before execution. No
+staging or commit from that request took place, and the action was not retried.
+
+Assistant:
+
+> The commit approval was declined, so I’ll leave the merged changes and updated notes uncommitted. The tests and review are complete. I’m checking the final state without retrying the commit or pushing anything.
+
+Final state checks: MERGE_HEAD is main `5f865ce`; there are no unmerged files.
+The summary fixture contains exactly one handler. The switcher, fixture and badge
+assertions match main. `git diff --check origin/main` passes. The standard coverage
+gate passes at 163/163 (100%), with 48/48 changed branch outcomes. Because the merge
+is not committed, the gate still uses merge-base `4c866eb` and includes incoming
+S2-017 lines; the remaining direct diff against current main only contains S2-020
+production/test changes. Removed an obsolete 44/44 count from the current PR draft
+so it does not mislabel this pending-merge measurement. No production code changed
+after verification, no commit was retried, and nothing was pushed or posted.
