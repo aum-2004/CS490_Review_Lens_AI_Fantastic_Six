@@ -98,7 +98,7 @@ export function assertIssue74Request(
     },
     foreign,
   );
-  expectNoReviewerIdentity(request, active);
+  expectNoReviewerIdentity({ ...request, input: applicationSuppliedInput(request) }, active);
   // Exclude ONLY the user's question; every other request field remains inspected.
   const controlled = JSON.stringify({ ...request, input: applicationSuppliedInput(request) });
   assertAbsent(controlled, privateSignals(active));

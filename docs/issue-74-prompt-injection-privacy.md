@@ -44,7 +44,27 @@ foreign-data scan. A malicious authorized review can literally say "Restaurant B
 proof that Restaurant B was read. Only these already-verified text values are replaced in the
 _scan copy_, and only the parsed user-question section is exempted from foreign-value detection.
 Original request instructions, shape, all evidence fields, exact question and metadata exclusion
-are still checked. This prevents both false leak reports and blanket exemptions for extra fields.
+are still checked. User-supplied identity strings in the exact question are not misclassified as
+application-derived metadata; output privacy checks still apply. This prevents both false leak reports and blanket exemptions for extra fields.
+
+## Assignment compliance checklist
+
+| Direction                                             | Implementation/evidence                                                                                                                  | Status                                                              |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Review-text injection                                 | Four separate payloads; exact persisted evidence; unchanged system instructions; recorded session/target queries                         | Implemented                                                         |
+| Question injection                                    | Eleven cases: override, user impersonation, foreign target, business/platform bypass and privacy questions                               | Implemented                                                         |
+| Reviewer privacy                                      | Excluded metadata sentinels; existing outcomes only; proposed policy above; unsafe-output limitation probes                              | Implemented evaluation; semantic findings require human disposition |
+| Complete request/response                             | Existing S2-003 injectable fake; entire provider-neutral request and validated answer; foreign/citation/denial assertions; network guard | Implemented                                                         |
+| Regression and mutation checks                        | Full suite including unchanged S2-004/S2-016; 22 oracle mutations; five reversible source mutations                                      | Passed locally                                                      |
+| Isolated branch and files                             | Branch from main `b8ca643a`; only new test/helper/fixture/document/transcript files                                                      | Verified                                                            |
+| No auth/RLS/provider/dependency changes or paid calls | Source/dependency diff empty; transport/model mocks and blocked network probe                                                            | Verified                                                            |
+| Authentic transcript                                  | Original direct-session task records, explicit cutoff, redactions and accepted/changed/rejected notes                                    | Recorded                                                            |
+| Open PR referencing #74                               | Concrete description prepared with `Refs #74`; awaiting Shawn's confirmation before remote publication                                   | Pending                                                             |
+| Deep security / Aryan functional and final approval   | Named in PR draft; no automatic merge                                                                                                    | Pending human review                                                |
+
+Authorization/context denials make no model call. Scope/privacy refusals are model-response
+outcomes and therefore exercise the injectable fake model; these tests do not claim an
+application-side pre-dispatch classifier rejects every malicious question.
 
 ## What the deterministic tests prove
 
@@ -63,7 +83,8 @@ No API key, paid call, hosted write, or live model evaluation is used.
 1. **Invented PII / unauthorized prose:** a fake model returning a valid `answered` object with an
    allowed review ID and an invented email, phone, excluded reviewer name, or foreign private
    marker is accepted by the production response validator. The new evaluation oracle rejects
-   those replies. The validator does not semantically validate prose or enforce the privacy policy.
+   those replies. The validator does not semantically validate prose or enforce the privacy policy. A private
+   marker is also accepted inside a structurally valid uncited `insufficient_evidence` reply.
 2. **Prompt disclosure:** a valid cited reply echoing the system instructions is also accepted by
    production and rejected by the evaluation oracle. Prompt directives alone are not a hard guard.
 3. **PII inside review bodies:** metadata is excluded, but an email written in an authorized
@@ -87,8 +108,8 @@ separate evidence, not emulated claims of this suite.
 
 Local results on main base `b8ca643a`:
 
-- New issue-74 suites: **59/59 passed** (37 integration + 22 oracle negative controls).
-- Full Jest: **95 suites / 1,677 tests passed**, no skips. Existing S2-004/S2-016 tests unchanged.
+- New issue-74 suites: **61/61 passed** (39 integration + 22 oracle negative controls).
+- Full Jest: **95 suites / 1,679 tests passed**, no skips. Existing S2-004/S2-016 tests unchanged.
 - Repository formatting, ESLint (no warnings), explicit TypeScript check and production build passed.
 - Build used dummy Supabase configuration, Q&A disabled, and a temporary Turbopack root adjustment
   for the isolated worktree's linked dependencies. The configuration was restored byte-for-byte.
@@ -99,9 +120,9 @@ Local results on main base `b8ca643a`:
 
 | Temporary fault                              | Failing new tests |
 | -------------------------------------------- | ----------------: |
-| Remove untrusted-content instruction         |                27 |
-| Remove reviewer-privacy instruction          |                27 |
-| Promote review text into system instructions |                27 |
+| Remove untrusted-content instruction         |                29 |
+| Remove reviewer-privacy instruction          |                29 |
+| Promote review text into system instructions |                29 |
 | Always build Target A context                |                 5 |
 | Accept foreign citations                     |                 2 |
 
