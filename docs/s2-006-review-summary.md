@@ -22,3 +22,17 @@ the workspace does not substitute zeroes or expose database details. Since the w
 server-rendered target view, navigation to another target obtains a fresh target-scoped summary,
 and `WorkspaceIngestion`'s existing `router.refresh()` after completion reloads it without extra
 provider polling.
+
+## S2-008 persisted-dataset boundary
+
+The summary aggregate and Q&A context use the same security and data boundary: the authenticated
+user's selected `AnalysisTarget` and its persisted `reviews` rows. `get_review_summary()` computes
+the exact count and average in PostgreSQL without loading review text. `buildReviewDatasetContext()`
+reloads the same target-filtered rows for Q&A, requires an exact complete result, and either includes
+all eligible rows within the 100-review/32 KiB limits or fails closed. It never truncates Q&A data
+or substitutes the ingestion presentation, browser state, provider output, or an LLM-generated value.
+
+The S2-008 database regression covers live insert/delete recalculation, empty datasets, target
+isolation, and cross-user denial. The focused boundary test also asserts that a supported persisted
+dataset produces matching summary count/context rows, while an oversized dataset remains an exact
+summary but is rejected by Q&A rather than silently represented by a partial context.
