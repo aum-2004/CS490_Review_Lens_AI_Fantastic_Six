@@ -283,3 +283,100 @@ text), and `git diff --check` passed. A first path scan also matched a GitHub UR
 the refined drive-path check excludes URL schemes. No full filesystem paths were
 included. The changes are local and uncommitted; no code or tests were changed,
 no tests were rerun for these documentation edits, and nothing was pushed or sent.
+
+## Reconciliation after S2-018 merged
+
+The preceding documentation follow-up was subsequently committed as `f7b7368`
+("Address reviewer feedback"). The initial Git status in this turn was clean.
+
+User:
+
+> s2-018 was merged please remove any redunancy and handle any conflicts, also update transcripts
+
+Assistant:
+
+> I’ll refresh `main`, reconcile the merged S2-018 changes with `s2-020`, and check for conflicts or redundant changes in the PR diff. I’ll update the follow-up transcript and verify the integration without pushing.
+
+Tool record: fetched origin with approval. Main advanced from `d59b509` to
+`4c866eb` (S2-018 #93). Incoming work consists of S2-018's documentation/transcripts,
+target-switching tests, workspace browser-test assertions, and a local synthetic
+summary-RPC fixture. No new production implementation is introduced by S2-018.
+Read the bundled Next.js useRouter guide and inspected the incoming diff before
+merging. Ran the approved `git merge --no-commit --no-ff origin/main` on `s2-020`;
+Git reported a clean automatic merge with no conflicts.
+
+Started lint/typecheck and full Jest coverage for the combined branch. One initial
+test-file read used the wrong directory and returned file not found; located it
+under `tests/unit/app/analysis-targets/target-switching.production.test.tsx` with
+`rg --files`. No files were changed by that lookup.
+
+Assistant:
+
+> S2-018 merged cleanly—there were no source conflicts. Its files match `main`, so they won’t add unrelated changes to the S2-020 PR diff.
+>
+> S2-018 also adds summary-RPC support to the browser fixture. I’ll verify that integration and remove the outdated note saying the browser tests only cover a summary-unavailable state.
+
+Tool record: checked that S2-018's fixture and browser files match main. Removed the
+obsolete earlier-main integration paragraph and summary-unavailable limitation from
+the PR description. The earlier nine-browser-test run and its limitation remain
+unchanged in the historical transcript sections above. Current verification uses
+the updated fixture and includes the S2-018 target-switching suites.
+
+Assistant:
+
+> The branch still has only S2-020 production changes relative to current `main`; no source changes were needed for this merge. Lint and typecheck passed. I’ve added the integration steps to the transcript and am running the S2-018 switching tests alongside the S2-019 and S2-020 regressions.
+
+Tool record: production build and repository formatting passed. Confirmed that all
+five S2-018 fixture/browser/unit integration files match main. Started the production
+browser run with `review-questions.spec.ts`, `stale-review-context.spec.ts`,
+`target-context-switching.spec.ts`, and `target-workspace.spec.ts`, using the local
+synthetic auth/data fixture. These include summary switching and persisted workspace
+behavior, not only the earlier empty-Q&A checks.
+
+User supplied an earlier S2-018 reviewer comment, with its filesystem example
+redacted here as requested:
+
+> this was a comment made on s2-018's pr:
+>
+> Deep9:19 PM
+>
+> **@shawn** Hey Shawn, reviewed #93 at db54914 and I'm approving the code review. CI is green, tests pass, and all 3 mutations got caught. One fix before merge: ai-transcripts/2026-11-12_shawn_S2-018_codex.md still has 20 unredacted <USER_HOME> paths (first at line 101), but the header says paths were redacted. Swap them for <USER_HOME>. Also heads-up: #91 conflicts with your target-workspace.spec.ts badge counts and duplicates the summary-RPC fixture handler, so sync with Melissa
+>
+> i just want to be clear that theres no conflicts at the end
+
+The quoted reviewer comment has its full filesystem example replaced with
+<USER_HOME>; it is not an assertion that its old transcript findings still apply
+to the merged files.
+
+Assistant:
+
+> I’ll check the two overlaps mentioned in that comment: the workspace badge assertions and the summary-RPC fixture handler. I’ll compare the reconciled branch with current `main` and S2-017 (#91), so I can distinguish any remaining PR-to-PR conflict from a clean merge with `main`.
+
+Tool record: the first 19-test production-browser run had 18 passing cases and one
+failure. The workspace target-list test expected one "Not ingested" badge but saw
+two because the preceding S2-020 creation test had added a target to the shared
+seeded account. Stopped only this runner's fixture/server processes after all cases
+completed; the runner exited 1 with that assertion failure.
+
+Checked current main and `origin/s2-017` (`cc3a534`). Current main has exactly one
+summary-RPC handler and S2-018's corrected workspace badge counts. A read-only
+merge preview of main with unmerged S2-017 reports three conflict hunks in
+`tests/e2e/auth/target-workspace.spec.ts`. S2-017 also adds a summary handler at a
+different location; combining it unchanged would duplicate the one now on main.
+These are existing S2-017/main integration issues, not unresolved S2-020 merge
+conflicts. The unmerged S2-017 branch was not modified or incorporated into S2-020.
+
+Assistant:
+
+> The broader browser run found a test-isolation issue: S2-020’s new empty-target test adds a target to the shared account, which makes a later workspace badge-count assertion see two empty targets instead of one. I’ll move that creation test to an existing separate fixture account.
+>
+> The current branch has one summary-RPC handler, and S2-018 already corrected the workspace badge counts. S2-017 is still unmerged and carries the older overlap, so I’ll check and report its remaining compatibility separately.
+
+Tool record: changed only S2-020's empty-target browser test to sign in with the
+existing synthetic creation account before creating the target. This preserves
+the seeded account used by workspace assertions without altering S2-018 tests or
+weakening badge-count checks. The full deterministic run completed successfully:
+88 suites, 1,590 tests, lines/statements 94.31%, branches 94.29%, functions 93.29%.
+Started a rerun of all 19 browser cases against the same verified production build;
+only browser test code changed after the build. Formatting and scoped diff checks
+passed, and lint was rerun for the modified browser test.

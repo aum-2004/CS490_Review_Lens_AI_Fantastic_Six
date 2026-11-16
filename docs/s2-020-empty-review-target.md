@@ -43,7 +43,7 @@ by the ingestion panel and unavailable-Q&A explanation. Tests cover all three
 configuration blockers across fresh, failed, processing, and completed ingestion,
 and verify that previously saved reviews still permit Q&A under each blocker.
 Review-load failures retain their reload instruction rather than claiming an empty
-dataset. The branch is reconciled with the merged S2-019 and S2-006 implementation;
+dataset. The branch is reconciled with the merged S2-018, S2-019, and S2-006 work;
 their files remain identical to current main outside the S2-020 changes.
 
 Validation on 2026-11-15:

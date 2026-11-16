@@ -15,7 +15,15 @@ async function login(page: Page) {
 test("an empty target explains disabled Q&A and rejects direct questions before model configuration", async ({
   page,
 }) => {
-  await login(page);
+  // Keep created targets out of the seeded account used by workspace badge assertions.
+  await page.goto("/login?next=%2Fanalysis-targets");
+  await page.getByLabel("Email *").fill("creation-fixture@example.com");
+  await page.getByLabel("Password *").fill("dummy-password");
+  await page
+    .getByRole("form", { name: "Sign in" })
+    .getByRole("button", { name: "Sign in", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("My Targets");
   await page.getByRole("link", { name: "New Target", exact: true }).click();
   await page.getByLabel("Target name *").fill("Empty review target");
   await page.getByLabel("Google Maps URL *").fill("https://www.google.com/maps/place/Empty");
