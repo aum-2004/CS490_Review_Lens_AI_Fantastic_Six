@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { listAnalysisTargets } from "@/services/analysis-targets/list-analysis-targets";
 import { ProtectedTargetWorkspace } from "@/components/analysis-targets/ProtectedTargetWorkspace";
+import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { requirePageUser } from "@/services/auth/access-control";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -15,6 +16,10 @@ import {
 } from "@/services/ingestion/ingestion-attempt-repository";
 
 jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() }));
+jest.mock("@/components/reviews/ReviewQuestions", () => {
+  const actual = jest.requireActual("@/components/reviews/ReviewQuestions");
+  return { ...actual, ReviewQuestions: jest.fn(actual.ReviewQuestions) };
+});
 jest.mock("@/services/analysis-targets/list-analysis-targets", () => ({
   listAnalysisTargets: jest.fn(),
 }));
@@ -88,6 +93,13 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
+});
+
+it("passes the verified session user identity to ReviewQuestions", async () => {
+  render(await ProtectedTargetWorkspace({ params }));
+  expect(jest.mocked(ReviewQuestions).mock.calls[0][0]).toEqual(
+    expect.objectContaining({ userId: "verified-user", targetId: "owned-target" }),
+  );
 });
 
 const persistedAttempt: IngestionAttemptRow = {
