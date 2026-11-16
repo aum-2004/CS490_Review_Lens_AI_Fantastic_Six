@@ -8,6 +8,10 @@ import { answerQuestion } from "@/services/qa/answer-question";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { QaResponseError, type QaAnswer } from "@/services/qa/qa-response";
 import { resolveDeclineOutcome, SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
+import {
+  S2_015_DESCRIBED_EXTERNAL_ENTITY_CASE,
+  S2_015_MIXED_ENTITY_PLATFORM_CASE,
+} from "../../../fixtures/configured-model-evaluation";
 import { getQaDataset } from "../../../fixtures/qa/datasets";
 import { scopeGuardEvaluationFixture } from "../../../fixtures/scope-guard-evaluation";
 import {
@@ -251,14 +255,7 @@ describe("S2-015 real answerQuestion integration", () => {
   });
 
   it("runs the mixed entity/platform case through entity-first production validation", async () => {
-    const mixedCase = {
-      id: "s2-015-mixed-entity-platform",
-      question: "How does Restaurant A compare with Restaurant B based on Amazon reviews?",
-      expectedCategory: "decline_other_entity_or_product",
-      expectedReviewIds: [],
-      explanation:
-        "Another entity and another platform are requested; entity scope has higher decline priority.",
-    } as const satisfies EntityPlatformRefusalCase;
+    const mixedCase = S2_015_MIXED_ENTITY_PLATFORM_CASE;
     const expectedOutcome = resolveDeclineOutcome([
       "declined_other_platform",
       "declined_other_entity",
@@ -281,14 +278,7 @@ describe("S2-015 real answerQuestion integration", () => {
   });
 
   it("runs a described external business through other-entity production validation", async () => {
-    const describedEntityCase = {
-      id: "s2-015-described-other-entity",
-      question: "What do customers think about the place across the street?",
-      expectedCategory: "decline_other_entity_or_product",
-      expectedReviewIds: [],
-      explanation:
-        "A described external business is outside the active Restaurant A review dataset.",
-    } as const satisfies EntityPlatformRefusalCase;
+    const describedEntityCase = S2_015_DESCRIBED_EXTERNAL_ENTITY_CASE;
     const model = modelFor(
       describedEntityCase,
       reply.declined("declined_other_entity", SCOPE_CLEAR_ANSWER),

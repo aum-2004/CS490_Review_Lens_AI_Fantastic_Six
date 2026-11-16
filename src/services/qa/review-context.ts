@@ -58,6 +58,16 @@ export interface ReviewDatasetContext {
   readonly evidenceBytes: number;
 }
 
+export interface ReviewContextDependencies {
+  readonly getAuthenticatedUser: typeof getAuthenticatedUser;
+  readonly createSupabaseServerClient: typeof createSupabaseServerClient;
+}
+
+const DEFAULT_REVIEW_CONTEXT_DEPENDENCIES: ReviewContextDependencies = {
+  getAuthenticatedUser,
+  createSupabaseServerClient,
+};
+
 type ContextReviewRow = {
   id: string;
   analysis_target_id: string;
@@ -102,10 +112,13 @@ function toEvidence(row: ContextReviewRow, targetId: string): ReviewEvidence {
  * active target ID: browser review text, owner IDs, prior context and model thread IDs are not inputs.
  * No service-role client, global state, Next cache or provider invocation is used here.
  */
-export async function buildReviewDatasetContext(targetId: unknown): Promise<ReviewDatasetContext> {
+export async function buildReviewDatasetContext(
+  targetId: unknown,
+  dependencies: ReviewContextDependencies = DEFAULT_REVIEW_CONTEXT_DEPENDENCIES,
+): Promise<ReviewDatasetContext> {
   let user;
   try {
-    user = await getAuthenticatedUser();
+    user = await dependencies.getAuthenticatedUser();
   } catch {
     throw new ReviewContextError("AUTH_UNAVAILABLE");
   }
@@ -113,7 +126,7 @@ export async function buildReviewDatasetContext(targetId: unknown): Promise<Revi
   if (typeof targetId !== "string") throw new TargetNotFoundError();
 
   try {
-    const client = await createSupabaseServerClient();
+    const client = await dependencies.createSupabaseServerClient();
     // Existing S1-013 guard denies foreign/missing/malformed targets before child reads.
     const ownedTarget = await getOwnedTargetOrThrow(client, targetId, user.id);
     const { data, error, count } = await client
