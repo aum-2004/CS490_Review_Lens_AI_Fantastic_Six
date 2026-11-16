@@ -20,5 +20,5 @@ typecheck, formatting, build, and diff checks passed. Browser tests use the loca
 fixture's summary-unavailable state; S2-006 summary behavior has separate unit
 coverage. No live provider or deployed database operations were performed.
 
-The commit is currently local. Once it is pushed and GitHub CI completes, please
-reconfirm the functionality and security fixes against this updated commit.
+Once GitHub CI completes on the updated branch, please reconfirm the functionality
+and security fixes against the linked implementation commit.
