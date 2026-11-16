@@ -110,7 +110,9 @@ test("creates two targets without a reload and resets success, draft, and errors
   let confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
   await expect(confirmation).toContainText("Target created");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(firstName);
-  await expect(page.getByRole("main").getByText("Not ingested", { exact: true })).toHaveCount(1);
+  await expect(
+    page.locator("#ingestion").getByRole("status").getByText("Not ingested", { exact: true }),
+  ).toHaveCount(1);
   await expect(page.getByText(/No saved reviews yet/)).toBeVisible();
   await expect(page.getByText(/You can now start ingestion|Start ingestion above/)).toHaveCount(0);
   await expect(page).not.toHaveURL(/created=/);

@@ -79,3 +79,7 @@ the teammate/security review required by repository standards remain pending a f
 - No push, commit, published PR, deployment, or dependency upgrade was performed.
 
 Transcript: [melissa / Codex review](../ai-transcripts/2026-11-15_melissa_S2-017_review_codex.md).
+
+Subsequent dependency integration and current verification:
+[S2-017 main integration](s2-017-main-integration.md). The original review evidence above predates
+the S2-006/S2-016/S2-019 merge; existing authorization boundaries were retained during integration.

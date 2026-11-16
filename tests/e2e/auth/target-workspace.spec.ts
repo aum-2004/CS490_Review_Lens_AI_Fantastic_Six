@@ -91,7 +91,7 @@ test("shows provider-resolved URL identity without claiming an independent match
     await expect(
       page.getByText(/The review service identified this business as Provider coffee shop/),
     ).toContainText("has not been independently matched to the saved link");
-    await expect(page.getByText("Ingested", { exact: true })).toHaveCount(2);
+    await expect(page.getByText("Ingested", { exact: true })).toHaveCount(3);
     await expect(page.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
     await expect(page.getByText(/Further collection is unavailable/)).toBeVisible();
     await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
@@ -113,7 +113,7 @@ test("restores partial results after reload and distinguishes failed ingestion w
     await page.goto("/analysis-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1");
     await page.reload();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
-    await expect(page.getByText("Partially ingested", { exact: true })).toHaveCount(2);
+    await expect(page.getByText("Partially ingested", { exact: true })).toHaveCount(3);
     await expect(page.getByText(/Last completed run/)).toContainText(
       "1 reviews saved. 2 unusable records were skipped.",
     );
@@ -134,7 +134,7 @@ test("restores partial results after reload and distinguishes failed ingestion w
     await expect(page.getByText("Partially ingested", { exact: true })).toHaveCount(1);
     await page.getByRole("link", { name: "Open A bookstore" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bookstore");
-    await expect(page.getByRole("main").getByText("Failed", { exact: true })).toHaveCount(2);
+    await expect(page.getByRole("main").getByText("Failed", { exact: true })).toHaveCount(3);
     await expect(page.getByRole("main").getByRole("alert")).toContainText("usage limit");
     await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
       "Saved review for A bookstore",

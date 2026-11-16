@@ -48,3 +48,7 @@ outside this local implementation.
 AI transcript: [melissa / Codex](../ai-transcripts/2026-11-15_melissa_S2-017_codex.md).
 
 Follow-up: [code and security review](s2-017-code-security-review.md).
+
+Dependency update: [main integration](s2-017-main-integration.md) supersedes the pre-integration
+test totals above. The S2-006 review summary card now explicitly names the selected target and
+platform; the switcher, ingestion, summary, and Q&A share the verified workspace target.

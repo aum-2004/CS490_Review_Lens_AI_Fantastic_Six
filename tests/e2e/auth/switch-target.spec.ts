@@ -34,6 +34,9 @@ test("switches owned targets with keyboard navigation and updates all active con
   await login(page);
   const qa = page.getByRole("region", { name: "Review questions" });
   const ingestion = page.getByRole("region", { name: "Target ingestion" });
+  const summary = page.getByRole("region", { name: "Review summary" });
+  await expect(summary).toContainText("Active target: A bakery · Google Maps");
+  await expect(summary).toContainText("4.0 / 5");
   await qa.getByLabel(/Question/).fill("What do reviewers like?");
   await qa.getByRole("button", { name: "Ask question" }).click();
   await expect(qa).toContainText("Bakery answer.");
@@ -58,6 +61,8 @@ test("switches owned targets with keyboard navigation and updates all active con
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
   await expect(ingestion).toContainText("Active target: A coffee shop · Google Maps");
   await expect(qa).toContainText("Active target: A coffee shop · Google Maps");
+  await expect(summary).toContainText("Active target: A coffee shop · Google Maps");
+  await expect(summary).not.toContainText("A bakery");
   await expect(qa).not.toContainText("Bakery answer.");
   await expect(qa.getByLabel(/Question/)).toHaveValue("");
   await expect(page.getByRole("list", { name: "Saved reviews" })).not.toContainText(
@@ -85,6 +90,7 @@ test("switches owned targets with keyboard navigation and updates all active con
   }
   await page.goBack();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
+  await expect(summary).toContainText("Active target: A bakery · Google Maps");
   await expect(qa.getByLabel(/Question/)).toHaveValue("");
   await expect(qa).not.toContainText("Coffee answer.");
 });
