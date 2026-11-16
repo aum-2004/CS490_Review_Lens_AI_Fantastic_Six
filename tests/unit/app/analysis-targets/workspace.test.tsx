@@ -1,5 +1,7 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { listAnalysisTargets } from "@/services/analysis-targets/list-analysis-targets";
 import { ProtectedTargetWorkspace } from "@/components/analysis-targets/ProtectedTargetWorkspace";
+import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { requirePageUser } from "@/services/auth/access-control";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
@@ -14,6 +16,13 @@ import {
 } from "@/services/ingestion/ingestion-attempt-repository";
 
 jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() }));
+jest.mock("@/components/reviews/ReviewQuestions", () => {
+  const actual = jest.requireActual("@/components/reviews/ReviewQuestions");
+  return { ...actual, ReviewQuestions: jest.fn(actual.ReviewQuestions) };
+});
+jest.mock("@/services/analysis-targets/list-analysis-targets", () => ({
+  listAnalysisTargets: jest.fn(),
+}));
 jest.mock("@/services/ingestion/ingestion-recovery", () => ({
   ingestionRecoveryConfigured: () => true,
 }));
@@ -62,6 +71,15 @@ beforeEach(() => {
   });
   jest.mocked(createSupabaseReviewStore).mockReturnValue({ listReviews } as never);
   listReviews.mockResolvedValue([]);
+  jest.mocked(listAnalysisTargets).mockResolvedValue([
+    {
+      id: "other-owned-target",
+      name: "Cafe",
+      platform: "google_maps",
+      sourceUrl: "https://www.google.com/maps/place/Cafe",
+      createdAt: "2026-11-01T00:00:00Z",
+    },
+  ]);
   jest.mocked(getLatestAttempt).mockResolvedValue(null);
   jest.mocked(getReviewSummary).mockResolvedValue({
     targetId: "owned-target",
@@ -75,6 +93,13 @@ beforeEach(() => {
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
+});
+
+it("passes the verified session user identity to ReviewQuestions", async () => {
+  render(await ProtectedTargetWorkspace({ params }));
+  expect(jest.mocked(ReviewQuestions).mock.calls[0][0]).toEqual(
+    expect.objectContaining({ userId: "verified-user", targetId: "owned-target" }),
+  );
 });
 
 const persistedAttempt: IngestionAttemptRow = {
@@ -180,6 +205,9 @@ it("renders the persisted review count and average rating for the active target"
   expect(screen.getByText("Reviews saved")).toBeInTheDocument();
   expect(screen.getByText("3")).toBeInTheDocument();
   expect(screen.getByText("4.3 / 5")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Review summary" })).toHaveTextContent(
+    "Active target: Bakery · Google Maps",
+  );
   expect(getReviewSummary).toHaveBeenCalledWith(
     { listReviews },
     {},
@@ -321,6 +349,10 @@ it("loads the selected target summary instead of retaining the previous target",
   cleanup();
   render(await ProtectedTargetWorkspace({ params: Promise.resolve({ targetId: "target-b" }) }));
   expect(screen.getByText("2.5 / 5")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Review summary" })).toHaveTextContent(
+    "Active target: Cafe · Google Maps",
+  );
+  expect(screen.getByRole("region", { name: "Review summary" })).not.toHaveTextContent("Bakery");
   expect(screen.queryByText("4.3 / 5")).not.toBeInTheDocument();
   expect(getReviewSummary).toHaveBeenLastCalledWith(
     { listReviews },
@@ -356,6 +388,7 @@ it("does not let a creation marker disclose an unavailable target", async () => 
   ).not.toBeInTheDocument();
   expect(listReviews).not.toHaveBeenCalled();
   expect(getLatestAttempt).not.toHaveBeenCalled();
+  expect(listAnalysisTargets).not.toHaveBeenCalled();
   expect(getReviewSummary).not.toHaveBeenCalled();
 });
 
@@ -364,7 +397,43 @@ it("does not query protected data when authentication redirects", async () => {
   await expect(ProtectedTargetWorkspace({ params })).rejects.toThrow("NEXT_REDIRECT");
   expect(createSupabaseServerClient).not.toHaveBeenCalled();
   expect(listReviews).not.toHaveBeenCalled();
+  expect(listAnalysisTargets).not.toHaveBeenCalled();
   expect(getReviewSummary).not.toHaveBeenCalled();
+});
+
+it("offers owned targets after verification and keeps context if the switch list fails", async () => {
+  const { unmount } = render(await ProtectedTargetWorkspace({ params }));
+  expect(listAnalysisTargets).toHaveBeenCalledWith({}, "verified-user");
+  expect(jest.mocked(requirePageUser).mock.invocationCallOrder[0]).toBeLessThan(
+    jest.mocked(getOwnedTargetOrThrow).mock.invocationCallOrder[0],
+  );
+  expect(jest.mocked(getOwnedTargetOrThrow).mock.invocationCallOrder[0]).toBeLessThan(
+    jest.mocked(listAnalysisTargets).mock.invocationCallOrder[0],
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  const nav = within(screen.getByRole("navigation", { name: "Switch analysis target" }));
+  expect(nav.getByRole("link", { name: /^Bakery \(active\)/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(nav.getByRole("link", { name: /^Cafe / })).toHaveAttribute(
+    "href",
+    "/analysis-targets/other-owned-target",
+  );
+  expect(screen.getByRole("region", { name: "Target ingestion" })).toHaveTextContent(
+    "Active target: Bakery · Google Maps",
+  );
+  unmount();
+  jest.mocked(listAnalysisTargets).mockRejectedValueOnce(new Error("PRIVATE_DATABASE_DETAIL"));
+  render(await ProtectedTargetWorkspace({ params }));
+  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  expect(screen.getByText(/We couldn't load your other targets/)).toBeVisible();
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
+  expect(screen.getByRole("link", { name: "View all targets" })).toHaveAttribute(
+    "href",
+    "/analysis-targets",
+  );
+  expect(document.body).not.toHaveTextContent("PRIVATE_DATABASE_DETAIL");
 });
 
 it("denies unavailable targets before accessing reviews or rendering ingestion", async () => {
@@ -374,6 +443,7 @@ it("denies unavailable targets before accessing reviews or rendering ingestion",
     "This target isn't available to your account",
   );
   expect(listReviews).not.toHaveBeenCalled();
+  expect(listAnalysisTargets).not.toHaveBeenCalled();
   expect(screen.queryByRole("button", { name: "Start ingestion" })).not.toBeInTheDocument();
   expect(document.body.textContent).not.toContain("Bakery");
 });

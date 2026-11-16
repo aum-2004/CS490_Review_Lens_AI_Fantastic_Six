@@ -177,6 +177,17 @@ createServer(async (request, response) => {
   }
 
   const token = (request.headers.authorization || "").replace(/^Bearer /i, "");
+  if (url.pathname === "/rest/v1/rpc/get_review_summary" && request.method === "POST") {
+    const identity = tokens.get(token);
+    if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) return send(401, {});
+    const target = targetRows.find(
+      (row) => row.id === body.p_target_id && row.owner_id === identity.user.id,
+    );
+    if (!target) return send(404, { code: "P0002", message: "Target unavailable" });
+    // Match the single persisted rating-4 review returned below; new targets have no rows.
+    const empty = target.id.startsWith("cccccccc-");
+    return send(200, [{ review_count: empty ? 0 : 1, average_rating: empty ? null : 4 }]);
+  }
   if (
     [
       "/rest/v1/latest_ingestion_attempts",
@@ -283,18 +294,6 @@ createServer(async (request, response) => {
     }
     const limit = 200;
     return send(200, rows.slice(offset, offset + limit));
-  }
-  // Deterministic stand-in for the persisted summary RPC, not a database/RLS test.
-  if (url.pathname === "/rest/v1/rpc/get_review_summary" && request.method === "POST") {
-    const identity = tokens.get(token);
-    if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) return send(401, {});
-    const target = targetRows.find(
-      (row) => row.id === body.p_target_id && row.owner_id === identity.user.id,
-    );
-    if (!target) return send(404, { code: "P0002", message: "Target not found" });
-    // Match the saved review rows exposed below, including empty newly created targets.
-    const hasReviews = !target.id.startsWith("cccccccc-");
-    return send(200, [{ review_count: hasReviews ? 1 : 0, average_rating: hasReviews ? 4 : null }]);
   }
   if (url.pathname === "/rest/v1/reviews" && request.method === "GET") {
     const identity = tokens.get(token);
