@@ -73,4 +73,35 @@ audited or changed.
 - Lint, typecheck, repository formatting, production build, and diff whitespace
   checks passed.
 
-No remaining blocking findings in the reviewed scope. No commit or push performed.
+No remaining blocking findings in that review pass. No commit or push was performed
+by that review pass.
+
+## Follow-up to reviewer feedback and merged main
+
+- Reconciled with main containing S2-019 (#92) and S2-006 (#80). Retained the verified
+  user ID passed by the workspace, the user/target/navigation key, Activity cleanup,
+  cancellation, request-identity guards, and both stories' regression tests. The
+  remaining component differences from main implement S2-020's unavailable state
+  and accessibility.
+- Corrected the unavailable-ingestion recovery copy. The workspace computes the
+  configuration blocker once and supplies the same safe reason to ingestion and
+  Q&A. Added 12 cases covering disabled collection, unapproved storage, and missing
+  recovery configuration across fresh, failed, processing, and completed ingestion.
+  These cases reproduced the reviewer's report before the fix. Three additional
+  cases preserve Q&A for saved reviews under those same blockers.
+- Replaced every PR-body relative documentation/transcript link with a full GitHub
+  blob URL on `s2-020`, and removed the obsolete S2-019 integration paragraph from
+  the PR description. S2-019 files match main, preventing unrelated deletions or
+  additions in the remaining PR diff.
+- Local production build, lint, typecheck, and formatting checks passed. All nine
+  review-question/stale-context browser tests passed against the reconciled build.
+  The existing local fixture does not implement S2-006's summary RPC, so those
+  browser runs exercise the summary-unavailable state; the merged S2-006 unit tests
+  cover summary behavior independently.
+- Full-suite verification after these fixes: 86 suites and 1,573 tests passed,
+  including both stories' regressions and all 15 unavailable-ingestion tests.
+  Overall line coverage is 94.31%; the changed-code gate passes at 100%. Diff checks
+  against current main pass with no S2-019 file changes or unresolved conflicts.
+
+GitHub CI and security reconfirmation require the updated branch to be pushed. No
+push, remote PR-body update, or reviewer notification was performed.

@@ -27,7 +27,10 @@ test("an empty target explains disabled Q&A and rejects direct questions before 
     await expect(card.getByLabel(/Question/)).toBeDisabled();
     await expect(card.getByRole("button", { name: "Ask question" })).toBeDisabled();
     await expect(card).toContainText("No saved reviews are available for this target.");
-    await expect(card).toContainText("Complete ingestion in the Ingestion panel");
+    await expect(card).toContainText(
+      "Review collection is currently unavailable. Please try again later.",
+    );
+    await expect(card).not.toContainText("Complete ingestion in the Ingestion panel");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
