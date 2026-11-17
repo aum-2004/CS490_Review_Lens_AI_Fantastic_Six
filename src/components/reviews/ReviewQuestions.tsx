@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { CircleAlert } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   Form,
   FormField,
@@ -133,7 +133,13 @@ function QuestionForm({
 
   return (
     <Card className="space-y-4" aria-label="Review questions">
-      <h2 className="text-xl font-semibold">Ask ReviewLens</h2>
+      <p className="text-[11px] font-bold uppercase tracking-[1.5px] text-muted-foreground">
+        Review intelligence
+      </p>
+      <h2 className="text-lg font-semibold">Ask ReviewLens</h2>
+      <p className="rounded-lg bg-accent px-3 py-3 text-xs text-accent-foreground">
+        Questions are answered only from this target&apos;s saved Google Maps reviews.
+      </p>
       <p id={questionHelpId} className="max-w-prose break-words text-sm text-muted-foreground">
         Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
         Maps. Ask questions about this target&apos;s saved reviews. Each account can make five
@@ -146,6 +152,23 @@ function QuestionForm({
           <AlertDescription id={unavailableHelpId}>{unavailableMessage}</AlertDescription>
         </Alert>
       )}
+      <div className="flex flex-wrap gap-2">
+        {["What stands out?", "What do customers praise?", "What could be improved?"].map(
+          (question) => (
+            <Button
+              key={question}
+              variant="outline"
+              disabled={!reviewsAvailable || pending}
+              onClick={() => {
+                form.setValue("question", question, { shouldValidate: true });
+                form.setFocus("question");
+              }}
+            >
+              {question}
+            </Button>
+          ),
+        )}
+      </div>
       <Form {...form}>
         <form
           className="space-y-4"
@@ -163,7 +186,7 @@ function QuestionForm({
                   Question <span aria-hidden="true">*</span>
                 </FormLabel>
                 <FormControl aria-describedby={questionDescription}>
-                  <Input
+                  <Textarea
                     {...field}
                     aria-required="true"
                     disabled={!reviewsAvailable}
@@ -200,7 +223,12 @@ function QuestionForm({
           </div>
         </form>
       </Form>
-      <div role="status" aria-live="polite" aria-atomic="true" className="space-y-3">
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="space-y-3 border-l-2 border-primary pl-4"
+      >
         {pending && (
           <p className="break-words text-sm text-muted-foreground">
             ReviewLens is processing your question for {targetName}…

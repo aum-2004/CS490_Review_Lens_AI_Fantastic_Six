@@ -21,12 +21,12 @@ Table of Contents
 8. Reusable component expectations
 
 **1\. Application navigation**  
-Pattern: One top navigation bar inside a single AppShell that wraps every protected page (S1-BR-003). No sidebars or a different style on any screen.  
+Pattern: Analyst Studio, based on the supplied reviewlens-directions.html reference. One left navigation rail inside a single AppShell wraps every protected page (S1-BR-003). At widths below 768px the rail becomes a wrapping header, retaining all actions.
 Rules:
 
-1. **AppShell:** AppShell wraps every authenticated page. Contains the top bar and the page content area.
-2. **Top bar contents from left to right:** ReviewLens wordmark that links to /analysis-targets, navigation link "My Targets", a primary button "New Target", and, at the far right of the top bar, an account menu showing the signed in email plus a "Sign out" item.
-3. **Active context:** When the user is inside a target(/analysis-targets/{targetId})(not including /analysis-targets/new), the page header always shows the target name and platform. The top bar never changes between pages.
+1. **AppShell:** AppShell wraps every authenticated page. Contains the left rail, page content area, and dataset-scope footer.
+2. **Left rail contents:** A scan-eye mark and shortened "RL" brand link to /analysis-targets; Workspace, My Targets, and New Target links; then a theme toggle, Personal workspace caption, and account menu with the signed-in email and Sign out. The current route uses a blue tinted active state. Workspace opens the current target when available and otherwise opens My Targets to select a target.
+3. **Active context:** When the user is inside a target(/analysis-targets/{targetId})(not including /analysis-targets/new), the page header always shows the target name and platform. The rail remains consistent between pages.
 4. **Breadcrumbs:** The Target Workspace and Create Target shows a breadcrumb above the page title: (My Targets > {Target name}) or (My Targets > New Target)."My Targets" is a link.
 5. **Route map:**
 
@@ -40,19 +40,19 @@ Rules:
 | Page not found    | Any other route              | Public                                                             |
 
 6. **Protected-route behavior (S1-BR-003**): An unauthenticated visit to any protected route listed in the route map redirects to /login and after a successful sign-in, returns the user to the originally requested route. The sign-in page shows the neutral notice "Please sign in to continue.". Until the session is resolved, the page shows a loading skeleton and renders no protected data. Route guards such as this are UX conveniences only and the backend independently rejects unauthenticated requests. A 401 or expired session redirects to /login.
-7. **Sign out:** The "sign out" menu item on the top bar ends the session and redirects the user to /login. After sign-out, browser Back shows /login and no protected data.
+7. **Sign out:** The "sign out" menu item in the left rail ends the session and redirects the user to /login. After sign-out, browser Back shows /login and no protected data.
 8. **Keyboard actions:** All navigation items are reachable by TAB in visual order, visually represented by a visible focus ring. ENTER or SPACE opens the account menu and closes with escape. "Skip to main content" link is the first focusable element in AppShell.
 
 **2\. Page layout**  
 All pages must follow these rules if the page uses components mentioned in this list.  
-**/login does not use AppShell and gets a minimal centered layout and form with no top bar.**
+**/login does not use AppShell and gets a minimal centered layout and form with no navigation bar. The shared ThemeToggle sits beside the page heading and remains available for sign-in, registration, account, and authentication-error states. It wraps on narrow screens.**
 
-1. **Container:** Page content sits in a centered container with max-w-6xl(1152px). Form only pages use max-w-xl.
-2. **Vertical structure of every protected page:** top bar, breadcrumb(when it's applicable), page header, and page made of cards.
+1. **Container:** Page content sits in a container beside the 185px rail with max-w-7xl (1280px). Form only pages use max-w-xl.
+2. **Vertical structure of every protected page:** left rail, breadcrumb (when applicable), page header, and content cards. The workspace context header contains the active-target switcher, Google Maps label, and current status on a card surface with a bottom divider.
 3. **Page header:** An h1 page title and the primary page action aligned right on desktop.
-4. **Target workspace header:** Displays in the order of target name, platform badge, source, and current ingestion status badge.
-5. **Workspace body:** Two stacked cards: Ingestion and reviews(ReviewList of persistent reviews). Ingestion is the IngestionPanel with "Start ingestion" action, IngestionStatus, and last run details.
-6. **Cards:** shadcn/ui Card with rounded-lg border bg-card shadow-sm, internal padding p-6, card title should be an h2. Cards stack with gap-6. Lists of targets: a responsive grid of TargetCards.
+4. **Target workspace header:** Displays the active-target switcher, platform, and current ingestion status in the context bar, followed by the Analysis workspace eyebrow, breadcrumb, and target-name h1. The source link lives in the review collection card.
+5. **Workspace body:** A full-width Review summary card, followed by a 1.5:1 split: Q&A on the left, source/ingestion details and saved review evidence on the right. Below 768px these become a single column. IngestionPanel retains Start ingestion, status, errors, and last-run details. A completed run keeps its existing disabled collection action; the preview's simulated re-collection is not a supported application action. Q&A suggestions populate the question field without spending an answer attempt.
+6. **Cards:** shadcn/ui Card with rounded-xl border bg-card with no shadow, internal padding p-5, card title should be an h2. Workspace cards use a 20px gap; other card groups use gap-6. Lists of targets: a responsive grid of TargetCards.
 7. **Empty states:** every list has a designed empty state inside its card: An icon, a one sentence explanation and a single primary action. For example "You haven't created any targets yet. Create your first target" for "My Targets".
 8. **Responsive:** desktop-first (1280px), usable at 375px. Stack columns, never hide required actions and let wide content scroll inside its own container instead of scrolling the whole page.
 
@@ -156,27 +156,27 @@ state also displays "Status unavailable" and never implies "Not ingested".
 2. **One primary action per view region:**A page header or card holds at most one default button. Secondary actions use outline.
 3. **Label style:** Sentence case, verb first, specific: "Create target", "Start ingestion", "Try again", "Sign out". Avoid "Submit", "OK", and "Click here".
 4. **Placement:** In forms and dialogs, primary action on the right with Cancel to its left. In page headers, the primary page action sits at the right.
-5. **Sizing:** Default height 40px, icon only buttons must have an aria-label.
+5. **Sizing:** Minimum height 40px, 44px on coarse pointers; icon-only buttons must have an aria-label.
 6. **States:** Every button has a distinct hover, focus-visible ring (2px), disabled (reduced opacity, cursor-not-allowed), and loading states.
 7. **Disabled actions:** when an action is unavailable, disable it and explain why in nearby text. Do not silently remove actions.
 8. **Links vs buttons:** Navigation uses links, actions that change data use buttons. Never use a clickable div.
 9. **Destructive actions:** Deleting a target uses destructive styling plus a confirmation dialog naming the target. Do not add it early without approval.
-10. **Where actions live:** "New Target" in the top bar only; "Create target" and "Cancel" in TargetForm; "Start ingestion" and "Try again" in IngestionPanel only; "Sign out" in the account menu only.
+10. **Where actions live:** "New Target" in the left rail only; "Create target" and "Cancel" in TargetForm; "Start ingestion" and "Try again" in IngestionPanel only; "Sign out" in the account menu only.
 
 **7\. Spacing and typography**  
 7.1 Typography
 
-1. **Font:** Inter, loaded once through next/font, with the system sans-serif stack as fallback. A monospace stack is allowed only for URLs shown as code, if needed.
+1. **Font:** Segoe UI with Arial, Helvetica, and sans-serif fallbacks, matching the Analyst Studio reference without a remote font download. A monospace stack is allowed only for URLs shown as code, if needed.
 2. **Type scale (Tailwind)**
 
-| Use             | Class     | Weight                   |
-| :-------------- | :-------- | :----------------------- |
-| Page title h1   | text-3xl  | font-semibold            |
-| Card title h2   | text-xl   | font-semibold            |
-| Sub-heading h3  | text-lg   | font-medium              |
-| Body            | text-base | font-normal              |
-| Secondary text  | text-sm   | font-normal, muted color |
-| Badges, caption | text-xs   | font-medium              |
+| Use             | Class                            | Weight                   |
+| :-------------- | :------------------------------- | :----------------------- |
+| Page title h1   | 27px, tight tracking             | font-semibold            |
+| Card title h2   | text-lg or text-xl               | font-semibold            |
+| Sub-heading h3  | text-lg                          | font-medium              |
+| Body            | 14px / 1.5; text-base for fields | font-normal              |
+| Secondary text  | text-sm                          | font-normal, muted color |
+| Badges, caption | text-xs                          | font-medium              |
 
 **Line height:** Use Tailwind defaults paired with each size. Body text maximum line width about 70 characters. Exactly one h1 per page, with headings in order and never skipped for styling reasons.
 
@@ -194,11 +194,17 @@ Use only the semantic tokens defined in the Tailwind theme (the shadcn/ui defaul
 | warning                     | Partial ingestion (amber), distinct from processing blue; dark-mode value defined in the theme |
 
 Text and interactive elements must meet WCAG AA contrast for user accessibility.  
-7.3 Spacing
+7.3 Theme behavior
 
-1. **4px base unit** using the Tailwind spacing scale only. Allowed values are the standard scale(1,1.5,2,3,4,6,8,12,16). No arbitrary values like 13px.
-2. **Standard spacing:** Form fields space-y-4; label to input mt-1.5/gap-1.5; card padding p-6; gap between cards gap-6; gap between grid items gap-4; page heading to body mb-6; section separation space-y-8.
-3. **Corners and elevation:** rounded-md for inputs and buttons rounded-lg for cards, shadow-sm on cards only.
+The light palette uses #f5f7fb workspace, #ffffff cards, #172238 text, #56647a secondary text, #dde4ee borders, #345fd4 blue accent, and #eaf0ff selection tint. Dark mode uses #141922 workspace, #1c2330 cards, #e9eef8 text, #aab9cc secondary text, #354052 borders, #a9bfff accent, and #293756 tint. All controls, menus, errors, and loading states use semantic tokens.
+
+ThemeToggle on the sign-in page and in the rail switches light/dark instantly. Both controls share the same persisted choice, which carries through sign-in. With no saved choice the system preference applies; an explicit choice overrides the system and persists in localStorage under reviewlens-theme across navigation and reloads. An inline root-layout script restores it before paint. If storage is blocked, toggling still applies for the current page. The visible label names the destination mode; the accessible name is Toggle dark mode. Mobile retains this control.
+
+7.4 Spacing
+
+1. **Spacing:** Use the standard Tailwind spacing scale (including p-5 card padding and px-7 page padding). Reference-specific dimensions are allowed in shared shell/theme styles: 185px rail, 27px page heading, 11px uppercase eyebrow with 1.5px tracking, and 20px workspace gaps.
+2. **Standard spacing:** Form fields space-y-4; label to input mt-1.5/gap-1.5; card padding p-5; gap between cards gap-6; gap between grid items gap-4; page heading to body mb-6; section separation space-y-8.
+3. **Corners and elevation:** rounded-lg for inputs and buttons, rounded-xl for cards, with flat bordered surfaces.
 
 **8\. Reusable component expectations**  
 Rule: Check for an existing component before creating one, and reuse rather than copy to maintain consistency and familiarity. Similar UI must come from the same component. Do not restyle shadcn/ui primitives inside feature code, change the shared component or theme instead.
@@ -207,8 +213,8 @@ Rule: Check for an existing component before creating one, and reuse rather than
 
 | Component             | Responsibility                                                                          | Used by                                      |
 | :-------------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------- |
-| AppShell              | Protected layout: top bar, skip link, content container                                 | All protected pages                          |
-| Navigation            | Top bar links, "New Target", account menu                                               | AppShell                                     |
+| AppShell              | Protected layout: left rail, skip link, content container, scope footer                 | All protected pages                          |
+| Navigation            | Rail brand and links, theme toggle, account menu                                        | AppShell                                     |
 | PageHeader            | Breadcrumb, h1, description, primary action                                             | All protected pages                          |
 | AuthForm              | Sign in and register with provider error mapping                                        | /login                                       |
 | TargetForm            | Create-target fields and validation (shared schema)                                     | /analysis-targets/new                        |
@@ -218,4 +224,6 @@ Rule: Check for an existing component before creating one, and reuse rather than
 | ReviewList            | Persisted reviews: rating, review text, optional reviewer name and date                 | Target Workspace                             |
 | EmptyState            | Icon, explanation, single action                                                        | Any empty list                               |
 | ErrorState/ErrorAlert | Full-page and inline errors by category (as per section 4.3)                            | Everywhere                                   |
+| ReviewQuestions       | Target-scoped Q&A, suggested question drafts, textarea composer and answer states       | Target Workspace                             |
+| ThemeToggle           | Persisted light/dark theme control in the rail                                          | Navigation and /login                        |
 | Spinner/Skeleton      | Loading indicators(as per section 5\)                                                   | Everywhere                                   |

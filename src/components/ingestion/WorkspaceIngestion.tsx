@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import type { IngestionSummary } from "@/services/ingestion/ingestion-state";
-import { IngestionStatus } from "./IngestionStatus";
 import { IngestionPanel } from "./IngestionPanel";
 import { TargetCreatedNotice } from "@/components/analysis-targets/TargetCreatedNotice";
+import { Card } from "@/components/ui/Card";
 
 export function WorkspaceIngestion({
   targetId,
@@ -37,10 +37,11 @@ export function WorkspaceIngestion({
         canStart={canStart}
         completed={summary?.state === "succeeded"}
       />
-      <div className="min-w-0 space-y-3">
-        <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
-          Google Maps
-        </span>
+      <Card className="space-y-3">
+        <p className="text-[11px] font-bold uppercase tracking-[1.5px] text-muted-foreground">
+          Review collection
+        </p>
+        <h2 className="break-words text-lg font-semibold">{targetName}</h2>
         <p className="break-all text-sm">
           <span className="text-muted-foreground">Source: </span>
           <a
@@ -53,12 +54,7 @@ export function WorkspaceIngestion({
             {sourceUrl}
           </a>
         </p>
-        {pending ? (
-          <p role="status">Updating ingestion…</p>
-        ) : (
-          <IngestionStatus state={summary?.state ?? null} skippedCount={summary?.skippedCount} />
-        )}
-      </div>
+      </Card>
       <IngestionPanel
         targetId={targetId}
         targetName={targetName}

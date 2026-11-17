@@ -1,10 +1,12 @@
+<!-- Current visual navigation and theme conventions are defined in UI_UX_Standards.md; acceptance screenshots below record historical implementations. -->
+
 ﻿# S1-017 UI/UX compliance follow-up
 
 ## Shared component requirement — implementation addressed
 
 The S1-017 UI now composes the shared components named by UI/UX §8.1:
 
-- `AppShell` uses `Navigation` for the existing wordmark, My Targets, New Target and account menu.
+- `AppShell` uses `Navigation` for the RL brand, Workspace, My Targets, New Target, theme toggle and account menu.
 - The list page and its error boundary use `PageHeader` for the h1 and description. It also supports breadcrumb navigation and an optional action for other protected pages.
 - `TargetList` uses `EmptyState`, with a decorative icon, explanation and a single creation action.
 - The data-failure panel and route error boundary use `ErrorState` and its shared `ErrorAlert`. Account-menu errors also use `ErrorAlert`.

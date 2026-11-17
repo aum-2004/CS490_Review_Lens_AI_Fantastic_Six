@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import Loading from "@/app/login/loading";
 import { AuthForm } from "@/components/auth/AuthForm";
 import { SessionPanel } from "@/components/auth/SessionPanel";
+import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Card } from "@/components/ui/Card";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import type { AuthIdentity } from "@/lib/validation/auth";
@@ -39,11 +40,14 @@ async function AccountPage({ searchParams }: LoginPageProps) {
   return (
     <main className="flex flex-1 items-center justify-center bg-background px-4 py-16 text-foreground">
       <div className="w-full max-w-xl space-y-6">
-        <div>
-          <h1 className="text-3xl font-semibold">ReviewLens AI</h1>
-          <p className="mt-2 text-muted-foreground">
-            {user ? "Your account" : "Please sign in to continue."}
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold">ReviewLens AI</h1>
+            <p className="mt-2 text-muted-foreground">
+              {user ? "Your account" : "Please sign in to continue."}
+            </p>
+          </div>
+          <ThemeToggle />
         </div>
         <Card>
           {unavailable ? (

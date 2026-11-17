@@ -29,7 +29,7 @@ export function IngestionStatus({
       : STATES[state];
   return (
     <span
-      className={cn("inline-flex rounded-full px-2 py-1 text-xs font-medium", status.className)}
+      className={cn("inline-flex rounded-md px-2 py-1 text-xs font-medium", status.className)}
     >
       {status.label}
     </span>

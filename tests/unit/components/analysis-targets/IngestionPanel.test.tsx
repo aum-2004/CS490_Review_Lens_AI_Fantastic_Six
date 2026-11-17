@@ -41,12 +41,12 @@ it("starts once and shows processing without claiming success", async () => {
   expect(button).toBeDisabled();
   finish(response(processing, 202));
   await screen.findByText("Collecting reviews for Bakery from Google Maps…");
-  expect(screen.getAllByText("Ingesting")).toHaveLength(2);
+  expect(screen.getAllByText("Ingesting")).toHaveLength(1);
   expect(screen.queryByText(/reviews saved/)).not.toBeInTheDocument();
 });
 it("blocks another submission after success and explains why", async () => {
   render(workspace(succeeded));
-  expect(screen.getAllByText("Ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Ingested")).toHaveLength(1);
   expect(screen.getByText(/Last completed run/)).toHaveTextContent(
     "3 reviews saved. 0 records were skipped.",
   );
@@ -58,7 +58,7 @@ it("blocks another submission after success and explains why", async () => {
 });
 it("distinguishes partial ingestion using persisted skipped counts without enabling collection", () => {
   render(workspace({ ...succeeded, skippedCount: 2 }));
-  expect(screen.getAllByText("Partially ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Partially ingested")).toHaveLength(1);
   expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
   expect(screen.getByText(/Last completed run/)).toHaveTextContent(
     "3 reviews saved. 2 unusable records were skipped.",
@@ -68,18 +68,18 @@ it("distinguishes partial ingestion using persisted skipped counts without enabl
   );
   expect(screen.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
 });
-it("updates both badges when a processing run finishes with skipped records", async () => {
+it("updates the live badge when a processing run finishes with skipped records", async () => {
   jest.useFakeTimers();
   fetchMock.mockResolvedValue(response({ ...succeeded, skippedCount: 1 }));
   render(workspace(processing));
   await act(async () => {
     jest.advanceTimersByTime(5000);
   });
-  expect(screen.getAllByText("Partially ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Partially ingested")).toHaveLength(1);
   expect(screen.queryByText("Ingesting")).not.toBeInTheDocument();
   expect(router.refresh).toHaveBeenCalled();
 });
-it("updates both badges and announces the persisted failure when polling completes", async () => {
+it("updates the live badge and announces the persisted failure when polling completes", async () => {
   jest.useFakeTimers();
   fetchMock.mockResolvedValue(
     response({ ...NO_INGESTION, state: "failed", errorCode: "PROVIDER_TIMEOUT", skippedCount: 2 }),
@@ -88,7 +88,7 @@ it("updates both badges and announces the persisted failure when polling complet
   await act(async () => {
     jest.advanceTimersByTime(5000);
   });
-  expect(screen.getAllByText("Failed")).toHaveLength(2);
+  expect(screen.getAllByText("Failed")).toHaveLength(1);
   expect(screen.queryByText("Partially ingested")).not.toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("took too long");
   expect(screen.queryByText(/reviews saved/)).not.toBeInTheDocument();
@@ -113,7 +113,7 @@ it("polls a restored active run and refreshes persisted reviews on completion", 
   expect(screen.getByText(/Last completed run/)).toHaveTextContent(
     "3 reviews saved. 0 records were skipped.",
   );
-  expect(screen.getAllByText("Ingested")).toHaveLength(2);
+  expect(screen.getAllByText("Ingested")).toHaveLength(1);
   expect(router.refresh).toHaveBeenCalled();
 });
 it("stops polling when leaving without cancelling the server job", async () => {
@@ -147,7 +147,7 @@ it("automatically retries a lookup outage on the existing job without another su
     expect(endpoint).toBe("/api/analysis-targets/target-a/ingestion/refresh");
     expect(options).toEqual({ method: "POST" });
   }
-  expect(screen.getAllByText("Ingesting")).toHaveLength(2);
+  expect(screen.getAllByText("Ingesting")).toHaveLength(1);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 it("bounds automatic retries before offering a manual status retry", async () => {
