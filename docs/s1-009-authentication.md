@@ -61,6 +61,24 @@ button (3). All faults were restored. No new dependencies, provider configuratio
 signup emails, or paid calls were used. Original available task records are retained in
 `ai-transcripts/2026-11-17_shawn_password-controls_codex.md`.
 
+### PR #101 CI coverage follow-up (2026-11-17)
+
+CI run #249 passed formatting, lint, typecheck, unit tests, build and database checks,
+but failed changed-code coverage because Jest did not execute the login page's new redirect.
+The earlier browser checks did not contribute to that Jest coverage gate.
+
+Added tests execute the actual login page and its async child with mocked authentication and
+Next.js infrastructure. They cover verified-user redirects, permitted and rejected return links,
+anonymous form rendering, return-link propagation, provider failure and confirmation notices.
+An additional form test checks password-error correction on blur without submitting credentials.
+No application logic, coverage thresholds or exclusions changed.
+
+Local verification: 98 suites / 1,761 tests passed with full coverage; the exact changed-code
+gate against `origin/main` passed at 100% (88/88 lines, 27/27 branch outcomes). Typecheck,
+focused ESLint, test formatting and whitespace checks passed. This local result does not claim
+a new passing GitHub CI run. The original available follow-up session is recorded in
+`ai-transcripts/2026-11-17_shawn_auth-ci-followup_codex.md`.
+
 The `/auth/confirm` handler uses Supabase's `verifyOtp` API to establish cookie storage, then
 redirects to `/login` without forwarding the token. Invalid/expired links show a safe notice.
 Confirmation URLs contain sensitive one-time tokens; do not paste them into logs or transcripts.

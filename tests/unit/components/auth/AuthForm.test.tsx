@@ -150,6 +150,21 @@ function selectRegistration() {
   );
 }
 
+it("waits until submission to show a password error and clears it after correction and blur", async () => {
+  render(<AuthForm />);
+  const password = screen.getByLabelText("Password *");
+  fireEvent.blur(password);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Email *"), { target: { value: "fixture@example.test" } });
+  submit();
+  expect(await screen.findByText("Enter your password.")).toBeInTheDocument();
+  fireEvent.change(password, { target: { value: " existing-password " } });
+  fireEvent.blur(password);
+  await waitFor(() => expect(screen.queryByText("Enter your password.")).not.toBeInTheDocument());
+  expect(password).toHaveValue(" existing-password ");
+  expect(signIn).not.toHaveBeenCalled();
+});
+
 it("shows an accessible live checklist only for registration and reverses checks after deletion", () => {
   render(<AuthForm />);
   expect(screen.queryByRole("list", { name: "Password requirements" })).not.toBeInTheDocument();
