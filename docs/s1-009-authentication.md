@@ -32,6 +32,35 @@
   old link. SMTP configuration, provider email limits, and delivery must be checked in the dashboard.
 - No service-role key, database password, or ingestion-provider secret is needed for this story.
 
+### Registration password guidance and visibility (2026-11-17)
+
+The registration form displays a live checklist for the administrator/user-confirmed policy:
+at least eight characters, an uppercase letter (A-Z), a lowercase letter (a-z), a digit (0-9),
+and a symbol. Checks update immediately after typing or deletion. Symbols follow the
+[documented Supabase set](https://supabase.com/docs/guides/auth/password-security); whitespace
+and arbitrary Unicode characters do not satisfy the symbol requirement. Length counts Unicode
+code points, so a supplementary character is not counted twice. Passwords are never trimmed.
+
+The checklist is guidance, not a new credential validator or a guarantee of registration success.
+Supabase remains authoritative, including any additional provider checks. Sign-in keeps its existing
+nonempty-password validation; registration composition is not imposed on existing sign-in inputs.
+Keep the displayed policy synchronized if the hosted project's requirements change.
+
+Both sign-in and registration offer keyboard-accessible Show/Hide password buttons. These are
+non-submit buttons, preserve the exact input and autocomplete attribute, and are disabled while
+submitting. Submission and mode changes conceal the password; successful submissions and mode
+changes clear it as before. Checklist help and validation errors remain linked to the password
+input, and status changes have text/icon cues with polite screen-reader announcements.
+
+Verification: 59 focused password/auth UI tests and the full 1,744-test Jest suite passed. All 37
+isolated Edge browser tests passed; the keyboard test was strengthened with valid filled credentials
+and rerun successfully. Lint, typecheck, formatting and the production build passed. Four temporary
+faults in the separate validation worktree were caught: UTF-16 length counting (1 failed test),
+whitespace accepted as a symbol (3), missing submit-time masking (1), and a submitting visibility
+button (3). All faults were restored. No new dependencies, provider configuration changes, real
+signup emails, or paid calls were used. Original available task records are retained in
+`ai-transcripts/2026-11-17_shawn_password-controls_codex.md`.
+
 The `/auth/confirm` handler uses Supabase's `verifyOtp` API to establish cookie storage, then
 redirects to `/login` without forwarding the token. Invalid/expired links show a safe notice.
 Confirmation URLs contain sensitive one-time tokens; do not paste them into logs or transcripts.

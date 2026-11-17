@@ -73,11 +73,19 @@ test("registration reports confirmation rather than creating an authenticated se
     .getByRole("button", { name: "Register" })
     .click();
   await page.getByLabel("Email *").fill("new-fixture@example.com");
-  await page.getByLabel("Password *").fill("dummy-new-password");
+  await page.getByLabel("Password *").fill("FixtureConfirm8!");
   await page
     .getByRole("form", { name: "Register" })
     .getByRole("button", { name: "Register", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("Check your email");
+  await expect(page.getByLabel("Password *")).toHaveValue("");
+  await expect(page.getByLabel("Password *")).toHaveAttribute("type", "password");
+  await expect(
+    page
+      .getByRole("list", { name: "Password requirements" })
+      .getByRole("listitem")
+      .filter({ hasText: /^Not met:/ }),
+  ).toHaveCount(5);
   expect((await context.request.get("/api/auth/session")).status()).toBe(401);
 });
