@@ -14,11 +14,12 @@ export function ReviewSummaryCard({ summary, targetName }: ReviewSummaryCardProp
         <h2 id="review-summary-title" className="text-lg font-semibold">
           Review summary
         </h2>
-        <p className="break-words text-sm text-muted-foreground">
+        <p className="min-w-0 max-w-full break-words text-sm text-muted-foreground">
           Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
           Maps. Summary of this target&apos;s persisted reviews.
         </p>
         <div className="text-xs">
+          <p className="text-muted-foreground">Saved dataset snapshot</p>
           <p className="sr-only">Ingestion status</p>
           <div className="mt-1">
             <IngestionStatus

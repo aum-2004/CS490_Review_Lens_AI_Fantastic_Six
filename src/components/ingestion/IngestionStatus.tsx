@@ -28,9 +28,7 @@ export function IngestionStatus({
       ? { label: "Partially ingested", className: "bg-warning/10 text-warning" }
       : STATES[state];
   return (
-    <span
-      className={cn("inline-flex rounded-md px-2 py-1 text-xs font-medium", status.className)}
-    >
+    <span className={cn("inline-flex rounded-md px-2 py-1 text-xs font-medium", status.className)}>
       {status.label}
     </span>
   );

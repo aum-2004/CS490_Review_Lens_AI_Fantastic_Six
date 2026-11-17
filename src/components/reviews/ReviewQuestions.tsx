@@ -59,10 +59,11 @@ function QuestionForm({
 }: Props) {
   const router = useRouter();
   const questionHelpId = useId();
+  const questionKeyboardHelpId = useId();
   const unavailableHelpId = useId();
   const questionDescription = reviewsAvailable
-    ? questionHelpId
-    : `${questionHelpId} ${unavailableHelpId}`;
+    ? `${questionHelpId} ${questionKeyboardHelpId}`
+    : `${questionHelpId} ${questionKeyboardHelpId} ${unavailableHelpId}`;
   const request = useRef<AbortController | null>(null);
   const [pending, setPending] = useState(false);
   const [answer, setAnswer] = useState<ReviewAnswer | null>(null);
@@ -192,12 +193,21 @@ function QuestionForm({
                     disabled={!reviewsAvailable}
                     readOnly={pending}
                     placeholder="What do reviewers like about this business?"
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing)
+                        return;
+                      event.preventDefault();
+                      if (reviewsAvailable && !pending) event.currentTarget.form?.requestSubmit();
+                    }}
                   />
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
+          <p id={questionKeyboardHelpId} className="text-xs text-muted-foreground">
+            Enter to ask. Shift+Enter for a new line.
+          </p>
           {error && (
             <Alert variant="destructive">
               <CircleAlert aria-hidden="true" />

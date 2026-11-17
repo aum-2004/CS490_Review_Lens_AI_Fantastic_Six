@@ -34,7 +34,7 @@ export function TargetSwitcher({
       <Button
         ref={trigger}
         variant="outline"
-        aria-label="Switch target"
+        aria-label={`Switch target: ${activeTarget.name}`}
         className="w-full justify-between"
         aria-expanded={open}
         aria-controls={listId}

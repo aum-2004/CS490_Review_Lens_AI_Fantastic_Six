@@ -1,28 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import type { IngestionSummary } from "@/services/ingestion/ingestion-state";
 import { IngestionPanel } from "./IngestionPanel";
 import { TargetCreatedNotice } from "@/components/analysis-targets/TargetCreatedNotice";
 import { Card } from "@/components/ui/Card";
+import { useWorkspaceIngestion } from "./WorkspaceIngestionState";
 
 export function WorkspaceIngestion({
   targetId,
   targetName,
   sourceUrl,
-  initialSummary,
   unavailableReason,
   created = false,
 }: {
   targetId: string;
   targetName: string;
   sourceUrl: string;
-  initialSummary: IngestionSummary | null;
   unavailableReason: string | null;
   created?: boolean;
 }) {
-  const [summary, setSummary] = useState(initialSummary);
-  const [pending, setPending] = useState(false);
+  const { summary, setSummary, pending, setPending } = useWorkspaceIngestion();
   const canStart =
     !pending &&
     !unavailableReason &&

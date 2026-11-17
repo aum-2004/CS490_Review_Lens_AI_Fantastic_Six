@@ -50,8 +50,8 @@ All pages must follow these rules if the page uses components mentioned in this 
 1. **Container:** Page content sits in a container beside the 185px rail with max-w-7xl (1280px). Form only pages use max-w-xl.
 2. **Vertical structure of every protected page:** left rail, breadcrumb (when applicable), page header, and content cards. The workspace context header contains the active-target switcher, Google Maps label, and current status on a card surface with a bottom divider.
 3. **Page header:** An h1 page title and the primary page action aligned right on desktop.
-4. **Target workspace header:** Displays the active-target switcher, platform, and current ingestion status in the context bar, followed by the Analysis workspace eyebrow, breadcrumb, and target-name h1. The source link lives in the review collection card.
-5. **Workspace body:** A full-width Review summary card, followed by a 1.5:1 split: Q&A on the left, source/ingestion details and saved review evidence on the right. Below 768px these become a single column. IngestionPanel retains Start ingestion, status, errors, and last-run details. A completed run keeps its existing disabled collection action; the preview's simulated re-collection is not a supported application action. Q&A suggestions populate the question field without spending an answer attempt.
+4. **Target workspace header:** Displays the active-target switcher, platform, and current ingestion status in the context bar, followed by the Analysis workspace eyebrow, breadcrumb, and target-name h1. The source link lives in the review collection card. The switcher's accessible name includes the selected target name.
+5. **Workspace body:** A full-width Review summary card, followed by a 1.5:1 split: Q&A on the left, source/ingestion details and saved review evidence on the right. Below 768px these become a single column. IngestionPanel retains Start ingestion, status, errors, and last-run details. A completed run keeps its existing disabled collection action; the preview's simulated re-collection is not a supported application action. Q&A suggestions populate the question field without spending an answer attempt. The textarea uses Enter to ask and Shift+Enter for a new line; IME composition never submits. Keyboard help is visibly shown and included in the field description.
 6. **Cards:** shadcn/ui Card with rounded-xl border bg-card with no shadow, internal padding p-5, card title should be an h2. Workspace cards use a 20px gap; other card groups use gap-6. Lists of targets: a responsive grid of TargetCards.
 7. **Empty states:** every list has a designed empty state inside its card: An icon, a one sentence explanation and a single primary action. For example "You haven't created any targets yet. Create your first target" for "My Targets".
 8. **Responsive:** desktop-first (1280px), usable at 375px. Stack columns, never hide required actions and let wide content scroll inside its own container instead of scrolling the whole page.
@@ -140,6 +140,8 @@ Errors that appear after an action use role="alert" so screen readers announce t
 | Succeeded with skipped records | Partially ingested | Amber        | Shows saved and skipped counts, explains that only saved reviews enter the dataset, and retains the existing completed-run action restrictions. |
 | Failed                         | Failed             | Red          | Shows the ErrorAlert from 4.4 and a "Try again" button, prior data must remain                                                                  |
 
+The workspace header and collection controls share WorkspaceIngestionProvider state, keyed by verified account, target, and persisted run. Pending actions replace stale header status with Updating ingestion; confirmed server results update both badges. The review summary is explicitly labeled Saved dataset snapshot: its count, rating, skipped count, and badge remain a coherent persisted snapshot until a terminal collection result refreshes the server data.
+
 Partial completion is derived from persisted `succeeded` status with a positive
 `skipped_count`; it does not introduce a new database state. The badge requires
 `skippedCount` explicitly. Missing, negative, non-integer, or non-finite counts
@@ -196,7 +198,7 @@ Use only the semantic tokens defined in the Tailwind theme (the shadcn/ui defaul
 Text and interactive elements must meet WCAG AA contrast for user accessibility.  
 7.3 Theme behavior
 
-The light palette uses #f5f7fb workspace, #ffffff cards, #172238 text, #56647a secondary text, #dde4ee borders, #345fd4 blue accent, and #eaf0ff selection tint. Dark mode uses #141922 workspace, #1c2330 cards, #e9eef8 text, #aab9cc secondary text, #354052 borders, #a9bfff accent, and #293756 tint. All controls, menus, errors, and loading states use semantic tokens.
+The light palette uses #f5f7fb workspace, #ffffff cards, #172238 text, #56647a secondary text, #dde4ee borders, #345fd4 blue accent, and #eaf0ff selection tint. Dark mode uses #141922 workspace, #1c2330 cards, #e9eef8 text, #aab9cc secondary text, #354052 borders, #a9bfff accent, and #293756 tint. Input boundaries use #8190a7 in light mode and #66758c in dark mode (at least 3:1 against their card surfaces); decorative panel borders retain the reference colors. All controls, menus, errors, and loading states use semantic tokens.
 
 ThemeToggle on the sign-in page and in the rail switches light/dark instantly. Both controls share the same persisted choice, which carries through sign-in. With no saved choice the system preference applies; an explicit choice overrides the system and persists in localStorage under reviewlens-theme across navigation and reloads. An inline root-layout script restores it before paint. If storage is blocked, toggling still applies for the current page. The visible label names the destination mode; the accessible name is Toggle dark mode. Mobile retains this control.
 
@@ -211,19 +213,20 @@ Rule: Check for an existing component before creating one, and reuse rather than
 
 8.1 Inventory
 
-| Component             | Responsibility                                                                          | Used by                                      |
-| :-------------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------- |
-| AppShell              | Protected layout: left rail, skip link, content container, scope footer                 | All protected pages                          |
-| Navigation            | Rail brand and links, theme toggle, account menu                                        | AppShell                                     |
-| PageHeader            | Breadcrumb, h1, description, primary action                                             | All protected pages                          |
-| AuthForm              | Sign in and register with provider error mapping                                        | /login                                       |
-| TargetForm            | Create-target fields and validation (shared schema)                                     | /analysis-targets/new                        |
-| TargetCard            | Name, platform badge, truncated source URL, status badge, "Open" link                   | My Targets                                   |
-| IngestionPanel        | Start/retry ingestion action, processing text, errors, last-run counts                  | Target Workspace                             |
-| IngestionStatus       | Shared badge for persisted ingestion states, partial completion, and unavailable status | TargetCard, workspace header, IngestionPanel |
-| ReviewList            | Persisted reviews: rating, review text, optional reviewer name and date                 | Target Workspace                             |
-| EmptyState            | Icon, explanation, single action                                                        | Any empty list                               |
-| ErrorState/ErrorAlert | Full-page and inline errors by category (as per section 4.3)                            | Everywhere                                   |
-| ReviewQuestions       | Target-scoped Q&A, suggested question drafts, textarea composer and answer states       | Target Workspace                             |
-| ThemeToggle           | Persisted light/dark theme control in the rail                                          | Navigation and /login                        |
-| Spinner/Skeleton      | Loading indicators(as per section 5\)                                                   | Everywhere                                   |
+| Component                  | Responsibility                                                                          | Used by                                      |
+| :------------------------- | :-------------------------------------------------------------------------------------- | :------------------------------------------- |
+| AppShell                   | Protected layout: left rail, skip link, content container, scope footer                 | All protected pages                          |
+| Navigation                 | Rail brand and links, theme toggle, account menu                                        | AppShell                                     |
+| PageHeader                 | Breadcrumb, h1, description, primary action                                             | All protected pages                          |
+| AuthForm                   | Sign in and register with provider error mapping                                        | /login                                       |
+| TargetForm                 | Create-target fields and validation (shared schema)                                     | /analysis-targets/new                        |
+| TargetCard                 | Name, platform badge, truncated source URL, status badge, "Open" link                   | My Targets                                   |
+| IngestionPanel             | Start/retry ingestion action, processing text, errors, last-run counts                  | Target Workspace                             |
+| IngestionStatus            | Shared badge for persisted ingestion states, partial completion, and unavailable status | TargetCard, workspace header, IngestionPanel |
+| ReviewList                 | Persisted reviews: rating, review text, optional reviewer name and date                 | Target Workspace                             |
+| EmptyState                 | Icon, explanation, single action                                                        | Any empty list                               |
+| ErrorState/ErrorAlert      | Full-page and inline errors by category (as per section 4.3)                            | Everywhere                                   |
+| ReviewQuestions            | Target-scoped Q&A, suggested question drafts, textarea composer and answer states       | Target Workspace                             |
+| WorkspaceIngestionProvider | Shares live header/panel collection state within one verified account/target/run        | Target Workspace                             |
+| ThemeToggle                | Persisted light/dark theme control in the rail                                          | Navigation and /login                        |
+| Spinner/Skeleton           | Loading indicators(as per section 5\)                                                   | Everywhere                                   |

@@ -4,7 +4,10 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { IngestionStatus } from "@/components/ingestion/IngestionStatus";
+import {
+  WorkspaceIngestionProvider,
+  WorkspaceIngestionStatus,
+} from "@/components/ingestion/WorkspaceIngestionState";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { ReviewSummaryCard } from "@/components/reviews/ReviewSummaryCard";
@@ -105,7 +108,10 @@ export async function ProtectedTargetWorkspace({
         : null;
 
   return (
-    <>
+    <WorkspaceIngestionProvider
+      key={`${user.id}:${targetId}:${ingestion?.state}:${ingestion?.finishedAt}`}
+      initialSummary={ingestion}
+    >
       {target && (
         <div className="workspace-context flex flex-wrap items-center gap-6">
           <div className="min-w-0">
@@ -118,10 +124,7 @@ export async function ProtectedTargetWorkspace({
           </div>
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">Google Maps</p>
-            <IngestionStatus
-              state={ingestion?.state ?? null}
-              skippedCount={ingestion?.skippedCount}
-            />
+            <WorkspaceIngestionStatus />
           </div>
         </div>
       )}
@@ -194,7 +197,6 @@ export async function ProtectedTargetWorkspace({
               created={!!created}
               targetName={target.name}
               sourceUrl={target.sourceUrl}
-              initialSummary={ingestion}
               unavailableReason={unavailableReason}
             />
           </div>
@@ -211,6 +213,6 @@ export async function ProtectedTargetWorkspace({
           </div>
         </div>
       )}
-    </>
+    </WorkspaceIngestionProvider>
   );
 }

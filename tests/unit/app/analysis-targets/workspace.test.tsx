@@ -483,7 +483,7 @@ it("offers owned targets after verification and keeps context if the switch list
   expect(jest.mocked(getOwnedTargetOrThrow).mock.invocationCallOrder[0]).toBeLessThan(
     jest.mocked(listAnalysisTargets).mock.invocationCallOrder[0],
   );
-  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Switch target:/ }));
   const nav = within(screen.getByRole("navigation", { name: "Switch analysis target" }));
   expect(nav.getByRole("link", { name: /^Bakery \(active\)/ })).toHaveAttribute(
     "aria-current",
@@ -499,7 +499,7 @@ it("offers owned targets after verification and keeps context if the switch list
   unmount();
   jest.mocked(listAnalysisTargets).mockRejectedValueOnce(new Error("PRIVATE_DATABASE_DETAIL"));
   render(await ProtectedTargetWorkspace({ params }));
-  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Switch target:/ }));
   expect(screen.getByText(/We couldn't load your other targets/)).toBeVisible();
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
   expect(screen.getByRole("link", { name: "View all targets" })).toHaveAttribute(
