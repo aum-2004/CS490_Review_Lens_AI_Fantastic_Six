@@ -37,28 +37,32 @@ it("shows a safe failed-login message and retains entered values", async () => {
   expect(screen.getByLabelText("Email *")).toHaveValue("a@example.com");
   expect(screen.getByLabelText("Password *")).toHaveValue(" dummy-password ");
   expect(refresh).not.toHaveBeenCalled();
+  expect(replace).not.toHaveBeenCalled();
 });
-it("refreshes server-rendered identity after successful login and clears the password", async () => {
+it("opens My Targets after successful login and clears the password", async () => {
   jest.mocked(signIn).mockResolvedValue({ success: true });
   render(<AuthForm />);
   enterCredentials();
   submit();
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  expect(replace).toHaveBeenCalledWith("/analysis-targets");
   expect(screen.getByLabelText("Password *")).toHaveValue("");
   expect(signIn).toHaveBeenCalledWith({ email: "a@example.com", password: " dummy-password " });
 });
 
 it.each([
   ["/analysis-targets/new", "/analysis-targets/new"],
-  ["https://example.com", null],
+  ["https://example.com", "/analysis-targets"],
+  ["//example.com", "/analysis-targets"],
+  ["javascript:alert(1)", "/analysis-targets"],
+  ["/login", "/analysis-targets"],
 ])("uses only an allowed post-login return destination %s", async (returnTo, destination) => {
   jest.mocked(signIn).mockResolvedValue({ success: true });
   render(<AuthForm returnTo={returnTo} />);
   enterCredentials();
   submit();
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-  if (destination) expect(replace).toHaveBeenCalledWith(destination);
-  else expect(replace).not.toHaveBeenCalled();
+  expect(replace).toHaveBeenCalledWith(destination);
 });
 it("uses one form for registration and explains confirmation without claiming login", async () => {
   jest.mocked(register).mockResolvedValue({
@@ -78,7 +82,22 @@ it("uses one form for registration and explains confirmation without claiming lo
   expect(await screen.findByRole("status")).toHaveTextContent("Check your email");
   expect(register).toHaveBeenCalledTimes(1);
   expect(refresh).not.toHaveBeenCalled();
+  expect(replace).not.toHaveBeenCalled();
 });
+it("opens My Targets when registration immediately establishes a session", async () => {
+  jest.mocked(register).mockResolvedValue({ success: true });
+  render(<AuthForm />);
+  fireEvent.click(
+    within(screen.getByRole("group", { name: "Account access" })).getByRole("button", {
+      name: "Register",
+    }),
+  );
+  enterCredentials();
+  submit();
+  await waitFor(() => expect(replace).toHaveBeenCalledWith("/analysis-targets"));
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+
 it("maps server field errors into accessible fields", async () => {
   jest
     .mocked(signIn)

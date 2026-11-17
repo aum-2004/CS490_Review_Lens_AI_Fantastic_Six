@@ -46,8 +46,8 @@ export function AuthForm({ returnTo }: { returnTo?: string | null }) {
       if (result.success) {
         form.resetField("password");
         if (!result.requiresConfirmation) {
-          const destination = getProtectedReturnTo(returnTo);
-          if (destination) router.replace(destination);
+          const destination = getProtectedReturnTo(returnTo) ?? "/analysis-targets";
+          router.replace(destination);
           router.refresh();
         }
       }

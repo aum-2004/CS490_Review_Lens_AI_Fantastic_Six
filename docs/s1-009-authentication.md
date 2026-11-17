@@ -9,7 +9,8 @@
    publishable key. Do not share `.env.local`, credentials, tokens, or real account passwords.
 4. Restart `npm run dev` after changing environment configuration.
 5. Open `/login`. Without valid configuration, it shows a safe unavailable message.
-   The public `/` starter and `/api/health` remain usable without Supabase credentials.
+   The `/` entry routes visitors to login or My Targets using verified identity; `/api/health`
+   remains public and usable without Supabase credentials.
 
 ## Supabase dashboard setup (performed by the project administrator)
 
@@ -37,12 +38,21 @@ Confirmation URLs contain sensitive one-time tokens; do not paste them into logs
 
 ## Behavior and handoff
 
+Post-demo navigation update (2026-11-17): the temporary account confirmation screen is no longer
+the post-login destination. Automated verification passed 1,698 unit tests and all 36 isolated
+Edge authentication/workspace browser tests, including default sign-in, valid return links,
+external-link rejection, signed-in login visits, session refresh, confirmation-required registration
+and logout. Formatting, lint, explicit typecheck and a production build also passed. Browser
+checks used the local dummy provider; no hosted configuration or real account credentials changed.
+
 - `/login` offers sign-in and registration using one shared AuthForm. Email is trimmed; passwords
   are passed unchanged. Fields are validated in the browser and again in the server service.
 - Registration without a session asks the user to check their email; it does not claim login.
-- Signed-in `/login` shows the verified email and logout. This is an explicitly temporary S1-009
-  session demonstration. The `/analysis-targets` destination, AppShell/account menu, requested-route
-  return behavior, and broader protected-route UX are handed off to their owning stories.
+- Successful sign-in opens `/analysis-targets` directly. A valid protected `next` destination takes
+  precedence; external, malformed or unrelated destinations fall back to My Targets. A signed-in
+  visit to `/login` follows the same rule instead of rendering the former account confirmation panel.
+  Logout remains available from the shared navigation's account menu. Registration that still
+  requires email confirmation stays on the form and displays the confirmation instructions.
 - `getAuthenticatedUser()` supplies `{ id, email }` from Supabase `getUser()` to server operations.
   Missing/invalid sessions return `null`; configuration or provider failures throw only a safe error.
 - `GET /api/auth/session` demonstrates the shared API contract: verified identity returns 200;
@@ -50,8 +60,8 @@ Confirmation URLs contain sensitive one-time tokens; do not paste them into logs
 - Server Actions implement sign-in, registration, and logout using Next.js same-origin POST handling.
   Auth mutations and confirmation use a writable per-request client; rendering uses a read-only one.
 - Proxy refreshes tokens via `getClaims()` and forwards cookie changes to both downstream requests
-  and browser responses. Session responses use private/no-store headers. The public starter and
-  health route do not invoke Proxy or require Supabase.
+  and browser responses. Session responses use private/no-store headers. The health route remains
+  public and does not require Supabase.
 - Logout uses Supabase's local-session scope, clears the current browser's cookie session and
   invalidates Next.js cached navigation. Other devices remain signed in. Failed logout is reported
   and can be retried. Already-issued access JWTs can remain valid until expiry under Supabase's
