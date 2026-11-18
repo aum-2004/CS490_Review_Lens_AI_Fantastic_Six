@@ -180,6 +180,31 @@ describe("answerQuestion (S2-011)", () => {
     });
   });
 
+  // PR #104 review: a decline's text is written by the server and names the trusted platform and
+  // the active target, so no model can reduce it to "No." Literal strings, not nonAnswerText().
+  it.each([
+    [
+      "declined_general_knowledge",
+      "I can only answer questions about the Google Maps reviews for this target. Try asking what reviewers say about its service, quality, or prices.",
+    ],
+    [
+      "declined_other_entity",
+      "I can only analyze the Google Maps reviews for this target, not other businesses or comparisons with them. Try asking what reviewers say about this target.",
+    ],
+    [
+      "declined_other_platform",
+      "I can only analyze the Google Maps reviews for this target, not reviews from other platforms. Try asking what these reviews say.",
+    ],
+  ] as const)("shows the server's scoped decline text for %s", async (outcome, text) => {
+    const deps = setup(claimReply.declined(outcome));
+
+    const answer = await answerQuestion(TARGET_ID, "Out of scope?", deps);
+
+    expect(answer).toMatchObject({ outcome, answer: text, citedReviewIds: [] });
+    expect(answer.answer).toContain("Google Maps reviews for this target");
+    expect(answer.answer).not.toBe("No.");
+  });
+
   it("rejects a claim statement that echoes the system prompt (PROMPT_ECHO)", async () => {
     const deps = setup(
       claimReply.answered([

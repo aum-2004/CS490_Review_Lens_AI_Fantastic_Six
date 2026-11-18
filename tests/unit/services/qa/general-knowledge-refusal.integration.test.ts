@@ -278,27 +278,62 @@ describe("S2-014 real answerQuestion integration", () => {
     expect(JSON.stringify(evaluation)).not.toContain("not valid JSON");
   });
 
-  it("fails scope clarity when a valid structured decline only says No", async () => {
+  // Since s2-013.v7 the server writes decline text, so production can no longer return a bare
+  // "No." The evaluator is still checked directly with one. Scope clarity is a human-review input
+  // (the evaluator never reads the answer text): this proves that "unclear" becomes a failure.
+  it("fails scope clarity when a bare 'No.' decline is judged unclear (evaluator unit check)", async () => {
     const evaluationCase = cases[0];
-    const model = modelFor(
-      evaluationCase,
-      reply.declined(GENERAL_KNOWLEDGE_REFUSAL_OUTCOME, "No."),
-    );
-
-    const { answers, evaluation } = await evaluateCases([evaluationCase], model, {
-      activeReviewScopeIsClear: false,
-      method: "human_review",
-    });
-
-    expect(answers[0]).toMatchObject({
+    const bareNo: QaAnswer = {
       outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
       answer: "No.",
       citedReviewIds: [],
+      promptVersion: SYSTEM_PROMPT_VERSION,
+      targetId: dataset.target.id,
+    };
+
+    const evaluation = await evaluateGeneralKnowledgeRefusals({
+      cases: [evaluationCase],
+      askQuestion: async () => bareNo,
+      assessResponse: (answer) =>
+        assessGeneralKnowledgeQaAnswer(answer, {
+          activeReviewScopeIsClear: false,
+          method: "human_review",
+        }),
     });
+
     expect(evaluation.results[0]).toEqual({
       caseId: evaluationCase.id,
       failures: ["active_review_scope_was_not_clear"],
       passed: false,
+    });
+  });
+
+  it("cannot return a bare 'No.' decline through production: the server writes the text", async () => {
+    const evaluationCase = cases[0];
+    const sentNote = modelFor(
+      evaluationCase,
+      reply.raw(
+        JSON.stringify({
+          outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
+          claims: [],
+          coverage: "none",
+          note: "No.",
+        }),
+      ),
+    );
+    const rejected = await evaluateCases([evaluationCase], sentNote);
+    expect(rejected.executionError).toMatchObject({ code: "INVALID_MODEL_RESPONSE" });
+    expect(rejected.answers).toEqual([]);
+
+    const valid = modelFor(evaluationCase, reply.declined(GENERAL_KNOWLEDGE_REFUSAL_OUTCOME));
+    const { answers } = await evaluateCases([evaluationCase], valid);
+    expect(answers[0]).toEqual({
+      outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
+      answer:
+        "I can only answer questions about the Google Maps reviews for this target. Try asking what reviewers say about its service, quality, or prices.",
+      citedReviewIds: [],
+      promptVersion: SYSTEM_PROMPT_VERSION,
+      targetId: dataset.target.id,
     });
   });
 });
