@@ -24,7 +24,7 @@ it("posts only the question to the selected target without caching", async () =>
   const abortSignal = signal();
   await expect(
     askReviewQuestion("target-a", "What do customers like?", abortSignal),
-  ).resolves.toEqual(data);
+  ).resolves.toEqual({ ...data, citedReviewIds: [] });
   expect(mockFetch).toHaveBeenCalledWith("/api/analysis-targets/target-a/questions", {
     method: "POST",
     credentials: "same-origin",
