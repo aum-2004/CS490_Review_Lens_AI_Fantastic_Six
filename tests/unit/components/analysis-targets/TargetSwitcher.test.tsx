@@ -17,7 +17,8 @@ it("expands owned navigation, marks the active target once and closes after sele
       ]}
     />,
   );
-  const button = screen.getByRole("button", { name: "Switch target" });
+  const button = screen.getByRole("button", { name: /^Switch target:/ });
+  expect(button).toHaveAccessibleName("Switch target: Bakery");
   expect(button).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   fireEvent.click(button);
@@ -46,7 +47,7 @@ it("distinguishes duplicate names by source and treats target text as untrusted 
     sourceUrl: "javascript:alert(1)",
   };
   render(<TargetSwitcher activeTarget={activeTarget} targets={[duplicate, untrusted]} />);
-  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Switch target:/ }));
   expect(
     screen.getByRole("link", { name: `Bakery (active) ${activeTarget.sourceUrl}` }),
   ).toHaveAttribute("href", "/analysis-targets/a");
@@ -62,7 +63,7 @@ it("distinguishes duplicate names by source and treats target text as untrusted 
 
 it("closes with Escape and restores focus to the disclosure button", () => {
   render(<TargetSwitcher activeTarget={activeTarget} targets={[]} />);
-  const button = screen.getByRole("button", { name: "Switch target" });
+  const button = screen.getByRole("button", { name: /^Switch target:/ });
   fireEvent.keyDown(button, { key: "Escape" });
   expect(button).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(button);
@@ -77,7 +78,7 @@ it("closes with Escape and restores focus to the disclosure button", () => {
 
 it("explains when no other target is available and provides the complete list", () => {
   render(<TargetSwitcher activeTarget={activeTarget} targets={[]} />);
-  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Switch target:/ }));
   expect(screen.getByText("You have no other targets yet.")).toBeVisible();
   expect(screen.getByRole("link", { name: "View all targets" })).toHaveAttribute(
     "href",

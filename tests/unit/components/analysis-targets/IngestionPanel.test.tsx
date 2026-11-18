@@ -1,4 +1,8 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  WorkspaceIngestionProvider,
+  WorkspaceIngestionStatus,
+} from "@/components/ingestion/WorkspaceIngestionState";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { NO_INGESTION, type IngestionSummary } from "@/services/ingestion/ingestion-state";
 const fetchMock = jest.fn();
@@ -9,15 +13,23 @@ const succeeded = { ...NO_INGESTION, state: "succeeded" as const, savedCount: 3 
 function response(data: unknown, status = 200) {
   return { ok: status < 400, status, json: async () => ({ success: status < 400, data }) };
 }
-function workspace(summary: IngestionSummary | null = NO_INGESTION, reason: string | null = null) {
+function workspace(
+  summary: IngestionSummary | null = NO_INGESTION,
+  reason: string | null = null,
+  identity = "user-a:target-a",
+) {
   return (
-    <WorkspaceIngestion
-      targetId="target-a"
-      targetName="Bakery"
-      sourceUrl="https://www.google.com/maps/place/Synthetic"
-      initialSummary={summary}
-      unavailableReason={reason}
-    />
+    <WorkspaceIngestionProvider key={identity} initialSummary={summary}>
+      <div role="group" aria-label="Header collection status">
+        <WorkspaceIngestionStatus />
+      </div>
+      <WorkspaceIngestion
+        targetId="target-a"
+        targetName="Bakery"
+        sourceUrl="https://www.google.com/maps/place/Synthetic"
+        unavailableReason={reason}
+      />
+    </WorkspaceIngestionProvider>
   );
 }
 beforeEach(() => {
@@ -34,15 +46,56 @@ it("starts once and shows processing without claiming success", async () => {
     }),
   );
   render(workspace());
+  const header = screen.getByRole("group", { name: "Header collection status" });
+  expect(header).toHaveTextContent("Not ingested");
   const button = screen.getByRole("button", { name: "Start ingestion" });
   fireEvent.click(button);
   fireEvent.click(button);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(button).toBeDisabled();
+  expect(header).toHaveTextContent("Updating ingestion");
+  expect(within(header).queryByText("Not ingested")).not.toBeInTheDocument();
   finish(response(processing, 202));
   await screen.findByText("Collecting reviews for Bakery from Google Maps…");
   expect(screen.getAllByText("Ingesting")).toHaveLength(2);
+  expect(header).toHaveTextContent("Ingesting");
   expect(screen.queryByText(/reviews saved/)).not.toBeInTheDocument();
+});
+
+it("resets the shared status when the verified account/target key changes", async () => {
+  fetchMock.mockResolvedValue(response(processing, 202));
+  const { rerender } = render(workspace());
+  fireEvent.click(screen.getByRole("button", { name: "Start ingestion" }));
+  await waitFor(() => expect(screen.getAllByText("Ingesting")).toHaveLength(2));
+
+  rerender(workspace(NO_INGESTION, null, "user-b:target-b"));
+
+  expect(screen.getByRole("group", { name: "Header collection status" })).toHaveTextContent(
+    "Not ingested",
+  );
+  expect(screen.queryByText("Ingesting")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Start ingestion" })).toBeEnabled();
+});
+
+it("does not share a processing result with a separate workspace", async () => {
+  fetchMock.mockResolvedValue(response(processing, 202));
+  render(
+    <>
+      {workspace()}
+      <WorkspaceIngestionProvider
+        initialSummary={{ ...NO_INGESTION, state: "failed", errorCode: "PROVIDER_TIMEOUT" }}
+      >
+        <div role="group" aria-label="Other target collection status">
+          <WorkspaceIngestionStatus />
+        </div>
+      </WorkspaceIngestionProvider>
+    </>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Start ingestion" }));
+  await waitFor(() => expect(screen.getAllByText("Ingesting")).toHaveLength(2));
+  expect(screen.getByRole("group", { name: "Other target collection status" })).toHaveTextContent(
+    "Failed",
+  );
 });
 it("blocks another submission after success and explains why", async () => {
   render(workspace(succeeded));
@@ -68,7 +121,7 @@ it("distinguishes partial ingestion using persisted skipped counts without enabl
   );
   expect(screen.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
 });
-it("updates both badges when a processing run finishes with skipped records", async () => {
+it("updates the header and panel badges when a processing run finishes with skipped records", async () => {
   jest.useFakeTimers();
   fetchMock.mockResolvedValue(response({ ...succeeded, skippedCount: 1 }));
   render(workspace(processing));
@@ -79,7 +132,7 @@ it("updates both badges when a processing run finishes with skipped records", as
   expect(screen.queryByText("Ingesting")).not.toBeInTheDocument();
   expect(router.refresh).toHaveBeenCalled();
 });
-it("updates both badges and announces the persisted failure when polling completes", async () => {
+it("updates the header and panel badges and announces the persisted failure when polling completes", async () => {
   jest.useFakeTimers();
   fetchMock.mockResolvedValue(
     response({ ...NO_INGESTION, state: "failed", errorCode: "PROVIDER_TIMEOUT", skippedCount: 2 }),

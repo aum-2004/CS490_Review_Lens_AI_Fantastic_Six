@@ -10,6 +10,7 @@ jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() 
 jest.mock("@/app/login/actions", () => ({ signOut: jest.fn() }));
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/analysis-targets/new",
   useRouter: () => ({ push: jest.fn() }),
 }));
 

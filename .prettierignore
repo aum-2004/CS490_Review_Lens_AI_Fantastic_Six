@@ -20,3 +20,7 @@ AGENTS.md
 
 # Preserve AI conversations verbatim after required redaction.
 ai-transcripts/**
+
+# Local review artifacts retained outside version control.
+/review-pr*/
+/.pr*-review.zip

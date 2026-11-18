@@ -4,6 +4,10 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import {
+  WorkspaceIngestionProvider,
+  WorkspaceIngestionStatus,
+} from "@/components/ingestion/WorkspaceIngestionState";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { ReviewList } from "@/components/reviews/ReviewList";
 import { ReviewSummaryCard } from "@/components/reviews/ReviewSummaryCard";
@@ -104,19 +108,31 @@ export async function ProtectedTargetWorkspace({
         : null;
 
   return (
-    <>
-      <PageHeader
-        title={target?.name ?? "Target workspace"}
-        description={target ? "Active analysis target" : undefined}
-        action={
-          target && (
+    <WorkspaceIngestionProvider
+      key={`${user.id}:${targetId}:${ingestion?.state}:${ingestion?.finishedAt}`}
+      initialSummary={ingestion}
+    >
+      {target && (
+        <div className="workspace-context flex flex-wrap items-center gap-6">
+          <div className="min-w-0">
+            <p className="mb-1 text-xs font-semibold">Active analysis target</p>
             <TargetSwitcher
               key={target.id}
               activeTarget={{ id: target.id, name: target.name, sourceUrl: target.sourceUrl }}
               targets={targets?.map(({ id, name, sourceUrl }) => ({ id, name, sourceUrl })) ?? null}
             />
-          )
-        }
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Google Maps</p>
+            <WorkspaceIngestionStatus />
+          </div>
+        </div>
+      )}
+      <p className="mb-1 text-[11px] font-bold uppercase tracking-[1.5px] text-muted-foreground">
+        Analysis workspace
+      </p>
+      <PageHeader
+        title={target?.name ?? "Target workspace"}
         breadcrumbs={[
           { label: "My Targets", href: "/analysis-targets" },
           { label: target?.name ?? "Target workspace" },
@@ -141,62 +157,69 @@ export async function ProtectedTargetWorkspace({
           }
         />
       ) : (
-        <div className="space-y-6">
-          <WorkspaceIngestion
-            key={`${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
-            targetId={target.id}
-            created={!!created}
-            targetName={target.name}
-            sourceUrl={target.sourceUrl}
-            initialSummary={ingestion}
-            unavailableReason={unavailableReason}
-          />
-          {reviewSummary ? (
-            <ReviewSummaryCard summary={reviewSummary} targetName={target.name} />
-          ) : reviewSummaryUnavailable ? (
-            <Card className="space-y-4">
-              <h2 className="text-xl font-semibold">Review summary</h2>
-              <ErrorAlert message="We couldn't load the review summary. Please try again." />
-              <RetryTargetsButton />
-            </Card>
-          ) : null}
-          {reviews === null ? (
-            <Card className="space-y-4">
-              <h2 className="text-xl font-semibold">Reviews</h2>
-              <ErrorAlert message="We couldn't load the saved reviews. Please try again." />
-              <RetryTargetsButton />
-            </Card>
-          ) : (
-            <ReviewList reviews={reviews} />
-          )}
-          <ReviewQuestions
-            userId={user.id}
-            targetId={target.id}
-            targetName={target.name}
-            reviewsAvailable={reviews !== null && reviews.length > 0}
-            reviews={reviews?.map(({ id, analysisTargetId, rating, text, reviewDate }) => ({
-              id,
-              analysisTargetId,
-              rating,
-              text,
-              reviewDate,
-            }))}
-            unavailableMessage={
-              reviews === null
-                ? "We couldn't load the saved reviews, so review questions are unavailable. Retry loading the reviews before asking ReviewLens questions."
-                : unavailableReason
-                  ? `No saved reviews are available for this target. ${unavailableReason}`
-                  : ingestion?.state === "failed"
-                    ? "The most recent ingestion failed and no saved reviews are available. Use the Ingestion panel to resolve the failure before asking ReviewLens questions."
-                    : ingestion?.state === "processing"
-                      ? "Ingestion is in progress and no saved reviews are available yet. Wait for ingestion to complete before asking ReviewLens questions."
-                      : ingestion?.state === "succeeded"
-                        ? "Ingestion completed, but no saved reviews are available for this target. Reload the workspace and contact the project team if reviews are still missing."
-                        : undefined
-            }
-          />
+        <div className="workspace-grid">
+          <div className="workspace-summary">
+            {reviewSummary ? (
+              <ReviewSummaryCard summary={reviewSummary} targetName={target.name} />
+            ) : reviewSummaryUnavailable ? (
+              <Card className="space-y-4">
+                <h2 className="text-xl font-semibold">Review summary</h2>
+                <ErrorAlert message="We couldn't load the review summary. Please try again." />
+                <RetryTargetsButton />
+              </Card>
+            ) : null}
+          </div>
+          <div className="workspace-questions">
+            <ReviewQuestions
+              userId={user.id}
+              targetId={target.id}
+              targetName={target.name}
+              reviewsAvailable={reviews !== null && reviews.length > 0}
+              reviews={reviews?.map(({ id, analysisTargetId, rating, text, reviewDate }) => ({
+                id,
+                analysisTargetId,
+                rating,
+                text,
+                reviewDate,
+              }))}
+              unavailableMessage={
+                reviews === null
+                  ? "We couldn't load the saved reviews, so review questions are unavailable. Retry loading the reviews before asking ReviewLens questions."
+                  : unavailableReason
+                    ? `No saved reviews are available for this target. ${unavailableReason}`
+                    : ingestion?.state === "failed"
+                      ? "The most recent ingestion failed and no saved reviews are available. Use the Ingestion panel to resolve the failure before asking ReviewLens questions."
+                      : ingestion?.state === "processing"
+                        ? "Ingestion is in progress and no saved reviews are available yet. Wait for ingestion to complete before asking ReviewLens questions."
+                        : ingestion?.state === "succeeded"
+                          ? "Ingestion completed, but no saved reviews are available for this target. Reload the workspace and contact the project team if reviews are still missing."
+                          : undefined
+              }
+            />
+          </div>
+          <div className="workspace-source space-y-4">
+            <WorkspaceIngestion
+              key={`${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
+              targetId={target.id}
+              created={!!created}
+              targetName={target.name}
+              sourceUrl={target.sourceUrl}
+              unavailableReason={unavailableReason}
+            />
+          </div>
+          <div className="workspace-reviews">
+            {reviews === null ? (
+              <Card className="space-y-4">
+                <h2 className="text-xl font-semibold">Reviews</h2>
+                <ErrorAlert message="We couldn't load the saved reviews. Please try again." />
+                <RetryTargetsButton />
+              </Card>
+            ) : (
+              <ReviewList reviews={reviews} />
+            )}
+          </div>
         </div>
       )}
-    </>
+    </WorkspaceIngestionProvider>
   );
 }
