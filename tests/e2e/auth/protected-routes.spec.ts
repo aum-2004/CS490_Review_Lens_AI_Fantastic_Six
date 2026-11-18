@@ -51,7 +51,9 @@ test("redirects protected navigation, returns after login, and rejects it again 
   expect((await context.request.get("/api/auth/session")).status()).toBe(200);
 
   await page.goto("/login");
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page).toHaveURL("/analysis-targets");
+  await page.getByRole("button", { name: "fixture@example.com", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
   const response = await context.request.get(destination, { maxRedirects: 0 });
   expect(response.status()).toBe(303);
@@ -71,6 +73,9 @@ test("ignores an external login destination", async ({ page }) => {
     .getByRole("form", { name: "Sign in" })
     .getByRole("button", { name: "Sign in", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("fixture@example.com");
-  await expect(page).toHaveURL(/\/login\?/);
+  await expect(page).toHaveURL("/analysis-targets");
+  await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
+  // A signed-in visit to login follows the same safe fallback.
+  await page.goto("/login?next=https%3A%2F%2Fexample.com");
+  await expect(page).toHaveURL("/analysis-targets");
 });

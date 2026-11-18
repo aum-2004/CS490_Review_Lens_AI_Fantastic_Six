@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -18,10 +18,13 @@ import {
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/shared/Spinner";
 import { getProtectedReturnTo } from "@/lib/validation/return-to";
+import { PasswordRequirements } from "./PasswordRequirements";
 
 export function AuthForm({ returnTo }: { returnTo?: string | null }) {
   const router = useRouter();
   const [mode, setMode] = useState<"sign-in" | "register">("sign-in");
+  const [showPassword, setShowPassword] = useState(false);
+  const passwordRequirementsId = useId();
   const [feedback, setFeedback] = useState<{ message: string; error: boolean } | null>(null);
   const form = useForm<AuthCredentials>({
     resolver: zodResolver(authCredentialsSchema),
@@ -46,8 +49,8 @@ export function AuthForm({ returnTo }: { returnTo?: string | null }) {
       if (result.success) {
         form.resetField("password");
         if (!result.requiresConfirmation) {
-          const destination = getProtectedReturnTo(returnTo);
-          if (destination) router.replace(destination);
+          const destination = getProtectedReturnTo(returnTo) ?? "/analysis-targets";
+          router.replace(destination);
           router.refresh();
         }
       }
@@ -71,6 +74,7 @@ export function AuthForm({ returnTo }: { returnTo?: string | null }) {
             disabled={pending}
             onClick={() => {
               setMode(value);
+              setShowPassword(false);
               setFeedback(null);
               form.clearErrors();
               form.resetField("password");
@@ -90,6 +94,7 @@ export function AuthForm({ returnTo }: { returnTo?: string | null }) {
               event.preventDefault();
               return;
             }
+            setShowPassword(false);
             setFeedback(null);
             void form.handleSubmit(submit)(event);
           }}
@@ -138,28 +143,45 @@ export function AuthForm({ returnTo }: { returnTo?: string | null }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Password *</FormLabel>
-                <FormControl>
-                  <Input
-                    {...field}
-                    type="password"
-                    autoComplete={mode === "register" ? "new-password" : "current-password"}
-                    required
-                    aria-required="true"
-                    readOnly={pending}
-                    onBlur={() => {
-                      field.onBlur();
-                      if (form.formState.isSubmitted) void form.trigger("password");
-                    }}
-                  />
-                </FormControl>
+                <div className="flex items-center gap-2">
+                  <FormControl
+                    aria-describedby={mode === "register" ? passwordRequirementsId : undefined}
+                  >
+                    <Input
+                      {...field}
+                      type={showPassword ? "text" : "password"}
+                      className="min-w-0 flex-1"
+                      autoComplete={mode === "register" ? "new-password" : "current-password"}
+                      required
+                      aria-required="true"
+                      readOnly={pending}
+                      onBlur={() => {
+                        field.onBlur();
+                        if (form.formState.isSubmitted) void form.trigger("password");
+                      }}
+                    />
+                  </FormControl>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    disabled={pending}
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="w-20 shrink-0 px-3"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                {mode === "register" && (
+                  <PasswordRequirements id={passwordRequirementsId} password={field.value} />
+                )}
                 <FormMessage />
               </FormItem>
             )}
           />
           {mode === "register" && (
             <p className="text-sm text-muted-foreground">
-              Your password must meet the account provider’s requirements. You may need to confirm
-              your email before signing in.
+              You may need to confirm your email before signing in.
             </p>
           )}
           <div className="flex justify-end">
