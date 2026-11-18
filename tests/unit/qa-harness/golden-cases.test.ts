@@ -10,6 +10,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getQaDataset } from "../../fixtures/qa/datasets";
 import { QA_GOLDEN_CASES, type QaGoldenCase } from "../../fixtures/qa/golden-cases";
 import {
+  answeredFromRequest,
+  claimReply,
   realQaPipeline,
   runGoldenCase,
   type QaModelRequest,
@@ -48,16 +50,27 @@ describe("golden runner rejects broken pipelines", () => {
     (input) =>
       real({ ...input, callModel: (request) => input.callModel(rewrite(request)) });
 
-  /** The pre-#79 behaviour: silently repair a non-answer by dropping its citations. */
+  /** The pre-#79 behaviour: silently repair a non-answer by dropping its claims (citations). */
   const dropCitationsBeforeValidation: QaPipeline = (input) =>
     real({
       ...input,
       callModel: async (request) => {
         const modelReply = await input.callModel(request);
         const payload = JSON.parse(modelReply.text) as Record<string, unknown>;
-        const repaired =
-          payload.outcome === "answered" ? payload : { ...payload, citedReviewIds: [] };
+        const repaired = payload.outcome === "answered" ? payload : { ...payload, claims: [] };
         return { text: JSON.stringify(repaired) };
+      },
+    });
+
+  /** A repairing pipeline: silently drops claims with no evidence instead of rejecting the reply. */
+  const dropUncitedClaimsBeforeValidation: QaPipeline = (input) =>
+    real({
+      ...input,
+      callModel: async (request) => {
+        const modelReply = await input.callModel(request);
+        const payload = JSON.parse(modelReply.text) as { claims: { evidence: unknown[] }[] };
+        const claims = payload.claims.filter((claim) => claim.evidence.length > 0);
+        return { text: JSON.stringify({ ...payload, claims }) };
       },
     });
 
@@ -163,11 +176,7 @@ describe("golden runner rejects broken pipelines", () => {
             sent = request;
             await input.callModel(request);
             return {
-              text: JSON.stringify({
-                outcome: "answered",
-                answer: "ok",
-                citedReviewIds: [request.reviewIds[0]],
-              }),
+              text: claimReply.text(answeredFromRequest(request, [request.reviewIds[0]])),
             };
           },
         });
@@ -202,6 +211,12 @@ describe("golden runner rejects broken pipelines", () => {
       "qa-output-cited-insufficient",
       dropCitationsBeforeValidation,
       /qa-output-cited-insufficient step 1: Expected unexpectedCitations, but the pipeline answered with "insufficient_evidence"/,
+    ],
+    [
+      "drops an unsupported claim and shows the rest instead of rejecting the reply",
+      "qa-claim-mixed-support",
+      dropUncitedClaimsBeforeValidation,
+      /qa-claim-mixed-support step 1: Expected unsupportedClaim, but the pipeline answered with "answered"/,
     ],
     [
       "leaks a foreign marker into the answer text",

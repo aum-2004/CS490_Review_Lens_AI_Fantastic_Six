@@ -22,6 +22,7 @@ import {
   type EntityPlatformRefusalObservation,
 } from "../../../helpers/entity-platform-refusal";
 import {
+  claimFrom,
   createFakeQaModel,
   expectContextOnlyForTarget,
   expectDeclined,
@@ -372,8 +373,8 @@ describe("S2-015 real answerQuestion integration", () => {
         evaluationCase,
         reply.payload({
           outcome: ENTITY_PLATFORM_DECLINE_OUTCOMES[evaluationCase.expectedCategory],
-          answer: SCOPE_CLEAR_ANSWER,
-          citedReviewIds: [dataset.reviews[0].id],
+          claims: [claimFrom("Reviewers mention this.", dataset.reviews[0])],
+          note: SCOPE_CLEAR_ANSWER,
         }),
       );
 

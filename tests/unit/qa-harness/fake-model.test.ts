@@ -6,6 +6,7 @@ jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 
 import { QaModelError } from "@/services/qa/openai-qa-client";
+import { MAX_EVIDENCE_PER_CLAIM } from "@/services/qa/qa-response";
 
 import {
   createFakeQaModel,
@@ -24,7 +25,9 @@ function request(
     promptVersion: "test.v1",
     targetId,
     instructions: "SYSTEM PROMPT",
-    input: `REVIEW DATASET (2 reviews, JSON array):\n[]\n\nQUESTION (JSON string):\n${JSON.stringify(question)}`,
+    input: `REVIEW DATASET (${reviewIds.length} reviews, JSON array):\n${JSON.stringify(
+      reviewIds.map((id) => ({ id, rating: 4, date: null, text: `Synthetic review ${id} text.` })),
+    )}\n\nQUESTION (JSON string):\n${JSON.stringify(question)}`,
     reviewIds,
     maxOutputTokens: 100,
   };
@@ -56,8 +59,13 @@ describe("createFakeQaModel", () => {
 
     expect(JSON.parse(pizza.text)).toEqual({
       outcome: "answered",
-      answer: expect.any(String),
-      citedReviewIds: ["r1"],
+      claims: [
+        {
+          statement: expect.any(String),
+          evidence: [{ reviewId: "r1", quote: "Synthetic review r1 text." }],
+        },
+      ],
+      note: null,
     });
     expect(JSON.parse(other.text).outcome).toBe("insufficient_evidence");
     expect(model.calls.map((call) => call.matchedRule)).toEqual(["pizza", "any"]);
@@ -173,8 +181,12 @@ describe("createFakeQaModel", () => {
     const first = JSON.parse((await model.callModel(request("a"))).text);
     const second = JSON.parse((await model.callModel(request("b"))).text);
 
-    expect(first).toMatchObject({ answer: "call 0: a", citedReviewIds: ["r1"] });
-    expect(second).toMatchObject({ answer: "call 1: b", citedReviewIds: ["r2"] });
+    expect(first.claims).toMatchObject([
+      { statement: "call 0: a", evidence: [{ reviewId: "r1" }] },
+    ]);
+    expect(second.claims).toMatchObject([
+      { statement: "call 1: b", evidence: [{ reviewId: "r2" }] },
+    ]);
   });
 
   it("echoes application-supplied context but not the user's question", async () => {
@@ -182,10 +194,41 @@ describe("createFakeQaModel", () => {
 
     const echoed = JSON.parse((await model.callModel(request("SECRET_QUESTION_TEXT"))).text);
 
-    expect(echoed.answer).toContain("SYSTEM PROMPT");
-    expect(echoed.answer).toContain("REVIEW DATASET");
-    expect(echoed.answer).not.toContain("SECRET_QUESTION_TEXT");
-    expect(echoed.citedReviewIds).toEqual(["r1", "r2"]);
+    expect(echoed.outcome).toBe("answered");
+    expect(echoed.note).toContain("SYSTEM PROMPT");
+    expect(echoed.note).toContain("REVIEW DATASET");
+    expect(JSON.stringify(echoed)).not.toContain("SECRET_QUESTION_TEXT");
+    expect(
+      echoed.claims.flatMap((claim: { evidence: { reviewId: string }[] }) =>
+        claim.evidence.map((item) => item.reviewId),
+      ),
+    ).toEqual(["r1", "r2"]);
+  });
+
+  it("groups echoed citations so no claim exceeds the evidence limit", async () => {
+    const ids = Array.from({ length: MAX_EVIDENCE_PER_CLAIM + 1 }, (_, index) => `r${index}`);
+    const model = createFakeQaModel({ fallback: reply.echoContext() });
+
+    const echoed = JSON.parse((await model.callModel(request("q", "target-1", ids))).text);
+
+    expect(echoed.claims.map((claim: { evidence: unknown[] }) => claim.evidence.length)).toEqual([
+      MAX_EVIDENCE_PER_CLAIM,
+      1,
+    ]);
+  });
+
+  it("scripts insufficient_evidence with quoted claims only when asked to", async () => {
+    const model = createFakeQaModel({ fallback: reply.insufficientEvidence(["r2"], "No.") });
+
+    expect(JSON.parse((await model.callModel(request("q"))).text)).toEqual({
+      outcome: "insufficient_evidence",
+      claims: [
+        expect.objectContaining({
+          evidence: [{ reviewId: "r2", quote: "Synthetic review r2 text." }],
+        }),
+      ],
+      note: "No.",
+    });
   });
 
   it("lastCall throws before any call", () => {

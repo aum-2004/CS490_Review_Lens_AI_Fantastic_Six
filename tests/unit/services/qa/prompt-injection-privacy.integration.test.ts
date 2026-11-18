@@ -330,8 +330,10 @@ it("documented limitation: a structurally valid prompt echo is accepted by produ
   harness.model.addRules([
     {
       when: {},
+      // A claim statement is capped well below the prompt's length, but the unverified note is
+      // not: the echo still reaches the user through it.
       then: reply.dynamic((request) =>
-        reply.answered([request.reviewIds[0]], request.instructions),
+        reply.answered([request.reviewIds[0]], "Prompt follows.", request.instructions),
       ),
     },
   ]);

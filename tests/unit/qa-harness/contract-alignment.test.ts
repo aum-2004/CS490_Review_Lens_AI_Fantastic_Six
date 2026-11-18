@@ -66,8 +66,13 @@ describe("harness contract alignment with production", () => {
   });
 
   it("scripts replies with exactly the structured-output fields S2-011 requests", () => {
-    const scripted = harness.reply.answered(["r1"]);
+    const scripted = harness.reply.insufficientEvidence();
     if (scripted.kind !== "payload") throw new Error("expected a payload reply");
     expect(Object.keys(scripted.payload).sort()).toEqual([...QA_REPLY_JSON_SCHEMA.required].sort());
+    const answered = harness.claimReply.answered([harness.claimFrom("x", { id: "r1", text: "t" })]);
+    expect(Object.keys(answered).sort()).toEqual([...QA_REPLY_JSON_SCHEMA.required].sort());
+    expect(Object.keys(answered.claims[0]).sort()).toEqual(
+      [...QA_REPLY_JSON_SCHEMA.properties.claims.items.required].sort(),
+    );
   });
 });

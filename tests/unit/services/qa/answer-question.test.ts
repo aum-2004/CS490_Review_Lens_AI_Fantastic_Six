@@ -8,6 +8,8 @@ import path from "node:path";
 import { QaModelError, createOpenAiQaModel } from "@/services/qa/openai-qa-client";
 import { QaInputValidationError, type QaReviewContext } from "@/services/qa/qa-request";
 import { QaResponseError } from "@/services/qa/qa-response";
+
+import { claimFrom, claimReply, evidenceFrom } from "../../../helpers/qa-harness/grounded-reply";
 import {
   QA_MAX_REQUEST_TOKENS,
   QaPromptError,
@@ -25,6 +27,20 @@ jest.mock("server-only", () => ({}));
 const TARGET_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 
 // Controlled dataset: food quality and service only.
+const [FOOD_1, SERVICE_1, SERVICE_2] = [
+  {
+    id: "r-food-1",
+    text: "The pizza crust was crisp and the sauce tasted fresh.",
+  },
+  {
+    id: "r-service-1",
+    text: "Service was slow and our server forgot the drinks order.",
+  },
+  {
+    id: "r-service-2",
+    text: "Waited 40 minutes for a table even with a reservation. Staff seemed overwhelmed.",
+  },
+];
 const context: QaReviewContext = {
   target: { id: TARGET_ID, name: "Restaurant A", platform: "google_maps" },
   reviews: [
@@ -67,17 +83,22 @@ describe("answerQuestion (S2-011)", () => {
     "Are there recurring complaints about customer service?",
     "What themes appear in low-rated reviews?",
   ])("returns a validated, cited answer for %j", async (question) => {
-    const deps = setup({
-      outcome: "answered",
-      answer: "The most common complaint is slow service and long waits.",
-      citedReviewIds: ["r-service-1", "r-service-2"],
-    });
+    const deps = setup(
+      claimReply.answered([
+        claimFrom(
+          "The most common complaint is slow service and long waits.",
+          SERVICE_1,
+          SERVICE_2,
+        ),
+      ]),
+    );
 
     const answer = await answerQuestion(TARGET_ID, question, deps);
 
     expect(answer).toEqual({
       outcome: "answered",
-      answer: "The most common complaint is slow service and long waits.",
+      answer:
+        "The most common complaint is slow service and long waits. [r-service-1, r-service-2]",
       citedReviewIds: ["r-service-1", "r-service-2"],
       promptVersion: expect.stringMatching(/^s2-013\./),
       targetId: TARGET_ID,
@@ -89,15 +110,65 @@ describe("answerQuestion (S2-011)", () => {
   });
 
   it("rejects an answer that cites a review outside the active dataset", async () => {
-    const deps = setup({
-      outcome: "answered",
-      answer: "Customers love the patio.",
-      citedReviewIds: ["r-from-restaurant-b"],
-    });
+    const deps = setup(
+      claimReply.answered([
+        claimFrom("Customers love the patio.", {
+          id: "r-from-restaurant-b",
+          text: "Lovely patio with heaters in winter.",
+        }),
+      ]),
+    );
 
     await expect(answerQuestion(TARGET_ID, "What do customers like?", deps)).rejects.toMatchObject({
       name: "QaResponseError",
       code: "UNGROUNDED_ANSWER",
+    });
+  });
+
+  it("rejects a claim whose valid citation does not contain the quoted words", async () => {
+    // r-food-1 is real and in the active dataset, but it never mentions parking.
+    const deps = setup(
+      claimReply.answered([
+        {
+          statement: "Customers say the parking lot is safe at night.",
+          evidence: [evidenceFrom(FOOD_1, "the parking lot is safe at night")],
+        },
+      ]),
+    );
+
+    await expect(
+      answerQuestion(TARGET_ID, "Do customers think the parking lot is safe at night?", deps),
+    ).rejects.toMatchObject({ name: "QaResponseError", code: "UNSUPPORTED_CLAIM" });
+  });
+
+  it("checks quotes against the active context's review text, not text the model supplies", async () => {
+    // Same review ID, but the quote matches a different version of its text than the one
+    // persisted for the active target, as a stale or cross-target context would.
+    const deps = setup(
+      claimReply.answered([
+        claimFrom("Service was fast.", {
+          id: "r-service-1",
+          text: "Service was fast and friendly.",
+        }),
+      ]),
+    );
+
+    await expect(answerQuestion(TARGET_ID, "How is the service?", deps)).rejects.toMatchObject({
+      code: "UNSUPPORTED_CLAIM",
+    });
+  });
+
+  it("returns insufficient_evidence with no citations for a topic the dataset never covers (S2-012)", async () => {
+    const deps = setup(
+      claimReply.insufficientEvidence("The reviews do not mention parking or safety at night."),
+    );
+
+    await expect(
+      answerQuestion(TARGET_ID, "Do customers think the parking lot is safe at night?", deps),
+    ).resolves.toMatchObject({
+      outcome: "insufficient_evidence",
+      answer: "The reviews do not mention parking or safety at night.",
+      citedReviewIds: [],
     });
   });
 
@@ -110,7 +181,7 @@ describe("answerQuestion (S2-011)", () => {
   });
 
   it("does not call the model when the context cannot be built", async () => {
-    const deps = setup({ outcome: "answered", answer: "x", citedReviewIds: ["r-food-1"] });
+    const deps = setup(claimReply.answered([claimFrom("x", FOOD_1)]));
     deps.buildReviewDatasetContext.mockRejectedValue(new TargetNotFoundError());
 
     await expect(answerQuestion(TARGET_ID, "Any complaints?", deps)).rejects.toBeInstanceOf(
@@ -120,7 +191,7 @@ describe("answerQuestion (S2-011)", () => {
   });
 
   it("does not call the model for an invalid question", async () => {
-    const deps = setup({ outcome: "answered", answer: "x", citedReviewIds: ["r-food-1"] });
+    const deps = setup(claimReply.answered([claimFrom("x", FOOD_1)]));
 
     await expect(answerQuestion(TARGET_ID, "  ", deps)).rejects.toBeInstanceOf(QaPromptError);
     expect(deps.callModel).not.toHaveBeenCalled();
@@ -136,11 +207,7 @@ describe("answerQuestion (S2-011)", () => {
 });
 
 describe("answerQuestion input validation at the service boundary", () => {
-  const validReply = {
-    outcome: "answered",
-    answer: "Service was slow.",
-    citedReviewIds: ["r-service-1"],
-  };
+  const validReply = claimReply.answered([claimFrom("Service was slow.", SERVICE_1)]);
 
   it.each<[string, unknown, string]>([
     ["a non-string question", 12345, "QA_QUESTION_INVALID_TYPE"],
@@ -196,11 +263,7 @@ describe("provider gating with the real OpenAI adapter", () => {
         content: [
           {
             type: "output_text",
-            text: JSON.stringify({
-              outcome: "answered",
-              answer: "Service is slow.",
-              citedReviewIds: ["r-service-1"],
-            }),
+            text: claimReply.text(claimReply.answered([claimFrom("Service is slow.", SERVICE_1)])),
           },
         ],
       },

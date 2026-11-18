@@ -1,4 +1,5 @@
 import { QaModelError, type QaModelErrorCode } from "@/services/qa/openai-qa-client";
+import { MAX_EVIDENCE_PER_CLAIM } from "@/services/qa/qa-response";
 
 import {
   QA_INPUT_QUESTION_HEADER,
@@ -8,6 +9,13 @@ import {
   type QaModelRequest,
   type QaOutcome,
 } from "./contract";
+import {
+  answeredFromRequest,
+  claimReply,
+  DEFAULT_CLAIM_STATEMENT,
+  DEFAULT_DECLINE_NOTE,
+  DEFAULT_INSUFFICIENT_NOTE,
+} from "./grounded-reply";
 
 /**
  * S2-003 deterministic fake for the Q&A model seam (`QaModelCaller`).
@@ -228,21 +236,39 @@ export const reply = {
   payload(payload: QaModelReplyPayload, delayMs?: number): QaReplySpec {
     return { kind: "payload", payload, delayMs };
   },
-  answered(citedReviewIds: string[], answer = "Fixture answer grounded in the cited reviews.") {
-    return reply.payload({ outcome: "answered", answer, citedReviewIds });
+  /**
+   * An `answered` reply with one claim citing every listed review. Each quote is taken from that
+   * review's text in the request's REVIEW DATASET when the call is made, so it passes the S2-011
+   * quote check; an ID outside the dataset gets a placeholder quote (UNGROUNDED_ANSWER).
+   */
+  answered(
+    citedReviewIds: string[],
+    statement = DEFAULT_CLAIM_STATEMENT,
+    note: string | null = null,
+  ): QaReplySpec {
+    return reply.dynamic((request) =>
+      reply.payload(answeredFromRequest(request, citedReviewIds, statement, note)),
+    );
   },
-  /** Pass citations only to script a contradictory reply; #79 rejects it (UNEXPECTED_CITATIONS). */
+  /** Pass citations only to script a contradictory reply; it is rejected (UNEXPECTED_CITATIONS). */
   insufficientEvidence(
     citedReviewIds: string[] = [],
-    answer = "The reviews do not contain enough information to answer that.",
-  ) {
-    return reply.payload({ outcome: "insufficient_evidence", answer, citedReviewIds });
+    note = DEFAULT_INSUFFICIENT_NOTE,
+  ): QaReplySpec {
+    if (citedReviewIds.length === 0) return reply.payload(claimReply.insufficientEvidence(note));
+    return reply.dynamic((request) =>
+      reply.payload({
+        ...answeredFromRequest(request, citedReviewIds),
+        outcome: "insufficient_evidence",
+        note,
+      }),
+    );
   },
   declined(
     outcome: Exclude<QaOutcome, "answered" | "insufficient_evidence">,
-    answer = "I can only analyze the reviews for the active target.",
-  ) {
-    return reply.payload({ outcome, answer, citedReviewIds: [] });
+    note = DEFAULT_DECLINE_NOTE,
+  ): QaReplySpec {
+    return reply.payload(claimReply.declined(outcome, note));
   },
   /** Exact model text, e.g. malformed JSON or prose with no JSON at all. */
   raw(text: string, delayMs?: number): QaReplySpec {
@@ -268,14 +294,26 @@ export const reply = {
   /**
    * Adversarial echo: answers with everything the application supplied (instructions plus review
    * dataset, but not the user's own question) and cites every supplied review. If any foreign
-   * data reached the model, it is now in the answer too (S2-016 output check).
+   * data reached the model, it is now in the answer too (S2-016 output check). The echo goes in
+   * `note`, the unverified free-text field shown with the answer; the citations are real quoted
+   * claims, grouped so no claim exceeds the evidence limit.
    */
   echoContext(): QaReplySpec {
-    return reply.dynamic((request) =>
-      reply.answered(
-        [...request.reviewIds],
-        `ECHO ${request.instructions}\n${applicationSuppliedInput(request)}`,
-      ),
-    );
+    return reply.dynamic((request) => {
+      const { evidence } = answeredFromRequest(request, request.reviewIds).claims[0];
+      const claims = [];
+      for (let start = 0; start < evidence.length; start += MAX_EVIDENCE_PER_CLAIM) {
+        claims.push({
+          statement: "ECHO evidence.",
+          evidence: evidence.slice(start, start + MAX_EVIDENCE_PER_CLAIM),
+        });
+      }
+      return reply.payload(
+        claimReply.answered(
+          claims,
+          `ECHO ${request.instructions}\n${applicationSuppliedInput(request)}`,
+        ),
+      );
+    });
   },
 };

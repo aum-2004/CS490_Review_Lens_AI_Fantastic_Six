@@ -25,6 +25,8 @@ import type { QaModelCaller } from "@/services/qa/answer-question";
 import type { QaAnswer } from "@/services/qa/qa-response";
 import { QA_DECLINE_PRIORITY, type QaOutcome } from "@/services/qa/system-prompt";
 
+import type { QaClaimReplyPayload } from "./grounded-reply";
+
 export {
   QA_DECLINE_PRIORITY,
   QA_MAX_REQUEST_TOKENS,
@@ -48,14 +50,11 @@ export function isDeclineOutcome(
 }
 
 /**
- * The JSON object the S2-013 prompt asks the model to return. Harness-owned so replies can be
- * scripted; `contract-alignment.ts` checks its keys against S2-011 `QA_REPLY_JSON_SCHEMA`.
+ * The JSON object the S2-013 prompt asks the model to return (`{"outcome", "claims", "note"}`,
+ * defined in `grounded-reply.ts`). Harness-owned so replies can be scripted;
+ * `contract-alignment.ts` checks it against S2-011 `QA_REPLY_JSON_SCHEMA`.
  */
-export interface QaModelReplyPayload {
-  outcome: QaOutcome;
-  answer: string;
-  citedReviewIds: string[];
-}
+export type QaModelReplyPayload = QaClaimReplyPayload;
 
 /**
  * The S2-013 user-turn layout. S2-013 exports no parser, so the harness reads the question back
@@ -176,6 +175,8 @@ export const QA_PIPELINE_ERRORS = {
   ungroundedAnswer: { name: "QaResponseError", code: "UNGROUNDED_ANSWER" },
   /** Any outcome other than "answered" that carries citations is rejected, not repaired. */
   unexpectedCitations: { name: "QaResponseError", code: "UNEXPECTED_CITATIONS" },
+  /** An answered claim whose quote is not a contiguous span of the cited review (S2-011). */
+  unsupportedClaim: { name: "QaResponseError", code: "UNSUPPORTED_CLAIM" },
   // S2-011 provider adapter.
   qaDisabled: { name: "QaModelError", code: "QA_DISABLED" },
   apiKeyNotConfigured: { name: "QaModelError", code: "API_KEY_NOT_CONFIGURED" },

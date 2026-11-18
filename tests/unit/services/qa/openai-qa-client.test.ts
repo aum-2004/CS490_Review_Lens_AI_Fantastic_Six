@@ -31,7 +31,12 @@ const request: QaModelRequest = {
   maxOutputTokens: 1_500,
 };
 
-const REPLY_TEXT = JSON.stringify({ outcome: "answered", answer: "ok", citedReviewIds: ["r1"] });
+// The adapter passes reply text through unparsed; validation is parseQaModelReply's job.
+const REPLY_TEXT = JSON.stringify({
+  outcome: "answered",
+  claims: [{ statement: "ok", evidence: [{ reviewId: "r1", quote: "ok" }] }],
+  note: null,
+});
 
 function completed(text = REPLY_TEXT, extra: Record<string, unknown> = {}) {
   return {

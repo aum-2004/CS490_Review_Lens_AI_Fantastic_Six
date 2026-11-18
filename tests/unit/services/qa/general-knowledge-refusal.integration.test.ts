@@ -20,6 +20,7 @@ import {
   type GeneralKnowledgeScopeAssessment,
 } from "../../../helpers/general-knowledge-refusal";
 import {
+  claimFrom,
   createFakeQaModel,
   expectContextOnlyForTarget,
   expectNoReviewerIdentity,
@@ -243,8 +244,8 @@ describe("S2-014 real answerQuestion integration", () => {
       evaluationCase,
       reply.payload({
         outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
-        answer: SCOPE_CLEAR_ANSWER,
-        citedReviewIds: [dataset.reviews[0].id],
+        claims: [claimFrom("Reviewers mention this.", dataset.reviews[0])],
+        note: SCOPE_CLEAR_ANSWER,
       }),
     );
 

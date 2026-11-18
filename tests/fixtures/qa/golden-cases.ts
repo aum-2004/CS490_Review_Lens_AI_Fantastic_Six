@@ -1,5 +1,6 @@
 import type { QaDeclineOutcome, QaPipelineErrorKey } from "../../helpers/qa-harness/contract";
 import { reply, type QaReplySpec } from "../../helpers/qa-harness/fake-model";
+import { claimFrom, claimReply, evidenceFrom } from "../../helpers/qa-harness/grounded-reply";
 import type { FakeAuthMode } from "../../helpers/qa-harness/fake-supabase";
 import { getQaDataset, QA_MISSING_TARGET_ID, type QaDatasetKey, type QaUserKey } from "./datasets";
 
@@ -35,6 +36,7 @@ export const QA_GOLDEN_SCENARIOS = [
   "stale_context",
   "edge_input",
   "malformed_model_output",
+  "unsupported_claim",
   "model_error",
 ] as const;
 
@@ -78,6 +80,7 @@ export function goldenTargetId(target: QaGoldenStep["target"]): string {
 
 const reviewIds = (key: QaDatasetKey, ...indexes: number[]): string[] =>
   indexes.map((index) => getQaDataset(key).reviews[index].id);
+const reviewAt = (key: QaDatasetKey, index: number) => getQaDataset(key).reviews[index];
 
 const notCalled = (error: QaPipelineErrorKey) =>
   ({ result: "error", error, modelCalled: false }) as const;
@@ -171,11 +174,13 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         question: "What do Restaurant A's Yelp reviewers say about the food?",
         // The model wrongly attaches citations to a decline. #79 treats that reply as
         // contradictory and rejects it; it must never be shown with the citations silently dropped.
-        reply: reply.payload({
-          outcome: "declined_other_platform",
-          answer: "I can only analyze the Google Maps reviews for Restaurant A.",
-          citedReviewIds: reviewIds("restaurantA", 0),
-        }),
+        reply: reply.payload(
+          claimReply.declined(
+            "declined_other_platform",
+            "I can only analyze the Google Maps reviews for Restaurant A.",
+            [claimFrom("Reviewers mention the food.", reviewAt("restaurantA", 0))],
+          ),
+        ),
         expect: rejectedAfterCall("unexpectedCitations"),
       },
     ],
@@ -439,9 +444,7 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         question: "How is the pizza?",
         reply: reply.raw(
           JSON.stringify({
-            outcome: "answered",
-            answer: "Crisp crust.",
-            citedReviewIds: reviewIds("restaurantA", 0),
+            ...claimReply.answered([claimFrom("Crisp crust.", reviewAt("restaurantA", 0))]),
             confidence: 0.9,
           }),
         ),
@@ -458,7 +461,7 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         actor: "userA",
         target: "restaurantA",
         question: "How is the pizza?",
-        reply: reply.raw(JSON.stringify({ outcome: "maybe", answer: "Hmm.", citedReviewIds: [] })),
+        reply: reply.raw(JSON.stringify({ outcome: "maybe", claims: [], note: "Hmm." })),
         expect: rejectedAfterCall("invalidModelResponse"),
       },
     ],
@@ -500,11 +503,14 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         actor: "userA",
         target: "restaurantA",
         question: "What do customers think about Restaurant B?",
-        reply: reply.payload({
-          outcome: "declined_other_entity",
-          answer: "I can only analyze Restaurant A.",
-          citedReviewIds: ["00000000-0000-4000-8000-000000009999"],
-        }),
+        reply: reply.payload(
+          claimReply.declined("declined_other_entity", "I can only analyze Restaurant A.", [
+            claimFrom("Invented.", {
+              id: "00000000-0000-4000-8000-000000009999",
+              text: "a review that was never supplied",
+            }),
+          ]),
+        ),
         expect: rejectedAfterCall("ungroundedAnswer"),
       },
     ],
@@ -520,6 +526,94 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         question: "How is the pizza?",
         reply: reply.answered(["00000000-0000-4000-8000-000000009999"]),
         expect: rejectedAfterCall("ungroundedAnswer"),
+      },
+    ],
+  },
+  // --- Claims a valid citation does not support (S2-011) ---------------------------------------
+  {
+    id: "qa-claim-partial-answer",
+    scenario: "answerable",
+    title: "A partial answer: a quoted finding plus a note on what the reviews do not cover",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "How is the pizza, and is there outdoor seating?",
+        reply: reply.payload(
+          claimReply.answered(
+            [claimFrom("Reviewers describe the pizza.", reviewAt("restaurantA", 0))],
+            "The reviews do not mention outdoor seating.",
+          ),
+        ),
+        expect: { result: "answered" },
+      },
+    ],
+  },
+  {
+    id: "qa-claim-invented-quote",
+    scenario: "unsupported_claim",
+    title: "A real review ID with a quote that is not in that review is rejected",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "Do customers think the parking lot is safe at night?",
+        reply: reply.payload(
+          claimReply.answered([
+            {
+              statement: "Customers say the parking lot is safe at night.",
+              evidence: [
+                evidenceFrom(reviewAt("restaurantA", 0), "the parking lot felt safe at night"),
+              ],
+            },
+          ]),
+        ),
+        expect: rejectedAfterCall("unsupportedClaim"),
+      },
+    ],
+  },
+  {
+    id: "qa-claim-misattributed-quote",
+    scenario: "unsupported_claim",
+    title: "A real quote attributed to a different review is rejected",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "How do reviewers describe the food?",
+        reply: reply.payload(
+          claimReply.answered([
+            {
+              statement: "Reviewers describe the food.",
+              evidence: [
+                {
+                  reviewId: reviewAt("restaurantA", 0).id,
+                  quote: evidenceFrom(reviewAt("restaurantA", 1)).quote,
+                },
+              ],
+            },
+          ]),
+        ),
+        expect: rejectedAfterCall("unsupportedClaim"),
+      },
+    ],
+  },
+  {
+    id: "qa-claim-mixed-support",
+    scenario: "unsupported_claim",
+    title: "One supported claim does not carry an unsupported one: the whole reply is rejected",
+    steps: [
+      {
+        actor: "userA",
+        target: "restaurantA",
+        question: "What do customers like?",
+        reply: reply.payload(
+          claimReply.answered([
+            claimFrom("Reviewers describe the food.", reviewAt("restaurantA", 0)),
+            { statement: "Staff are always friendly.", evidence: [] },
+          ]),
+        ),
+        expect: rejectedAfterCall("unsupportedClaim"),
       },
     ],
   },

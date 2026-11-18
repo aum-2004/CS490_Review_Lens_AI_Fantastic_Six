@@ -3,6 +3,8 @@
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 
+import { MAX_QUOTE_CHARACTERS } from "@/services/qa/qa-response";
+
 import {
   answeredFromRequest,
   claimFrom,
@@ -69,6 +71,18 @@ describe("grounded reply builders", () => {
     expect(JSON.parse(claimReply.text(claimReply.answered(claims)))).toEqual(
       claimReply.answered(claims),
     );
+  });
+
+  it("builds an uncited answer (no claims) from an empty citation list", () => {
+    expect(answeredFromRequest(requestWith([R1]), [])).toEqual({
+      outcome: "answered",
+      claims: [],
+      note: null,
+    });
+  });
+
+  it("caps a quote at the validator's quote limit", () => {
+    expect(quoteOf("x".repeat(MAX_QUOTE_CHARACTERS + 50))).toHaveLength(MAX_QUOTE_CHARACTERS);
   });
 
   it("quotes cited reviews from the request dataset, with a placeholder for unknown IDs", () => {

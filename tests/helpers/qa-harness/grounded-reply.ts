@@ -1,3 +1,5 @@
+import { MAX_QUOTE_CHARACTERS } from "@/services/qa/qa-response";
+
 import { parseEvidenceRows } from "./assertions";
 import type { QaModelRequest, QaOutcome } from "./contract";
 
@@ -50,7 +52,8 @@ export const UNKNOWN_REVIEW_QUOTE = "quote for a review that was not supplied";
  * spaces (the validator collapses whitespace, so this still matches). The whole text when shorter.
  */
 export function quoteOf(text: string, maxWords = DEFAULT_QUOTE_WORDS): string {
-  return text.trim().split(/\s+/).slice(0, maxWords).join(" ");
+  // Capped at the validator's quote limit; a cut prefix is still one contiguous span.
+  return text.trim().split(/\s+/).slice(0, maxWords).join(" ").slice(0, MAX_QUOTE_CHARACTERS);
 }
 
 /** Evidence citing `review`, quoting `quote` (default: the opening span of its text). */
@@ -94,7 +97,7 @@ export const claimReply = {
  * For fakes that only see the model request: an `answered` payload with one claim citing every
  * listed review, each quoted from that review's text in the request's REVIEW DATASET. An ID that
  * is not in the dataset gets `UNKNOWN_REVIEW_QUOTE`, so invented-citation cases still reach the
- * validator's review-ID check. An empty list yields one claim with no evidence.
+ * validator's review-ID check. An empty list yields no claims: an uncited answer.
  */
 export function answeredFromRequest(
   request: QaModelRequest,
@@ -102,6 +105,7 @@ export function answeredFromRequest(
   statement = DEFAULT_CLAIM_STATEMENT,
   note: string | null = null,
 ): QaClaimReplyPayload {
+  if (reviewIds.length === 0) return claimReply.answered([], note);
   const texts = new Map(parseEvidenceRows(request).map((row) => [row.id, row.text]));
   const evidence = reviewIds.map((reviewId) => {
     const text = texts.get(reviewId);

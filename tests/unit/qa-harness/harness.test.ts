@@ -7,6 +7,7 @@ jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn(
 
 import { getQaDataset, QA_MISSING_TARGET_ID, QA_USERS } from "../../fixtures/qa/datasets";
 import {
+  claimFrom,
   createQaTestHarness,
   QaHarnessAssertionError,
   RealNetworkCallError,
@@ -36,7 +37,7 @@ describe("createQaTestHarness", () => {
         ok: true,
         answer: {
           outcome: "answered",
-          answer: "Crisp crust.",
+          answer: `Crisp crust. [${restaurantA.reviews[0].id}]`,
           citedReviewIds: [restaurantA.reviews[0].id],
           targetId: restaurantA.target.id,
         },
@@ -127,7 +128,11 @@ describe("real S2-011 citation contract (parseQaModelReply through answerQuestio
     "rejects %s with citations as UNEXPECTED_CITATIONS instead of stripping them",
     async (outcome) => {
       const harness = createQaTestHarness({
-        fallback: reply.payload({ outcome, answer: "Not an answer.", citedReviewIds: cited }),
+        fallback: reply.payload({
+          outcome,
+          claims: [claimFrom("Not an answer.", restaurantA.reviews[0])],
+          note: "Not an answer.",
+        }),
       });
       try {
         expect(await harness.ask(restaurantA.target.id, "Anything?")).toMatchObject({
@@ -145,7 +150,7 @@ describe("real S2-011 citation contract (parseQaModelReply through answerQuestio
     "accepts %s with no citations",
     async (outcome) => {
       const harness = createQaTestHarness({
-        fallback: reply.payload({ outcome, answer: "Not an answer.", citedReviewIds: [] }),
+        fallback: reply.payload({ outcome, claims: [], note: "Not an answer." }),
       });
       try {
         expect(await harness.ask(restaurantA.target.id, "Anything?")).toMatchObject({

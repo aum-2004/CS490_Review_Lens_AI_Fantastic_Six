@@ -5,6 +5,7 @@ import type { QaReviewContext } from "@/services/qa/qa-request";
 import { SYSTEM_PROMPT_VERSION, type QaModelRequest } from "@/services/qa/system-prompt";
 
 import { scopeGuardEvaluationFixture as s2004 } from "../../../fixtures/scope-guard-evaluation";
+import { claimFrom, claimReply, evidenceFrom } from "../../../helpers/qa-harness/grounded-reply";
 
 jest.mock("server-only", () => ({}));
 
@@ -123,11 +124,7 @@ const ADMITS_GAP_ANSWER =
   "The reviews do not mention this, so I can't tell what customers think about it.";
 
 /** The fake model's reply. Tests assert the expected outcome literally, never via this object. */
-const admitsGap = {
-  outcome: "insufficient_evidence",
-  answer: ADMITS_GAP_ANSWER,
-  citedReviewIds: [],
-};
+const admitsGap = claimReply.insufficientEvidence(ADMITS_GAP_ANSWER);
 
 function setup(context: QaReviewContext, reply: unknown) {
   const buildReviewDatasetContext = jest.fn(async () => context);
@@ -252,7 +249,7 @@ describe.each(
   });
 
   it("rejects a guessed 'answered' reply with no supporting reviews", async () => {
-    const guess = { outcome: "answered", answer: "Yes, customers think so.", citedReviewIds: [] };
+    const guess = claimReply.answered([], "Yes, customers think so.");
     await expect(answerQuestion(targetId, question, setup(context, guess))).rejects.toMatchObject({
       name: "QaResponseError",
       code: "UNGROUNDED_ANSWER",
@@ -260,18 +257,34 @@ describe.each(
   });
 
   it("rejects an 'answered' reply that cites a review outside the dataset", async () => {
-    const invented = {
-      outcome: "answered",
-      answer: "One reviewer confirmed it.",
-      citedReviewIds: ["00000000-0000-4000-8000-000000000999"],
-    };
+    const invented = claimReply.answered([
+      claimFrom("One reviewer confirmed it.", {
+        id: "00000000-0000-4000-8000-000000000999",
+        text: "One reviewer confirmed it.",
+      }),
+    ]);
     await expect(
       answerQuestion(targetId, question, setup(context, invented)),
     ).rejects.toMatchObject({ code: "UNGROUNDED_ANSWER" });
   });
 
+  it("rejects an 'answered' reply whose real citation does not contain its quote", async () => {
+    // A valid citation is not proof: the cited review exists but never discusses this topic.
+    const unsupported = claimReply.answered([
+      {
+        statement: "One reviewer confirmed it.",
+        evidence: [evidenceFrom(context.reviews[0], `Yes: ${question}`)],
+      },
+    ]);
+    await expect(
+      answerQuestion(targetId, question, setup(context, unsupported)),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_CLAIM" });
+  });
+
   it("rejects an insufficient_evidence reply that cites reviews (contradictory)", async () => {
-    const contradictory = { ...admitsGap, citedReviewIds: [reviewIds[0]] };
+    const contradictory = claimReply.insufficientEvidence(ADMITS_GAP_ANSWER, [
+      claimFrom("Contradiction.", context.reviews[0]),
+    ]);
     await expect(
       answerQuestion(targetId, question, setup(context, contradictory)),
     ).rejects.toMatchObject({ code: "UNEXPECTED_CITATIONS" });
@@ -292,17 +305,16 @@ describe("S2-012 partial evidence", () => {
     }
   });
 
-  it("accepts 'answered' for the supported part when it cites support and names the gap", async () => {
-    const partial = {
-      outcome: "answered",
-      answer:
-        "One reviewer praised the margherita pizza's crisp crust. The reviews do not mention outdoor seating.",
-      citedReviewIds: [pizzaReviewId],
-    };
+  it("accepts 'answered' for the supported part when it quotes support and names the gap", async () => {
+    const partial = claimReply.answered(
+      [claimFrom("One reviewer praised the margherita pizza's crisp crust.", context.reviews[0])],
+      "The reviews do not mention outdoor seating.",
+    );
 
     await expect(answerQuestion(targetId, question, setup(context, partial))).resolves.toEqual({
       outcome: "answered",
-      answer: partial.answer,
+      // Supported findings first, then the gap under a fixed server-side prefix (S2-012).
+      answer: `One reviewer praised the margherita pizza's crisp crust. [${pizzaReviewId}]\n\nNot covered by these reviews: The reviews do not mention outdoor seating.`,
       citedReviewIds: [pizzaReviewId],
       promptVersion: SYSTEM_PROMPT_VERSION,
       targetId,
@@ -313,7 +325,7 @@ describe("S2-012 partial evidence", () => {
     const deps = setup(context, admitsGap);
     await answerQuestion(targetId, question, deps);
     expect(deps.callModel.mock.calls[0][0].instructions).toMatch(
-      /If the reviews\s+answer part of the question, use "answered" for that part, cite the reviews that support it,\s+and state what the reviews do not cover/,
+      /If the reviews\s+answer part of the question, use "answered" for that part, give a claim for each supported\s+finding, and state in "note" what the reviews do not cover/,
     );
   });
 });

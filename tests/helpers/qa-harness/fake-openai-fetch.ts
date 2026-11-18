@@ -1,4 +1,5 @@
 import type { QaModelReplyPayload } from "./contract";
+import { claimFrom, claimReply } from "./grounded-reply";
 
 /**
  * S2-003 fake for the OpenAI Responses API, injected as `createOpenAiQaModel({ fetcher })`. The
@@ -108,15 +109,11 @@ export const openAi = {
   },
 };
 
-/** Default generation: cite the first review of the S2-013 dataset in `input`. */
+/** Default generation: one claim quoting the first review of the S2-013 dataset in `input`. */
 function answerFromInput(body: Record<string, unknown>): FakeOpenAiResponse {
   const input = String(body.input);
-  const rows = JSON.parse(input.split("\n")[1]) as { id: string }[];
-  return openAi.completed({
-    outcome: "answered",
-    answer: "Fake provider answer.",
-    citedReviewIds: [rows[0].id],
-  });
+  const rows = JSON.parse(input.split("\n")[1]) as { id: string; text: string }[];
+  return openAi.completed(claimReply.answered([claimFrom("Fake provider answer.", rows[0])]));
 }
 
 function toResponse(spec: FakeOpenAiResponse): Response {
