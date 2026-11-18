@@ -298,10 +298,12 @@ The provider token budget is separate: the OpenAI adapter rejects a request whos
 tokens plus the reserved output exceed the cap as `QaPromptError`/`REQUEST_TOO_LARGE`, before the
 generation call. Both have their own tests.
 
-**Replies with citations.** Following S2-011, an `answered` reply must cite at least one review
-from the request. Every other outcome (`insufficient_evidence` and the three declines) must cite
-none. A reply that breaks this is rejected (`UNGROUNDED_ANSWER` or `UNEXPECTED_CITATIONS`), never
-repaired by dropping its citations.
+**Replies with citations.** Following S2-011, an `answered` reply must contain at least one claim,
+and each claim's evidence must quote a contiguous span of the cited review from the request.
+Every other outcome (`insufficient_evidence` and the three declines) must have no claims. A reply
+that breaks this is rejected (`UNGROUNDED_ANSWER`, `UNSUPPORTED_CLAIM` or `UNEXPECTED_CITATIONS`),
+never repaired by dropping claims. Script replies with `reply.answered([ids])`, which quotes each
+cited review from the request at call time, or with the builders in `grounded-reply.ts`.
 
 **Contract alignment.** Production types and constants are re-exported, never copied. Values a
 teammate may change (`SYSTEM_PROMPT_VERSION`, budgets, outcome lists) are imported at runtime and

@@ -19,8 +19,11 @@
    `QaInputValidationError` is thrown.
 5. **Model call (S2-011):** `callModel(request)`. In production this is `createOpenAiQaModel()`,
    which enforces the token budget before generating; tests pass a deterministic fake.
-6. **Reply validation (S2-011):** `parseQaModelReply` checks the reply, or throws
-   `QaResponseError`.
+6. **Reply validation (S2-011):** `parseQaModelReply(text, request, context.reviews)` checks the
+   reply, including each claim's quote against the cited review's text, or throws
+   `QaResponseError`. `runGroundedQaRequest` hands the invoker the same projected context the
+   request was built from, so the check uses exactly the authorized, persisted reviews the model
+   saw. Nothing is re-read, and nothing is parsed back out of the prompt.
 
 A failure at any step throws, and nothing unvalidated is returned. Steps 1–4 run before the
 injected model caller.
@@ -63,45 +66,107 @@ the API key.
 
 ## Reply validation (`qa-response.ts`)
 
-The model must reply with exactly `{"outcome", "answer", "citedReviewIds"}`. Bad replies are
-rejected, not repaired:
+### Why a valid citation is not enough
 
-- `INVALID_MODEL_RESPONSE`: not JSON, an unknown outcome, missing or extra fields, an empty answer,
-  an answer over `MAX_ANSWER_CHARACTERS` (8,000), or non-string citations.
-- `UNGROUNDED_ANSWER`:
-  - a cited review ID that was not in the request (invented, or from another target), for any
-    outcome; or
-  - `outcome: "answered"` with no citations. S2-011 requires answers that are defensibly
-    connected to the reviews, so an uncited "answer" is treated as a general-knowledge guess.
-- `UNEXPECTED_CITATIONS`: `insufficient_evidence` or any decline outcome that cites reviews, even
-  valid ones. These outcomes are not answers from the reviews, so citations make the reply
-  contradictory. They are rejected, not silently dropped.
+Before prompt `s2-013.v5`, the model replied with one flat `citedReviewIds` list for the whole
+answer, and the validator only checked that each ID belonged to the active dataset. An answer that
+said "The parking lot is safe at night" while citing a real pizza review passed, and so did an
+answer mixing one supported claim with one invented claim. A citation proved that a review
+existed, not that it said anything the answer claimed.
 
-The citation rules in one table:
+### The reply contract (`s2-013.v5`)
 
-| Outcome                  | No citations        | Valid citations        | Unknown citation IDs |
-| ------------------------ | ------------------- | ---------------------- | -------------------- |
-| `answered`               | `UNGROUNDED_ANSWER` | Accepted               | `UNGROUNDED_ANSWER`  |
-| `insufficient_evidence`  | Accepted            | `UNEXPECTED_CITATIONS` | `UNGROUNDED_ANSWER`  |
-| `declined_*` (all three) | Accepted            | `UNEXPECTED_CITATIONS` | `UNGROUNDED_ANSWER`  |
+```json
+{
+  "outcome": "answered",
+  "claims": [
+    {
+      "statement": "Reviewers praise the crust.",
+      "evidence": [{ "reviewId": "<uuid>", "quote": "the crust was perfectly crisp" }]
+    }
+  ],
+  "note": "The reviews do not mention outdoor seating."
+}
+```
 
-The prompt (`s2-013.v4`) states the same contract: a partial answer uses `answered` with
-citations and says what the reviews do not cover; every other outcome has an empty
-`citedReviewIds`. Accepted replies are normalized: the answer is trimmed, and duplicate citations
-are removed.
+- **`claims`** holds every finding from the reviews. Each claim lists its own evidence, so the
+  validator knows which review supports which statement.
+- **`quote`** must be copied from the cited review as one contiguous passage.
+- **`note`** holds only text that is not a finding: a decline, the insufficient-evidence
+  explanation, or what a partial answer does not cover. The prompt says `note` never states facts
+  about the reviews. That rule cannot be verified (see the limitations below).
 
-### Known limitation: citation support is not verified
+`QA_REPLY_JSON_SCHEMA` is strict-mode compatible at every level: every object lists all of its
+properties as required with `additionalProperties: false`, and `note` is nullable
+(`["string", "null"]`) instead of optional. A test walks the schema to check this.
 
-The validator confirms that each cited review ID belongs to the active dataset. It does **not**
-confirm that the cited review supports the claim. For example, an invented parking-safety claim
-that cites a food review passes. A test documents this. Semantic support is measured by the
-S2-004 evaluation set, which should include cases where the citation does not support the answer.
+### What the validator checks
+
+Rejected, not repaired. Dropping one bad claim would silently change what the rest of the answer
+means.
+
+| Check                                                                                  | Error                    |
+| -------------------------------------------------------------------------------------- | ------------------------ |
+| Not JSON, wrong or extra fields at any level, unknown outcome, the legacy reply shape  | `INVALID_MODEL_RESPONSE` |
+| Statement empty or > 1,000 chars; > 20 claims; > 10 evidence items; quote > 500 chars  | `INVALID_MODEL_RESPONSE` |
+| A `reviewId` that is not in the request, or whose text was not supplied (any outcome)  | `UNGROUNDED_ANSWER`      |
+| `answered` with no claims                                                              | `UNGROUNDED_ANSWER`      |
+| `answered` claim with no evidence                                                      | `UNSUPPORTED_CLAIM`      |
+| `answered` quote that is not a contiguous span of **that** review, or is under 3 words | `UNSUPPORTED_CLAIM`      |
+| Non-answer outcome with claims, even valid ones                                        | `UNEXPECTED_CITATIONS`   |
+| Non-answer outcome whose note is null or empty                                         | `INVALID_MODEL_RESPONSE` |
+| Composed answer over `MAX_ANSWER_CHARACTERS` (8,000)                                   | `INVALID_MODEL_RESPONSE` |
+
+**Quote matching** (`normalizeEvidenceText`, `quoteSupportedByReview`). The quote and the review
+text get the same normalization: Unicode NFKC (which also turns `…` into `...`), a per-character
+case fold (upper then lower, so `ß` matches `SS` and Greek final sigma cannot depend on where a
+quote starts), curly quotes and dash variants turned into ASCII, and whitespace runs collapsed.
+Nothing else is removed, so the quote must still be **one contiguous span** of the review. Fragments
+joined with an ellipsis (`"crust was ... tasted fresh"`) do not match unless the review itself
+contains that exact text. A quote must have at least `MIN_QUOTE_WORDS` (3) words, so a word like
+"the" cannot anchor a claim, unless it is the whole review (for very short reviews such as
+"Too slow.").
+
+**Composed answer.** For `answered`, the server builds the text shown to the user from the
+verified claims: one line per claim, `statement [id, id]`, followed by
+`Not covered by these reviews: <note>` when there is a note. `citedReviewIds` is built from the
+claims in first-seen order, without duplicates. The route response (`outcome`, `answer`,
+`citedReviewIds`) and the UI are unchanged: the existing `buildCitationView` already turns the
+bracketed UUIDs into `[1]`, `[2]`. For other outcomes, the note is the answer and there are no
+citations.
+
+**Errors.** `UNSUPPORTED_CLAIM` is a `QaResponseError`, so the route returns it like the others:
+503 with the generic message "We couldn't produce a reliable answer." Neither the error message
+nor the response body includes model output, quotes, or review IDs.
+
+### Known limitations
+
+- **A real but irrelevant quote passes.** The checks prove the quoted words are in the cited
+  review, not that they support the statement. "The parking lot is safe at night" with the quote
+  "The crust was perfectly crisp" passes, because that quote really is in the review. Deciding
+  whether a quote entails a claim would need a model or keyword rules, and keyword rules were
+  ruled out as brittle. The prompt requires that "the quote must itself say what the statement
+  claims", and a test (`KNOWN LIMITATION: accepts a real quote that does not support the claim`)
+  documents the gap. The S2-004 / configured-model evaluations should include such cases.
+- **`note` is unverified free text.** It is shown after a fixed server prefix
+  (`Not covered by these reviews:`) and is never treated as a finding, but a finding written into
+  it reaches the user unchecked. A test (`DOCUMENTED: note is unverified free text`) shows this.
+  The prompt-injection suite also shows that a prompt echo can still leave through `note`.
+- **Paraphrase is not accepted.** A quote that changes wording, not just case, whitespace, or
+  quote and dash style, is rejected. The reply fails closed with the generic error. A live
+  evaluation should measure how often this happens with the configured model.
+- **Reviews that cannot be quoted.** A review under 3 words that is longer than 500 characters
+  (a single very long token) cannot be cited. This does not happen with real review text.
+- **Quotes are not shown in the UI yet** (follow-up). The supporting-reviews panel shows the full
+  text of each cited review.
 
 ## Insufficient evidence (S2-012)
 
-S2-012 is tested in its own pull request (`docs/s2-012-insufficient-evidence.md`). S2-011 provides
-what it relies on: an `insufficient_evidence` reply must have no citations, and an uncited
-`answered` reply is rejected as `UNGROUNDED_ANSWER`.
+S2-012 is documented in `docs/s2-012-insufficient-evidence.md`. S2-011 provides what it relies on:
+an `insufficient_evidence` reply has no claims and must explain itself in `note`; an `answered`
+reply with no claims is rejected as `UNGROUNDED_ANSWER`; and every claim must quote its cited
+review, so an answer about a topic the reviews never mention cannot point at a real review to pass
+as grounded.
 
 ## OpenAI client (`openai-qa-client.ts`)
 
@@ -223,7 +288,13 @@ const answer = await answerQuestion("t1", "Any complaints?", {
   buildReviewDatasetContext: async () => context,
   // Option A: a fake model that returns a fixed reply.
   callModel: async () => ({
-    text: JSON.stringify({ outcome: "answered", answer: "Slow service.", citedReviewIds: ["r1"] }),
+    text: JSON.stringify({
+      outcome: "answered",
+      claims: [
+        { statement: "Service is slow.", evidence: [{ reviewId: "r1", quote: "Slow service." }] },
+      ],
+      note: null,
+    }),
   }),
   // Option B: the real adapter with a fake fetch (inspect the outgoing request body):
   // callModel: createOpenAiQaModel({ fetcher: fakeFetch, env: { QA_ENABLED: "true",

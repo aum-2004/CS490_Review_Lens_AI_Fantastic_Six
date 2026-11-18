@@ -41,8 +41,20 @@ repeat reviewer personal details.
 The model must reply with only this JSON object:
 
 ```json
-{ "outcome": "answered", "answer": "plain text", "citedReviewIds": ["<review id>"] }
+{
+  "outcome": "answered",
+  "claims": [
+    { "statement": "plain text", "evidence": [{ "reviewId": "<id>", "quote": "<exact>" }] }
+  ],
+  "note": null
+}
 ```
+
+Since `s2-013.v5`, every finding is a claim whose evidence quotes one contiguous passage of the
+cited review, and `note` (nullable) carries only non-findings: a decline, the insufficient-evidence
+explanation, or what a partial answer does not cover. Only evidence rules 1–5 and the
+response-format citation lines changed from `v4`; scope rules and outcome definitions did not. See
+`docs/s2-011-answers.md` for validation.
 
 | `outcome`                    | Meaning                                                                                              | S2-004 category                       |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------- |
@@ -83,8 +95,9 @@ New York case ambiguous. An earlier draft of this change limited `declined_other
 "specific, named" entities; security review (#89) showed that let unnamed comparisons slip
 through, so "named or only described" replaced it.
 
-S2-011 must validate this reply before showing anything to the user: reject unknown outcomes, and
-drop or reject `citedReviewIds` values that were not in the request's `reviewIds`.
+S2-011 validates this reply before showing anything to the user: it rejects unknown outcomes,
+review IDs that were not in the request's `reviewIds`, and quotes that are not contiguous spans of
+the cited review.
 
 ## Request safety
 
@@ -162,8 +175,8 @@ Other safeguards:
 - **Still to verify during S2-011 integration:**
   - Provider-input isolation: `instructions` is sent as the system message and review text and
     the question only in the user message, never concatenated into the system message.
-  - Response validation: unknown outcomes, malformed JSON, and `citedReviewIds` outside the
-    request's `reviewIds` are rejected before anything reaches the user.
+  - Response validation: unknown outcomes, malformed JSON, review IDs outside the request's
+    `reviewIds`, and unverifiable quotes are rejected before anything reaches the user.
   - Full request-size limits: now enforced by S2-011 using OpenAI's token-count endpoint
     before the generation call; the smoke test confirms the count matches reported usage.
 - The S2-BR rule text was not available in the repository when this was written. The prompt was
