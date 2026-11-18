@@ -11,7 +11,10 @@ import { buildSystemPrompt, REVIEW_PLATFORM_LABELS } from "@/services/qa/system-
 
 import { allQaDatasets, getQaDataset, type QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
+  claimFrom,
+  claimReply,
   createFakeOpenAiFetch,
+  evidenceFrom,
   expectContextOnlyForTarget,
   expectErrorShape,
   expectNoForeignData,
@@ -187,7 +190,7 @@ describe("provider replies", () => {
       promptVersion: SYSTEM_PROMPT_VERSION,
       targetId: targetA.target.id,
       instructions: "x",
-      input: `REVIEW DATASET (1 reviews, JSON array):\n[{"id":"r1"}]\n\nQUESTION (JSON string):\n"q"`,
+      input: `REVIEW DATASET (1 reviews, JSON array):\n[{"id":"r1","text":"Synthetic review text for the provider."}]\n\nQUESTION (JSON string):\n"q"`,
       reviewIds: ["r1"],
       maxOutputTokens: QA_RESERVED_OUTPUT_TOKENS,
     });
@@ -227,24 +230,36 @@ describe("provider replies", () => {
     [
       "a citation outside the request",
       {
-        generation: openAi.completed({
-          outcome: "answered",
-          answer: "Invented.",
-          citedReviewIds: [targetB.reviews[0].id],
-        }),
+        generation: openAi.completed(
+          claimReply.answered([claimFrom("Invented.", targetB.reviews[0])]),
+        ),
       },
       "ungroundedAnswer",
     ],
     [
       "a cited decline",
       {
-        generation: openAi.completed({
-          outcome: "declined_other_platform",
-          answer: "Only Google Maps.",
-          citedReviewIds: [targetA.reviews[0].id],
-        }),
+        generation: openAi.completed(
+          claimReply.declined("declined_other_platform", [
+            claimFrom("Reviews.", targetA.reviews[0]),
+          ]),
+        ),
       },
       "unexpectedCitations",
+    ],
+    [
+      "a valid citation whose quote is not in that review",
+      {
+        generation: openAi.completed(
+          claimReply.answered([
+            {
+              statement: "Invented finding.",
+              evidence: [evidenceFrom(targetA.reviews[0], "words that this review never says")],
+            },
+          ]),
+        ),
+      },
+      "unsupportedClaim",
     ],
   ])("maps %s to a typed error", async (_label, options, key) => {
     callModel = withProvider(options);

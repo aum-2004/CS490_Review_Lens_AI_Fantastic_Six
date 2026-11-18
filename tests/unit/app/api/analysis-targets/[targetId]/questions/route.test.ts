@@ -15,6 +15,9 @@ import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
 import { reserveQuestionQuota, QuestionQuotaError } from "@/services/qa/question-quota";
 import { MAX_CITED_REVIEWS } from "@/lib/qa/citations";
+import { MAX_EVIDENCE_PER_CLAIM, nonAnswerText } from "@/services/qa/qa-response";
+
+import { claimReply, evidenceFrom } from "../../../../../../helpers/qa-harness/grounded-reply";
 
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
@@ -69,6 +72,25 @@ function contextFor(targetId: string) {
   };
 }
 
+/** Review text for an ID in any dataset, as `contextFor` builds it (or a placeholder). */
+function textOf(id: string): string {
+  for (const dataset of Object.values(datasets)) {
+    const index = dataset.reviewIds.indexOf(id);
+    if (index !== -1) return `Review ${index + 1} text`;
+  }
+  return "a review that was never supplied";
+}
+
+/** An answered model reply quoting each cited review, grouped to respect the evidence limit. */
+function answered(statement: string, ...ids: string[]) {
+  const claims = [];
+  for (let start = 0; start < ids.length; start += MAX_EVIDENCE_PER_CLAIM) {
+    const chunk = ids.slice(start, start + MAX_EVIDENCE_PER_CLAIM);
+    claims.push({ statement, evidence: chunk.map((id) => evidenceFrom({ id, text: textOf(id) })) });
+  }
+  return claimReply.answered(claims);
+}
+
 function post(targetId = TARGET_A) {
   return POST(
     new NextRequest(`http://localhost/api/analysis-targets/${targetId}/questions`, {
@@ -85,7 +107,7 @@ beforeEach(() => {
   jest.spyOn(console, "error").mockImplementation(() => {});
   currentUser = USER_A;
   quotaUsed = 0;
-  reply = { outcome: "answered", answer: `Bread is great [${A1}].`, citedReviewIds: [A1] };
+  reply = answered("Bread is great.", A1);
   jest
     .mocked(requireApiUser)
     .mockImplementation(async () => ({ user: { id: currentUser, email: null } }));
@@ -109,7 +131,7 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 it("returns the validated citations of an answer, deduplicated in first-appearance order", async () => {
-  reply = { outcome: "answered", answer: "Great bread and coffee.", citedReviewIds: [A2, A1, A2] };
+  reply = answered("Great bread and coffee.", A2, A1, A2);
   const response = await post();
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({
@@ -117,7 +139,13 @@ it("returns the validated citations of an answer, deduplicated in first-appearan
     data: {
       targetId: TARGET_A,
       outcome: "answered",
-      answer: "Great bread and coffee.",
+      // Each verified quote is shown beside the statement, with the ID of the review it quotes.
+      answer: [
+        "Great bread and coffee.",
+        `  "${textOf(A2)}" [${A2}]`,
+        `  "${textOf(A1)}" [${A1}]`,
+        `  "${textOf(A2)}" [${A2}]`,
+      ].join("\n"),
       citedReviewIds: [A2, A1],
     },
   });
@@ -129,15 +157,29 @@ it.each([
   ["declined_other_entity", "out_of_scope"],
   ["declined_other_platform", "out_of_scope"],
 ] as const)("returns no citations for the %s outcome", async (outcome, shown) => {
-  reply = { outcome, answer: "I can't answer that from these reviews.", citedReviewIds: [] };
+  reply = { outcome, claims: [], coverage: "none" };
   const response = await post();
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body.data).toMatchObject({ outcome: shown, citedReviewIds: [] });
+  // The text is written by the server (s2-013.v7), never by the model.
+  expect(body.data).toMatchObject({
+    outcome: shown,
+    answer: nonAnswerText(outcome, "Google Maps"),
+    citedReviewIds: [],
+  });
+});
+
+it("fails closed when a non-answer tries to carry model text in a note", async () => {
+  reply = { outcome: "insufficient_evidence", claims: [], coverage: "none", note: "SMUGGLED_TEXT" };
+  const response = await post();
+  expect(response.status).toBe(503);
+  const body = await response.json();
+  expect(body).toMatchObject({ success: false, error: { code: "INVALID_MODEL_RESPONSE" } });
+  expect(JSON.stringify(body)).not.toContain("SMUGGLED_TEXT");
 });
 
 it("fails closed when a refusal carries citations", async () => {
-  reply = { outcome: "insufficient_evidence", answer: "Not enough.", citedReviewIds: [A1] };
+  reply = { ...answered("Not enough.", A1), outcome: "insufficient_evidence", coverage: "none" };
   const response = await post();
   expect(response.status).toBe(503);
   const body = await response.json();
@@ -147,7 +189,7 @@ it("fails closed when a refusal carries citations", async () => {
 });
 
 it("fails closed when an answer cites another target's or another user's review", async () => {
-  reply = { outcome: "answered", answer: `Leaked [${B1}].`, citedReviewIds: [A1, B1] };
+  reply = answered(`Leaked [${B1}].`, A1, B1);
   const response = await post(TARGET_A);
   expect(response.status).toBe(503);
   const body = JSON.stringify(await response.json());
@@ -169,14 +211,14 @@ it("never returns another user's target or citations", async () => {
 it("scopes citations to the requested target when switching targets", async () => {
   datasets[TARGET_B].owner = USER_A;
   try {
-    reply = { outcome: "answered", answer: "A answer", citedReviewIds: [A1] };
+    reply = answered("A answer", A1);
     const first = await (await post(TARGET_A)).json();
-    reply = { outcome: "answered", answer: "B answer", citedReviewIds: [B1] };
+    reply = answered("B answer", B1);
     const second = await (await post(TARGET_B)).json();
     expect(first.data).toMatchObject({ targetId: TARGET_A, citedReviewIds: [A1] });
     expect(second.data).toMatchObject({ targetId: TARGET_B, citedReviewIds: [B1] });
     // A's citation would be foreign evidence for B.
-    reply = { outcome: "answered", answer: "Mixed", citedReviewIds: [A1] };
+    reply = answered("Mixed", A1);
     expect((await post(TARGET_B)).status).toBe(503);
   } finally {
     datasets[TARGET_B].owner = USER_B;
@@ -185,14 +227,19 @@ it("scopes citations to the requested target when switching targets", async () =
 
 it.each([
   ["invalid JSON", "not json"],
-  ["an unknown outcome", JSON.stringify({ outcome: "maybe", answer: "x", citedReviewIds: [] })],
+  ["an unknown outcome", JSON.stringify({ outcome: "maybe", claims: [], coverage: "none" })],
   [
     "non-string citations",
-    JSON.stringify({ outcome: "answered", answer: "x", citedReviewIds: [1] }),
+    JSON.stringify({
+      outcome: "answered",
+      claims: [{ statement: "x", evidence: [{ reviewId: 1, quote: "Review 1 text" }] }],
+      coverage: "complete",
+    }),
   ],
+  ["an answer without citations", JSON.stringify(claimReply.answered([]))],
   [
-    "an answer without citations",
-    JSON.stringify({ outcome: "answered", answer: "x", citedReviewIds: [] }),
+    "the legacy reply shape",
+    JSON.stringify({ outcome: "answered", answer: "x", citedReviewIds: [A1] }),
   ],
 ])("returns an error without citations for %s", async (_label, text) => {
   model.mockResolvedValueOnce({ text });
@@ -201,6 +248,28 @@ it.each([
   const body = await response.json();
   expect(body.success).toBe(false);
   expect(body.data).toBeUndefined();
+});
+
+it("fails closed with UNSUPPORTED_CLAIM when a valid citation's quote is not in that review", async () => {
+  reply = claimReply.answered([
+    {
+      statement: "The parking lot is safe at night.",
+      evidence: [evidenceFrom({ id: A1, text: textOf(A1) }, "the parking lot is safe")],
+    },
+  ]);
+  const response = await post();
+  expect(response.status).toBe(503);
+  const body = await response.json();
+  expect(body).toMatchObject({
+    success: false,
+    error: {
+      code: "UNSUPPORTED_CLAIM",
+      message: "We couldn't produce a reliable answer. Please try again.",
+    },
+  });
+  expect(body.data).toBeUndefined();
+  expect(JSON.stringify(body)).not.toContain("parking");
+  expect(JSON.stringify(body)).not.toContain(A1);
 });
 
 it("keeps the five-attempt quota and returns no citations once it is exceeded", async () => {
@@ -223,7 +292,7 @@ it("caps citations at the supported maximum", async () => {
   );
   datasets[TARGET_A].reviewIds = many;
   try {
-    reply = { outcome: "answered", answer: "Many.", citedReviewIds: many };
+    reply = answered("Many.", ...many);
     const body = await (await post()).json();
     expect(body.data.citedReviewIds).toEqual(many.slice(0, MAX_CITED_REVIEWS));
   } finally {

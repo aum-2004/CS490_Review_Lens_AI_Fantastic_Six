@@ -30,12 +30,14 @@ export interface AnswerQuestionDependencies {
  * S2-011: answers a question about the active target from its reviews.
  *
  * Order: question validation → authorized review context (S2-010) → model request (S2-013) →
- * request size check → model call → reply validation. A failure at any step throws and nothing
- * unvalidated is returned. Errors are QaInputValidationError (question type or length, or
- * serialized request size, at the service boundary), ReviewContextError / TargetNotFoundError
+ * request size check → model call → reply validation (each claim's quote is checked against the
+ * cited review's text; all non-claim text is written by the server). A failure at any step throws
+ * and nothing unvalidated is returned. Errors are QaInputValidationError (question type or length,
+ * or serialized request size, at the service boundary), ReviewContextError / TargetNotFoundError
  * (S2-010), QaPromptError (empty question, no or mismatched reviews; REQUEST_TOO_LARGE from the
  * OpenAI adapter's token budget), QaBudgetError (invalid token count), QaModelError (provider,
- * including failed token-count calls), or QaResponseError (reply).
+ * including failed token-count calls), or QaResponseError (reply, including UNSUPPORTED_CLAIM and
+ * PROMPT_ECHO).
  */
 export async function answerQuestion(
   targetId: unknown,
@@ -44,6 +46,8 @@ export async function answerQuestion(
 ): Promise<QaAnswer> {
   return runGroundedQaRequest(targetId, question, {
     buildReviewDatasetContext,
-    invokeModel: async (request) => parseQaModelReply((await callModel(request)).text, request),
+    // The reply is checked against the same authorized reviews whose text built the request.
+    invokeModel: async (request, context) =>
+      parseQaModelReply((await callModel(request)).text, request, context),
   });
 }

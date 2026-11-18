@@ -53,8 +53,21 @@ export type ContractAlignmentChecks = [
   Expect<Equal<MisalignedErrors<HarnessErrorEntry>, never>>,
   // The scripted reply payload has exactly the S2-011 structured-output keys...
   Expect<Equal<keyof QaModelReplyPayload, (typeof QA_REPLY_JSON_SCHEMA)["required"][number]>>,
-  // ...and the same field types as the validated answer.
-  Expect<Equal<QaModelReplyPayload, Pick<QaAnswer, keyof QaModelReplyPayload>>>,
+  // ...the same outcome type as the validated answer...
+  Expect<Equal<QaModelReplyPayload["outcome"], QaAnswer["outcome"]>>,
+  // ...and claim/evidence keys that match the schema's nested required lists.
+  Expect<
+    Equal<
+      keyof QaModelReplyPayload["claims"][number],
+      (typeof QA_REPLY_JSON_SCHEMA)["properties"]["claims"]["items"]["required"][number]
+    >
+  >,
+  Expect<
+    Equal<
+      keyof QaModelReplyPayload["claims"][number]["evidence"][number],
+      (typeof QA_REPLY_JSON_SCHEMA)["properties"]["claims"]["items"]["properties"]["evidence"]["items"]["required"][number]
+    >
+  >,
   // An evidence row is exactly the S2-013 projection of a PromptReview.
   Expect<
     Equal<

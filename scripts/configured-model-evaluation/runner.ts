@@ -186,9 +186,8 @@ function offlineTransport(plan: readonly ConfiguredModelAttemptPlan[]): typeof f
       if (!outcome) return openAi.status(400, "Unapproved offline evaluation question.");
       return openAi.completed({
         outcome,
-        answer:
-          "I can only analyze the Google Maps reviews for Restaurant A, so I cannot answer that out-of-scope request.",
-        citedReviewIds: [],
+        claims: [],
+        coverage: "none",
       });
     },
   }).fetcher;

@@ -6,7 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { answerQuestion } from "@/services/qa/answer-question";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
-import { QaResponseError, type QaAnswer } from "@/services/qa/qa-response";
+import { QaResponseError, nonAnswerText, type QaAnswer } from "@/services/qa/qa-response";
 import { resolveDeclineOutcome, SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
 import {
   S2_015_DESCRIBED_EXTERNAL_ENTITY_CASE,
@@ -22,6 +22,7 @@ import {
   type EntityPlatformRefusalObservation,
 } from "../../../helpers/entity-platform-refusal";
 import {
+  claimFrom,
   createFakeQaModel,
   expectContextOnlyForTarget,
   expectDeclined,
@@ -225,7 +226,10 @@ describe("S2-015 real answerQuestion integration", () => {
       const evaluationCase = refusalCases[index];
       expect(answer).toEqual({
         outcome: ENTITY_PLATFORM_DECLINE_OUTCOMES[evaluationCase.expectedCategory],
-        answer: SCOPE_CLEAR_ANSWER,
+        answer: nonAnswerText(
+          ENTITY_PLATFORM_DECLINE_OUTCOMES[evaluationCase.expectedCategory],
+          "Google Maps",
+        ),
         citedReviewIds: [],
         promptVersion: SYSTEM_PROMPT_VERSION,
         targetId: dataset.target.id,
@@ -292,7 +296,7 @@ describe("S2-015 real answerQuestion integration", () => {
     expect(executionErrors).toEqual([]);
     expect(answers[0]).toEqual({
       outcome: "declined_other_entity",
-      answer: SCOPE_CLEAR_ANSWER,
+      answer: nonAnswerText("declined_other_entity", "Google Maps"),
       citedReviewIds: [],
       promptVersion: SYSTEM_PROMPT_VERSION,
       targetId: dataset.target.id,
@@ -372,8 +376,8 @@ describe("S2-015 real answerQuestion integration", () => {
         evaluationCase,
         reply.payload({
           outcome: ENTITY_PLATFORM_DECLINE_OUTCOMES[evaluationCase.expectedCategory],
-          answer: SCOPE_CLEAR_ANSWER,
-          citedReviewIds: [dataset.reviews[0].id],
+          claims: [claimFrom("Reviewers mention this.", dataset.reviews[0])],
+          coverage: "none",
         }),
       );
 

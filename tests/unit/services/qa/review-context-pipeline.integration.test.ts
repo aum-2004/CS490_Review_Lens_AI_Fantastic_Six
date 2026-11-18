@@ -10,6 +10,8 @@ import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import * as qaRequest from "@/services/qa/qa-request";
 
+import { claimFrom, claimReply } from "../../../helpers/qa-harness/grounded-reply";
+
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
@@ -137,11 +139,9 @@ function setup() {
               content: [
                 {
                   type: "output_text",
-                  text: JSON.stringify({
-                    outcome: "answered",
-                    answer: reviews[0].text,
-                    citedReviewIds: [reviews[0].id],
-                  }),
+                  text: claimReply.text(
+                    claimReply.answered([claimFrom(reviews[0].text, reviews[0])]),
+                  ),
                 },
               ],
             },
@@ -505,11 +505,7 @@ describe("production questions route with actual context, orchestration and prov
                 content: [
                   {
                     type: "output_text",
-                    text: JSON.stringify({
-                      outcome,
-                      answer: "Controlled response",
-                      citedReviewIds: [],
-                    }),
+                    text: JSON.stringify({ outcome, claims: [], coverage: "none" }),
                   },
                 ],
               },
@@ -568,11 +564,14 @@ describe("production questions route with actual context, orchestration and prov
                 content: [
                   {
                     type: "output_text",
-                    text: JSON.stringify({
-                      outcome: "answered",
-                      answer: "Untrusted response",
-                      citedReviewIds: ["other-review"],
-                    }),
+                    text: claimReply.text(
+                      claimReply.answered([
+                        claimFrom("Untrusted response", {
+                          id: "other-review",
+                          text: "Other text.",
+                        }),
+                      ]),
+                    ),
                   },
                 ],
               },
@@ -816,11 +815,11 @@ describe("actual S2-010/S2-011 integration (required)", () => {
   it("rejects a foreign citation after real authorization and context construction", async () => {
     const { deps } = setup();
     const callModel = jest.fn(async () => ({
-      text: JSON.stringify({
-        outcome: "answered",
-        answer: "Unsupported claim",
-        citedReviewIds: ["other-review"],
-      }),
+      text: claimReply.text(
+        claimReply.answered([
+          claimFrom("Unsupported claim", { id: "other-review", text: "Other target text." }),
+        ]),
+      ),
     }));
     await expect(answerQuestion(A, "Question", { ...deps, callModel })).rejects.toMatchObject({
       code: "UNGROUNDED_ANSWER",

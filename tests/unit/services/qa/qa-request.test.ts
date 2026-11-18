@@ -8,6 +8,7 @@ import {
   QaInputValidationError,
   runGroundedQaRequest,
   toPromptContext,
+  type QaPromptContext,
   type QaReviewContextBuilder,
 } from "@/services/qa/qa-request";
 import {
@@ -113,7 +114,9 @@ function setup(result: S2010ReviewDatasetContext | Error) {
     },
   );
   const builder: QaReviewContextBuilder = buildReviewDatasetContext;
-  const invokeModel = jest.fn(async (request: QaModelRequest) => ({ sent: request }));
+  const invokeModel = jest.fn<Promise<{ sent: QaModelRequest }>, [QaModelRequest, QaPromptContext]>(
+    async (request) => ({ sent: request }),
+  );
   return { buildReviewDatasetContext, deps: { buildReviewDatasetContext: builder, invokeModel } };
 }
 
@@ -158,6 +161,18 @@ describe("runGroundedQaRequest", () => {
     );
     expect(request.reviewIds).toEqual(defaultContext.reviews.map((r) => r.id));
     expect(request.maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
+  });
+
+  it("passes the invoker the same projected context the request was built from", async () => {
+    const { deps } = setup(defaultContext);
+
+    await runGroundedQaRequest(TARGET_ID, "What do customers like?", deps);
+
+    const [request, context] = deps.invokeModel.mock.calls[0];
+    // The reply validator checks quotes against these reviews, so they must be exactly the
+    // reviews whose text built the request: same IDs, same order, same text.
+    expect(context).toEqual(toPromptContext(defaultContext));
+    expect(context.reviews.map((review) => review.id)).toEqual(request.reviewIds);
   });
 
   it("does not forward the target source URL or S2-010's evidenceJson to the model", async () => {

@@ -6,18 +6,20 @@
 
 ## What this provides
 
-| Export                      | Purpose                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------------------- |
-| `buildSystemPrompt`         | ReviewLens rules bound to the validated active review platform, but independent of target name. |
-| `buildQaModelRequest`       | The full provider-neutral model request: system instructions plus review dataset and question.  |
-| `SYSTEM_PROMPT_VERSION`     | Version tag sent with every request. Bump it whenever the prompt text changes.                  |
-| `QA_OUTCOMES`               | The machine-readable outcomes the model must return.                                            |
-| `QaPromptError`             | Thrown when a request cannot be built safely. The caller must not call the model.               |
-| `QA_DECLINE_PRIORITY`       | Which decline outcome wins when more than one applies.                                          |
-| `resolveDeclineOutcome`     | Returns the winning decline outcome; used to label multi-category evaluation cases.             |
-| `QA_MAX_REQUEST_TOKENS`     | The single configurable cap on one model request, in tokens (enforced by S2-011, see below).    |
-| `QA_RESERVED_OUTPUT_TOKENS` | Output tokens reserved for the reply; sent to the provider as `maxOutputTokens`.                |
-| `runGroundedQaRequest`      | (`qa-request.ts`) Builds the S2-010 context, then the request, then calls the injected model.   |
+| Export                           | Purpose                                                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `buildSystemPrompt`              | ReviewLens rules bound to the validated active review platform, but independent of target name. |
+| `buildQaModelRequest`            | The full provider-neutral model request: system instructions plus review dataset and question.  |
+| `SYSTEM_PROMPT_VERSION`          | Version tag sent with every request. Bump it whenever the prompt text changes.                  |
+| `QA_OUTCOMES`                    | The machine-readable outcomes the model must return.                                            |
+| `QA_COVERAGE`                    | The coverage enum (`complete`, `partial`, `none`) that replaced the free-text `note` in v7.     |
+| `MAX_CLAIM_STATEMENT_CHARACTERS` | Longest claim statement (300). Stated in the prompt, enforced by `qa-response.ts`.              |
+| `QaPromptError`                  | Thrown when a request cannot be built safely. The caller must not call the model.               |
+| `QA_DECLINE_PRIORITY`            | Which decline outcome wins when more than one applies.                                          |
+| `resolveDeclineOutcome`          | Returns the winning decline outcome; used to label multi-category evaluation cases.             |
+| `QA_MAX_REQUEST_TOKENS`          | The single configurable cap on one model request, in tokens (enforced by S2-011, see below).    |
+| `QA_RESERVED_OUTPUT_TOKENS`      | Output tokens reserved for the reply; sent to the provider as `maxOutputTokens`.                |
+| `runGroundedQaRequest`           | (`qa-request.ts`) Builds the S2-010 context, then the request, then calls the injected model.   |
 
 The prompt text lives only in source control (`src/services/qa/system-prompt.ts`). It is not
 configured in a hosted AI console. Changes go through a reviewed pull request and a version bump.
@@ -72,8 +74,32 @@ content. The real authorized review IDs and rows are also checked unchanged.
 The model must reply with only this JSON object:
 
 ```json
-{ "outcome": "answered", "answer": "plain text", "citedReviewIds": ["<review id>"] }
+{
+  "outcome": "answered",
+  "claims": [
+    { "statement": "plain text", "evidence": [{ "reviewId": "<id>", "quote": "<exact>" }] }
+  ],
+  "coverage": "complete"
+}
 ```
+
+**Current version: `s2-013.v7`.** Since `s2-013.v5`, every finding is a claim whose evidence quotes
+one contiguous passage of the cited review. `v6` is reserved by PR #103 (target-name hardening,
+not merged yet), so the next prompt change in PR #104 is `v7`. `v7` changes, compared with `v5`:
+
+- **`note` is gone.** It was free text the server could not check. It is replaced by
+  `coverage`, a closed enum: `complete` or `partial` for `answered`, and `none` for every other
+  outcome. Any other combination is rejected.
+- **The server writes all non-claim text.** Decline, insufficient-evidence, and partial-coverage
+  wording comes from `nonAnswerText` and `PARTIAL_COVERAGE_TEXT` in `qa-response.ts`. Evidence
+  rules 4 and 5 and scope rule 9 now tell the model not to write that text.
+- **Statements are short.** One plain-text sentence, at most `MAX_CLAIM_STATEMENT_CHARACTERS`
+  (300), with no review IDs. The prompt also says that each quote is shown next to its statement.
+
+Scope rules 6–8, the outcome definitions, the decline priority, and the untrusted-content and
+privacy rules (10–11) are unchanged. A test (`v7 combined prompt: main's S2-013 protections and
+the grounding rules together`) checks that one prompt carries both. See `docs/s2-011-answers.md`
+for validation.
 
 | `outcome`                    | Meaning                                                                                              | S2-004 category                       |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------- |
@@ -114,8 +140,10 @@ New York case ambiguous. An earlier draft of this change limited `declined_other
 "specific, named" entities; security review (#89) showed that let unnamed comparisons slip
 through, so "named or only described" replaced it.
 
-S2-011 must validate this reply before showing anything to the user: reject unknown outcomes, and
-drop or reject `citedReviewIds` values that were not in the request's `reviewIds`.
+S2-011 validates this reply before showing anything to the user: it rejects unknown outcomes and
+coverage values, any extra field (including the removed `note`), review IDs that were not in the
+request's `reviewIds`, quotes that are not contiguous spans of the cited review, and statements
+that contain a review ID or repeat eight or more consecutive words of this prompt (`PROMPT_ECHO`).
 
 ## Request safety
 
@@ -211,6 +239,10 @@ citation behavior. The spending guard and explicit approval requirements in
   validated platform label, while the target name, review evidence, and question are sent only in
   `input`. The adapter tests exercise both token counting and generation with fake HTTP; semantic
   adherence still requires the separately authorized v6 evaluation described above.
+- Response validation: unknown outcomes and coverage values, malformed JSON, extra fields
+  (including the removed `note`), review IDs outside the request's `reviewIds`, unverifiable
+  quotes, and statements that echo the prompt (`PROMPT_ECHO`) are rejected before anything
+  reaches the user.
 - The S2-BR rule text was not available in the repository when this was written. The prompt was
   written from the S2-013, S2-011, S2-012, S2-014, S2-015, and S2-020 issue guidance and should be
   checked against the business rules document.

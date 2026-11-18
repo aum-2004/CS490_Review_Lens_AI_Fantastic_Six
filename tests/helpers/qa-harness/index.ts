@@ -392,5 +392,6 @@ export * from "./contract";
 export * from "./fake-model";
 export * from "./fake-openai-fetch";
 export * from "./fake-supabase";
+export * from "./grounded-reply";
 export * from "./network-guard";
 export * from "./real-pipeline";

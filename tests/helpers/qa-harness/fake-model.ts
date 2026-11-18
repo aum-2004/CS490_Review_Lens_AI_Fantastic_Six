@@ -1,13 +1,22 @@
 import { QaModelError, type QaModelErrorCode } from "@/services/qa/openai-qa-client";
+import { MAX_EVIDENCE_PER_CLAIM } from "@/services/qa/qa-response";
 
 import {
   QA_INPUT_QUESTION_HEADER,
+  type QaCoverage,
   type QaModelCaller,
   type QaModelReply,
   type QaModelReplyPayload,
   type QaModelRequest,
   type QaOutcome,
 } from "./contract";
+import { parseEvidenceRows } from "./assertions";
+import {
+  answeredFromRequest,
+  claimReply,
+  DEFAULT_CLAIM_STATEMENT,
+  quoteChunksOf,
+} from "./grounded-reply";
 
 /**
  * S2-003 deterministic fake for the Q&A model seam (`QaModelCaller`).
@@ -228,21 +237,49 @@ export const reply = {
   payload(payload: QaModelReplyPayload, delayMs?: number): QaReplySpec {
     return { kind: "payload", payload, delayMs };
   },
-  answered(citedReviewIds: string[], answer = "Fixture answer grounded in the cited reviews.") {
-    return reply.payload({ outcome: "answered", answer, citedReviewIds });
+  /**
+   * An `answered` reply with one claim citing every listed review. Each quote is taken from that
+   * review's text in the request's REVIEW DATASET when the call is made, so it passes the S2-011
+   * quote check; an ID outside the dataset gets a placeholder quote (UNGROUNDED_ANSWER).
+   */
+  answered(
+    citedReviewIds: string[],
+    statement = DEFAULT_CLAIM_STATEMENT,
+    coverage: Exclude<QaCoverage, "none"> = "complete",
+  ): QaReplySpec {
+    return reply.dynamic((request) =>
+      reply.payload(answeredFromRequest(request, citedReviewIds, statement, coverage)),
+    );
   },
-  /** Pass citations only to script a contradictory reply; #79 rejects it (UNEXPECTED_CITATIONS). */
+  /**
+   * Pass citations only to script a contradictory reply; it is rejected (UNEXPECTED_CITATIONS).
+   * `_legacyText` is ignored: since s2-013.v7 the model writes no explanation and the server owns
+   * the insufficient-evidence wording. It is accepted only so scripts written for the earlier
+   * note-based reply still compile; it never reaches the reply.
+   */
   insufficientEvidence(
     citedReviewIds: string[] = [],
-    answer = "The reviews do not contain enough information to answer that.",
-  ) {
-    return reply.payload({ outcome: "insufficient_evidence", answer, citedReviewIds });
+    /** @deprecated Ignored since s2-013.v7 (no free-text field); remove in a follow-up cleanup. */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ignored on purpose, see above
+    _legacyText?: string,
+  ): QaReplySpec {
+    if (citedReviewIds.length === 0) return reply.payload(claimReply.insufficientEvidence());
+    return reply.dynamic((request) =>
+      reply.payload({
+        ...answeredFromRequest(request, citedReviewIds),
+        outcome: "insufficient_evidence",
+        coverage: "none",
+      }),
+    );
   },
+  /** `_legacyText` is ignored for the same reason as in `insufficientEvidence`. */
   declined(
     outcome: Exclude<QaOutcome, "answered" | "insufficient_evidence">,
-    answer = "I can only analyze the reviews for the active target.",
-  ) {
-    return reply.payload({ outcome, answer, citedReviewIds: [] });
+    /** @deprecated Ignored since s2-013.v7 (no free-text field); remove in a follow-up cleanup. */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ignored on purpose, see above
+    _legacyText?: string,
+  ): QaReplySpec {
+    return reply.payload(claimReply.declined(outcome));
   },
   /** Exact model text, e.g. malformed JSON or prose with no JSON at all. */
   raw(text: string, delayMs?: number): QaReplySpec {
@@ -266,16 +303,26 @@ export const reply = {
     return { kind: "dynamic", respond } satisfies QaReplySpec;
   },
   /**
-   * Adversarial echo: answers with everything the application supplied (instructions plus review
-   * dataset, but not the user's own question) and cites every supplied review. If any foreign
-   * data reached the model, it is now in the answer too (S2-016 output check).
+   * Adversarial echo: answers by quoting the full text of every supplied review, in contiguous
+   * spans, and cites each one. If any foreign review reached the model, its text is now in the
+   * answer too, because the server shows every verified quote (S2-016 output check). Since
+   * s2-013.v7 there is no free-text field, so the system instructions cannot be echoed here; a
+   * statement that repeats them is rejected as PROMPT_ECHO.
    */
   echoContext(): QaReplySpec {
-    return reply.dynamic((request) =>
-      reply.answered(
-        [...request.reviewIds],
-        `ECHO ${request.instructions}\n${applicationSuppliedInput(request)}`,
-      ),
-    );
+    return reply.dynamic((request) => {
+      const texts = new Map(parseEvidenceRows(request).map((row) => [row.id, row.text]));
+      const evidence = request.reviewIds.flatMap((reviewId) =>
+        quoteChunksOf(texts.get(reviewId) ?? "").map((quote) => ({ reviewId, quote })),
+      );
+      const claims = [];
+      for (let start = 0; start < evidence.length; start += MAX_EVIDENCE_PER_CLAIM) {
+        claims.push({
+          statement: "ECHO evidence.",
+          evidence: evidence.slice(start, start + MAX_EVIDENCE_PER_CLAIM),
+        });
+      }
+      return reply.payload(claimReply.answered(claims));
+    });
   },
 };

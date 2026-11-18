@@ -7,6 +7,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
+
+import { claimFrom, claimReply } from "../../../helpers/qa-harness/grounded-reply";
 jest.mock("server-only", () => ({}));
 jest.mock("next/server", () => ({
   ...jest.requireActual("next/server"),
@@ -143,11 +145,9 @@ function setup() {
             content: [
               {
                 type: "output_text",
-                text: JSON.stringify({
-                  outcome: "answered",
-                  answer: reviews[0].text,
-                  citedReviewIds: [reviews[0].id],
-                }),
+                text: claimReply.text(
+                  claimReply.answered([claimFrom(reviews[0].text, reviews[0])]),
+                ),
               },
             ],
           },
@@ -268,7 +268,11 @@ it("rebuilds B context from changed persisted fixture rows after switching", asy
   row.review_text = "BETA_UPDATED customer service";
   row.rating = 2;
   expect(await (await ask(B)).json()).toMatchObject({
-    data: { targetId: B, answer: "BETA_UPDATED customer service" },
+    // The claim's quote is checked against the freshly persisted text, not the earlier row.
+    data: {
+      targetId: B,
+      answer: `BETA_UPDATED customer service\n  "BETA_UPDATED customer service" [${row.id}]`,
+    },
   });
   expect(JSON.stringify(f.outgoing.at(-1))).not.toContain("BETA_SERVICE_MARKER");
 });
