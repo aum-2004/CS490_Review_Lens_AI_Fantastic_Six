@@ -119,7 +119,11 @@ test("creates two targets without a reload and resets success, draft, and errors
   await page.reload();
   await expect(confirmation).toHaveCount(0);
   await page.getByRole("link", { name: "My Targets", exact: true }).first().click();
-  await expect(page.getByRole("heading", { name: firstName })).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Your analysis targets" })
+      .getByRole("heading", { name: firstName }),
+  ).toBeVisible();
   const firstCard = page
     .getByRole("listitem")
     .filter({ has: page.getByRole("heading", { name: firstName, exact: true }) });
@@ -136,8 +140,16 @@ test("creates two targets without a reload and resets success, draft, and errors
   await expect(confirmation).toContainText("Target created");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(secondName);
   await page.getByRole("link", { name: "My Targets", exact: true }).first().click();
-  await expect(page.getByRole("heading", { name: firstName })).toBeVisible();
-  await expect(page.getByRole("heading", { name: secondName })).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Your analysis targets" })
+      .getByRole("heading", { name: firstName }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Your analysis targets" })
+      .getByRole("heading", { name: secondName }),
+  ).toBeVisible();
 
   await page.getByRole("link", { name: "New Target", exact: true }).click();
   await page.getByLabel("Target name *").fill("Unsubmitted draft");

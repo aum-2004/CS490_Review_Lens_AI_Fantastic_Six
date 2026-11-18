@@ -8,8 +8,7 @@ primitives following shadcn/ui's composition patterns. Components use PascalCase
 to follow S1-001. Radix primitives are imported through the approved `radix-ui` package.
 The Button and Input follow the official shadcn/ui source, adapted for the team's 40px
 height and two-pixel focus ring. Form composes React Hook Form and Radix Slot/Label.
-Theme tokens live in `src/app/globals.css`; the existing Geist font remains pending a
-separate decision about the S1-002 Inter requirement.
+Theme tokens live in `src/app/globals.css`. Analyst Studio uses Segoe UI and system sans-serif fallbacks, flat 12px-radius cards with 20px padding, 8px-radius controls, and blue accents in both light and dark modes. ThemeToggle in the navigation rail persists explicit choices; the system preference applies until a choice is saved.
 
 Reuse these primitives; add variants here instead of duplicating form styles in features.
 If using the shadcn CLI later, account for its lowercase filenames so it does not generate
@@ -26,6 +25,7 @@ Use these exact imports and extend the existing shared files when a later story 
 | Import                        | Supported API                                                                                                                    |
 | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `@/components/ui/Button`      | `Button`; native button props, `asChild`, and `variant` values `default`, `outline`, `ghost`, `destructive`; default height 40px |
+| `@/components/ui/Textarea`    | `Textarea`; native textarea props, resize handle, shared field styling                                                           |
 | `@/components/ui/Input`       | `Input`; native input props and React 19 ref forwarding through props                                                            |
 | `@/components/ui/Label`       | `Label`; Radix Label props including `htmlFor`                                                                                   |
 | `@/components/ui/Card`        | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`; composable card sections                                    |

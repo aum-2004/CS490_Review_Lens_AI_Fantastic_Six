@@ -108,6 +108,23 @@ it("passes the verified session user identity to ReviewQuestions", async () => {
   );
 });
 
+it("passes the active target's saved review evidence to the merged citation display", async () => {
+  const evidence = {
+    id: "11111111-1111-4111-8111-111111111111",
+    analysisTargetId: "owned-target",
+    rating: 4,
+    text: "Saved review used to label supporting evidence.",
+    reviewDate: null,
+  };
+  listReviews.mockResolvedValue([{ ...evidence, reviewerName: "Private reviewer name" }]);
+
+  render(await ProtectedTargetWorkspace({ params }));
+
+  const props = jest.mocked(ReviewQuestions).mock.calls[0][0];
+  expect(props.reviews).toEqual([evidence]);
+  expect(props.reviews?.[0]).not.toHaveProperty("reviewerName");
+});
+
 const persistedAttempt: IngestionAttemptRow = {
   id: "attempt-a",
   analysis_target_id: "owned-target",
@@ -483,7 +500,7 @@ it("offers owned targets after verification and keeps context if the switch list
   expect(jest.mocked(getOwnedTargetOrThrow).mock.invocationCallOrder[0]).toBeLessThan(
     jest.mocked(listAnalysisTargets).mock.invocationCallOrder[0],
   );
-  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Switch target:/ }));
   const nav = within(screen.getByRole("navigation", { name: "Switch analysis target" }));
   expect(nav.getByRole("link", { name: /^Bakery \(active\)/ })).toHaveAttribute(
     "aria-current",
@@ -499,7 +516,7 @@ it("offers owned targets after verification and keeps context if the switch list
   unmount();
   jest.mocked(listAnalysisTargets).mockRejectedValueOnce(new Error("PRIVATE_DATABASE_DETAIL"));
   render(await ProtectedTargetWorkspace({ params }));
-  fireEvent.click(screen.getByRole("button", { name: "Switch target" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Switch target:/ }));
   expect(screen.getByText(/We couldn't load your other targets/)).toBeVisible();
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Bakery");
   expect(screen.getByRole("link", { name: "View all targets" })).toHaveAttribute(

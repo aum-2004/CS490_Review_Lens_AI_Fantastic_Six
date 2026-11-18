@@ -40,6 +40,21 @@ beforeEach(() => {
   ask.mockResolvedValue(answer);
 });
 
+it.each(["What stands out?", "What do customers praise?", "What could be improved?"])(
+  "fills and focuses the suggested question without making a paid request: %s",
+  async (question) => {
+    render(<ReviewQuestions {...props} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: question }));
+    });
+
+    expect(screen.getByLabelText(/Question/)).toHaveValue(question);
+    expect(screen.getByLabelText(/Question/)).toHaveFocus();
+    expect(ask).not.toHaveBeenCalled();
+  },
+);
+
 it("submits a trimmed question with the active target and displays the answer", async () => {
   render(<ReviewQuestions {...props} />);
   expect(screen.getByText(/Active target:/)).toHaveTextContent("Bakery · Google Maps");
@@ -47,6 +62,23 @@ it("submits a trimmed question with the active target and displays the answer", 
   submit();
   expect(await screen.findByText(answer.answer)).toBeInTheDocument();
   expect(ask).toHaveBeenCalledWith("target-a", "What do reviewers like?", expect.any(AbortSignal));
+});
+
+it("submits Enter through validation while preserving Shift+Enter and IME composition", async () => {
+  render(<ReviewQuestions {...props} />);
+  const input = screen.getByRole("textbox", { name: /Question/ });
+  fireEvent.change(input, { target: { value: "What do reviewers like?" } });
+  expect(fireEvent.keyDown(input, { key: "Enter", shiftKey: true })).toBe(true);
+  expect(fireEvent.keyDown(input, { key: "Enter", isComposing: true })).toBe(true);
+  expect(ask).not.toHaveBeenCalled();
+
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter" });
+  });
+
+  expect(ask).toHaveBeenCalledTimes(1);
+  expect(ask).toHaveBeenCalledWith("target-a", "What do reviewers like?", expect.any(AbortSignal));
+  expect(await screen.findByText(answer.answer)).toBeInTheDocument();
 });
 
 it.each(["   ", "x".repeat(2001)])(

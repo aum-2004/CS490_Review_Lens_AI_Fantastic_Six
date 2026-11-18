@@ -7,6 +7,7 @@ const createJestConfig = nextJest({
 
 const config: Config = {
   clearMocks: true,
+  modulePathIgnorePatterns: ["<rootDir>/review-pr", "<rootDir>/.next/"],
   collectCoverageFrom: [
     "src/**/*.{ts,tsx}",
     "scripts/**/*.ts",

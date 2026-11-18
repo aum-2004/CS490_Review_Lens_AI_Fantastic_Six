@@ -15,6 +15,7 @@ import {
   QA_RESERVED_OUTPUT_TOKENS,
   QaPromptError,
   buildSystemPrompt,
+  REVIEW_PLATFORM_LABELS,
   type QaModelRequest,
 } from "@/services/qa/system-prompt";
 import { assertCountableSize } from "@/services/qa/token-budget";
@@ -155,7 +156,9 @@ describe("runGroundedQaRequest", () => {
     expect(deps.invokeModel).toHaveBeenCalledTimes(1);
     const request = deps.invokeModel.mock.calls[0][0];
     expect(request.targetId).toBe(TARGET_ID);
-    expect(request.instructions).toBe(buildSystemPrompt(toPromptContext(defaultContext).target));
+    expect(request.instructions).toBe(
+      buildSystemPrompt(REVIEW_PLATFORM_LABELS[defaultContext.target.platform]),
+    );
     expect(request.reviewIds).toEqual(defaultContext.reviews.map((r) => r.id));
     expect(request.maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
   });

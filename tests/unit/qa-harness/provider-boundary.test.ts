@@ -7,7 +7,7 @@ jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn(
 
 import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
 import { QA_REPLY_JSON_SCHEMA } from "@/services/qa/qa-response";
-import { buildSystemPrompt } from "@/services/qa/system-prompt";
+import { buildSystemPrompt, REVIEW_PLATFORM_LABELS } from "@/services/qa/system-prompt";
 
 import { allQaDatasets, getQaDataset, type QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
@@ -81,12 +81,15 @@ function expectError(result: QaAskResult, key: QaPipelineErrorKey) {
 
 /** The provider-neutral request as reconstructed from what was actually sent over the wire. */
 function sentRequest(call: FakeOpenAiCall, targetId: string): QaModelRequest {
-  const rows = JSON.parse(String(call.body.input).split("\n")[1]) as { id: string }[];
+  const input = String(call.body.input);
+  const lines = input.split("\n");
+  const header = lines.findIndex((line) => line.startsWith("REVIEW DATASET ("));
+  const rows = JSON.parse(lines[header + 1]) as { id: string }[];
   return {
     promptVersion: SYSTEM_PROMPT_VERSION,
     targetId,
     instructions: String(call.body.instructions),
-    input: String(call.body.input),
+    input,
     reviewIds: rows.map((row) => row.id),
     maxOutputTokens: Number(call.body.max_output_tokens),
   };
@@ -140,7 +143,7 @@ describe("outgoing request body", () => {
     const instructions = String(generation.body.instructions);
     const input = String(generation.body.input);
 
-    expect(instructions).toBe(buildSystemPrompt(targetA.target));
+    expect(instructions).toBe(buildSystemPrompt(REVIEW_PLATFORM_LABELS[targetA.target.platform]));
     for (const review of targetA.reviews) {
       expect(instructions).not.toContain(review.text);
       expect(input).toContain(JSON.stringify(review.text));

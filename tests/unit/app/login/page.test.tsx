@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import LoginPage from "@/app/login/page";
@@ -17,6 +17,8 @@ jest.mock("@/app/login/actions", () => ({ signIn: jest.fn(), register: jest.fn()
 
 beforeEach(() => {
   jest.resetAllMocks();
+  delete document.documentElement.dataset.theme;
+  localStorage.clear();
   jest.mocked(connection).mockResolvedValue(undefined);
   jest.mocked(getAuthenticatedUser).mockResolvedValue(null);
   jest.mocked(redirect).mockImplementation(() => {
@@ -99,4 +101,30 @@ it("does not display arbitrary notice text", async () => {
   expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(document.body).not.toHaveTextContent("private-token-do-not-show");
+});
+
+afterEach(() => {
+  delete document.documentElement.dataset.theme;
+  localStorage.clear();
+});
+
+it("retains the visible theme toggle and pressed state on the merged sign-in form", async () => {
+  render(await loginView({ next: "/analysis-targets" }));
+  const toggle = screen.getByRole("button", { name: "Dark mode", pressed: false });
+  await act(async () => {
+    fireEvent.click(toggle);
+  });
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  expect(toggle).not.toHaveAttribute("aria-label");
+  expect(localStorage.getItem("reviewlens-theme")).toBe("dark");
+  expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
+  expect(redirect).not.toHaveBeenCalled();
+});
+
+it("keeps the theme control available during authentication failure", async () => {
+  jest.mocked(getAuthenticatedUser).mockRejectedValue(new Error("private-provider-diagnostic"));
+  render(await loginView());
+  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
+  expect(screen.getByRole("alert")).toHaveTextContent("Authentication is temporarily unavailable");
+  expect(document.body).not.toHaveTextContent("private-provider-diagnostic");
 });

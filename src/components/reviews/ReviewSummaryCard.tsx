@@ -10,40 +10,43 @@ export interface ReviewSummaryCardProps {
 export function ReviewSummaryCard({ summary, targetName }: ReviewSummaryCardProps) {
   return (
     <Card aria-labelledby="review-summary-title" className="space-y-4">
-      <div>
-        <h2 id="review-summary-title" className="text-xl font-semibold">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h2 id="review-summary-title" className="text-lg font-semibold">
           Review summary
         </h2>
-        <p className="break-words text-sm text-muted-foreground">
+        <p className="min-w-0 max-w-full break-words text-sm text-muted-foreground">
           Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
           Maps. Summary of this target&apos;s persisted reviews.
         </p>
+        <div className="text-xs">
+          <p className="text-muted-foreground">Saved dataset snapshot</p>
+          <p className="sr-only">Ingestion status</p>
+          <div className="mt-1">
+            <IngestionStatus
+              state={summary.ingestionStatus}
+              skippedCount={summary.skippedCount ?? undefined}
+            />
+          </div>
+        </div>
       </div>
-      <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:[&>div+div]:border-l sm:[&>div+div]:border-border sm:[&>div+div]:pl-4">
         <div>
           <dt className="text-sm text-muted-foreground">Reviews saved</dt>
-          <dd className="text-2xl font-semibold">{summary.reviewCount}</dd>
+          <dd className="mt-1 text-3xl font-semibold tracking-tight">{summary.reviewCount}</dd>
         </div>
         <div>
           <dt className="text-sm text-muted-foreground">Average rating</dt>
-          <dd className="text-2xl font-semibold">
+          <dd className="mt-1 text-3xl font-semibold tracking-tight">
             {summary.averageRating === null
               ? "No ratings yet"
               : `${summary.averageRating.toFixed(1)} / 5`}
           </dd>
         </div>
         <div>
-          <dt className="text-sm text-muted-foreground">Ingestion status</dt>
-          <dd className="mt-1">
-            <IngestionStatus
-              state={summary.ingestionStatus}
-              skippedCount={summary.skippedCount ?? undefined}
-            />
-          </dd>
-        </div>
-        <div>
           <dt className="text-sm text-muted-foreground">Skipped records</dt>
-          <dd className="text-2xl font-semibold">{summary.skippedCount ?? "Unavailable"}</dd>
+          <dd className="mt-1 text-3xl font-semibold tracking-tight">
+            {summary.skippedCount ?? "Unavailable"}
+          </dd>
         </div>
       </dl>
     </Card>

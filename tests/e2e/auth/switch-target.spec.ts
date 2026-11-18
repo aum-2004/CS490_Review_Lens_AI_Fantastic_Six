@@ -40,7 +40,7 @@ test("switches owned targets with keyboard navigation and updates all active con
   await qa.getByLabel(/Question/).fill("What do reviewers like?");
   await qa.getByRole("button", { name: "Ask question" }).click();
   await expect(qa).toContainText("Bakery answer.");
-  const switcher = page.getByRole("button", { name: "Switch target" });
+  const switcher = page.getByRole("button", { name: /^Switch target:/ });
   await switcher.focus();
   await page.keyboard.press("Enter");
   const nav = page.getByRole("navigation", { name: "Switch analysis target" });
@@ -77,7 +77,7 @@ test("switches owned targets with keyboard navigation and updates all active con
   await expect(qa).not.toContainText("Coffee answer.");
   for (const width of [1280, 375]) {
     await page.setViewportSize({ width, height: 900 });
-    await page.getByRole("button", { name: "Switch target" }).click();
+    await page.getByRole("button", { name: /^Switch target:/ }).click();
     await expect(nav.getByRole("link", { name: /^A coffee shop \(active\)/ })).toHaveAttribute(
       "aria-current",
       "page",
@@ -86,7 +86,7 @@ test("switches owned targets with keyboard navigation and updates all active con
       true,
     );
     await page.screenshot({ path: `test-results/s2-017-switch-${width}.png`, fullPage: true });
-    await page.getByRole("button", { name: "Switch target" }).click();
+    await page.getByRole("button", { name: /^Switch target:/ }).click();
   }
   await page.goBack();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
@@ -100,10 +100,10 @@ test("does not list or open another user's targets", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
     "This target isn't available to your account.",
   );
-  await expect(page.getByRole("button", { name: "Switch target" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Switch target:/ })).toHaveCount(0);
   await page.getByRole("link", { name: "Back to My Targets" }).click();
   await page.getByRole("link", { name: /Open / }).click();
-  await page.getByRole("button", { name: "Switch target" }).click();
+  await page.getByRole("button", { name: /^Switch target:/ }).click();
   const nav = page.getByRole("navigation", { name: "Switch analysis target" });
   await expect(nav).not.toContainText("A bakery");
   await expect(nav).not.toContainText("A coffee shop");

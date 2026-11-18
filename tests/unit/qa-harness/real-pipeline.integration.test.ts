@@ -7,7 +7,7 @@ jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn(
 
 import { QA_MAX_QUESTION_CHARACTERS } from "@/services/qa/qa-request";
 import { MAX_CONTEXT_REVIEWS } from "@/services/qa/review-context";
-import { buildSystemPrompt } from "@/services/qa/system-prompt";
+import { buildSystemPrompt, REVIEW_PLATFORM_LABELS } from "@/services/qa/system-prompt";
 
 import {
   allQaDatasets,
@@ -105,7 +105,9 @@ describe("real pipeline wiring", () => {
       order: "created_at.asc,id.asc",
       limit: String(MAX_CONTEXT_REVIEWS + 1),
     });
-    expect(request.instructions).toBe(buildSystemPrompt(restaurantA.target));
+    expect(request.instructions).toBe(
+      buildSystemPrompt(REVIEW_PLATFORM_LABELS[restaurantA.target.platform]),
+    );
     expect(request.maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
   });
 

@@ -178,10 +178,14 @@ describe("S2-012 controlled datasets", () => {
 
 /** The dataset section of the outgoing request, parsed back into the reviews the model sees. */
 function sentDataset(request: QaModelRequest): unknown {
-  const match =
-    /^REVIEW DATASET \((\d+) reviews, JSON array\):\n([\s\S]*)\n\nQUESTION \(JSON string\):\n([\s\S]*)$/.exec(
-      request.input,
-    );
+  const datasetStart = request.input.indexOf("REVIEW DATASET (");
+  const questionStart = request.input.indexOf("\n\nQUESTION (JSON string):\n");
+  if (datasetStart === -1 || questionStart === -1) {
+    throw new Error("Request input does not have the expected sections.");
+  }
+  const match = /^REVIEW DATASET \((\d+) reviews, JSON array\):\n([\s\S]*)$/.exec(
+    request.input.slice(datasetStart, questionStart),
+  );
   if (!match) throw new Error("Request input does not have the expected sections.");
   const reviews: unknown = JSON.parse(match[2]);
   expect(Array.isArray(reviews) && reviews.length).toBe(Number(match[1]));

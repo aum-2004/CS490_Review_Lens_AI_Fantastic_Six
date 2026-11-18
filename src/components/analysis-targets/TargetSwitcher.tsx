@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from "react";
 import Link from "next/link";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 type TargetOption = { id: string; name: string; sourceUrl: string };
@@ -33,11 +34,15 @@ export function TargetSwitcher({
       <Button
         ref={trigger}
         variant="outline"
+        aria-label={`Switch target: ${activeTarget.name}`}
+        className="w-full justify-between"
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen(!open)}
       >
-        Switch target
+        <span className="truncate">{activeTarget.name}</span>
+        <span className="sr-only"> Switch target</span>
+        <ChevronDown size={16} aria-hidden="true" />
       </Button>
       <nav id={listId} aria-label="Switch analysis target" hidden={!open}>
         {options ? (
