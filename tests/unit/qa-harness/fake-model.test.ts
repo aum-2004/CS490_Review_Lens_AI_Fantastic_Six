@@ -65,7 +65,7 @@ describe("createFakeQaModel", () => {
           evidence: [{ reviewId: "r1", quote: "Synthetic review r1 text." }],
         },
       ],
-      note: null,
+      coverage: "complete",
     });
     expect(JSON.parse(other.text).outcome).toBe("insufficient_evidence");
     expect(model.calls.map((call) => call.matchedRule)).toEqual(["pizza", "any"]);
@@ -189,14 +189,19 @@ describe("createFakeQaModel", () => {
     ]);
   });
 
-  it("echoes application-supplied context but not the user's question", async () => {
+  it("echoes every supplied review's full text as quotes, but not the user's question", async () => {
     const model = createFakeQaModel({ fallback: reply.echoContext() });
 
     const echoed = JSON.parse((await model.callModel(request("SECRET_QUESTION_TEXT"))).text);
 
     expect(echoed.outcome).toBe("answered");
-    expect(echoed.note).toContain("SYSTEM PROMPT");
-    expect(echoed.note).toContain("REVIEW DATASET");
+    expect(echoed.coverage).toBe("complete");
+    expect(Object.keys(echoed).sort()).toEqual(["claims", "coverage", "outcome"]);
+    expect(
+      echoed.claims.flatMap((claim: { evidence: { quote: string }[] }) =>
+        claim.evidence.map((item) => item.quote),
+      ),
+    ).toEqual(["Synthetic review r1 text.", "Synthetic review r2 text."]);
     expect(JSON.stringify(echoed)).not.toContain("SECRET_QUESTION_TEXT");
     expect(
       echoed.claims.flatMap((claim: { evidence: { reviewId: string }[] }) =>
@@ -218,6 +223,7 @@ describe("createFakeQaModel", () => {
   });
 
   it("scripts insufficient_evidence with quoted claims only when asked to", async () => {
+    // The legacy text argument is ignored: the reply has no free-text field since s2-013.v7.
     const model = createFakeQaModel({ fallback: reply.insufficientEvidence(["r2"], "No.") });
 
     expect(JSON.parse((await model.callModel(request("q"))).text)).toEqual({
@@ -227,7 +233,7 @@ describe("createFakeQaModel", () => {
           evidence: [{ reviewId: "r2", quote: "Synthetic review r2 text." }],
         }),
       ],
-      note: "No.",
+      coverage: "none",
     });
   });
 

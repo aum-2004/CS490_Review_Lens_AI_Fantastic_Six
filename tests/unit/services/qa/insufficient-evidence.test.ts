@@ -5,7 +5,12 @@ import type { QaReviewContext } from "@/services/qa/qa-request";
 import { SYSTEM_PROMPT_VERSION, type QaModelRequest } from "@/services/qa/system-prompt";
 
 import { scopeGuardEvaluationFixture as s2004 } from "../../../fixtures/scope-guard-evaluation";
-import { claimFrom, claimReply, evidenceFrom } from "../../../helpers/qa-harness/grounded-reply";
+import {
+  claimFrom,
+  claimReply,
+  evidenceFrom,
+  quoteOf,
+} from "../../../helpers/qa-harness/grounded-reply";
 
 jest.mock("server-only", () => ({}));
 
@@ -120,11 +125,11 @@ const s2004Dataset: ControlledDataset = {
 
 const DATASETS = [issueExample, s2004Dataset];
 
-const ADMITS_GAP_ANSWER =
-  "The reviews do not mention this, so I can't tell what customers think about it.";
+/** Server-owned wording since s2-013.v7; the model writes no explanation. Asserted literally. */
+const ADMITS_GAP_ANSWER = "These reviews don't contain enough information to answer that question.";
 
 /** The fake model's reply. Tests assert the expected outcome literally, never via this object. */
-const admitsGap = claimReply.insufficientEvidence(ADMITS_GAP_ANSWER);
+const admitsGap = claimReply.insufficientEvidence();
 
 function setup(context: QaReviewContext, reply: unknown) {
   const buildReviewDatasetContext = jest.fn(async () => context);
@@ -221,9 +226,9 @@ describe.each(
       expect(review.text.trim().length).toBeGreaterThan(0);
     }
     expect(sentQuestion(request)).toBe(question);
-    // Evidence rule 4: say clearly when the reviews lack the information; do not fill the gap.
+    // Evidence rule 4: report insufficient_evidence when the reviews lack it; do not fill the gap.
     expect(request.instructions).toMatch(
-      /do not contain enough information to\s+answer it, say so clearly\. Do not guess or fill the gap\s+from general knowledge/,
+      /do not contain enough information to\s+answer it, use "insufficient_evidence"\. Do not guess or fill the gap\s+from general knowledge/,
     );
     // Evidence rule 5: keep what the reviews say separate from what they do not say.
     expect(request.instructions).toMatch(
@@ -249,7 +254,7 @@ describe.each(
   });
 
   it("rejects a guessed 'answered' reply with no supporting reviews", async () => {
-    const guess = claimReply.answered([], "Yes, customers think so.");
+    const guess = claimReply.answered([]);
     await expect(answerQuestion(targetId, question, setup(context, guess))).rejects.toMatchObject({
       name: "QaResponseError",
       code: "UNGROUNDED_ANSWER",
@@ -282,13 +287,28 @@ describe.each(
   });
 
   it("rejects an insufficient_evidence reply that cites reviews (contradictory)", async () => {
-    const contradictory = claimReply.insufficientEvidence(ADMITS_GAP_ANSWER, [
+    const contradictory = claimReply.insufficientEvidence([
       claimFrom("Contradiction.", context.reviews[0]),
     ]);
     await expect(
       answerQuestion(targetId, question, setup(context, contradictory)),
     ).rejects.toMatchObject({ code: "UNEXPECTED_CITATIONS" });
   });
+
+  // PR #104 review, item 2: the insufficient-evidence answer used to be the model's free-text
+  // note, which could carry an unsupported finding. It is now impossible: there is no such field.
+  it.each([
+    ["an unsupported finding", "Customers think the parking lot is safe at night."],
+    ["echoed prompt text", "You are ReviewLens, an assistant that analyzes one set of reviews."],
+  ])(
+    "rejects an insufficient_evidence reply that tries to carry %s in a note",
+    async (_l, note) => {
+      const smuggled = { ...claimReply.insufficientEvidence(), note };
+      await expect(
+        answerQuestion(targetId, question, setup(context, smuggled)),
+      ).rejects.toMatchObject({ name: "QaResponseError", code: "INVALID_MODEL_RESPONSE" });
+    },
+  );
 });
 
 describe("S2-012 partial evidence", () => {
@@ -305,27 +325,38 @@ describe("S2-012 partial evidence", () => {
     }
   });
 
-  it("accepts 'answered' for the supported part when it quotes support and names the gap", async () => {
+  it("accepts 'answered' for the supported part when it quotes support and marks partial coverage", async () => {
     const partial = claimReply.answered(
       [claimFrom("One reviewer praised the margherita pizza's crisp crust.", context.reviews[0])],
-      "The reviews do not mention outdoor seating.",
+      "partial",
     );
 
     await expect(answerQuestion(targetId, question, setup(context, partial))).resolves.toEqual({
       outcome: "answered",
-      // Supported findings first, then the gap under a fixed server-side prefix (S2-012).
-      answer: `One reviewer praised the margherita pizza's crisp crust. [${pizzaReviewId}]\n\nNot covered by these reviews: The reviews do not mention outdoor seating.`,
+      // Supported findings with their quotes first, then fixed server text for the gap (S2-012).
+      answer: `One reviewer praised the margherita pizza's crisp crust.\n  "${quoteOf(context.reviews[0].text)}" [${pizzaReviewId}]\n\nParts of your question are not covered by these reviews.`,
       citedReviewIds: [pizzaReviewId],
       promptVersion: SYSTEM_PROMPT_VERSION,
       targetId,
     });
   });
 
-  it("tells the model to answer the supported part and state what is not covered", async () => {
+  it("rejects a partial answer that tries to state the gap (or a finding) in a note", async () => {
+    const partial = claimReply.answered(
+      [claimFrom("One reviewer praised the margherita pizza's crisp crust.", context.reviews[0])],
+      "partial",
+    );
+    const smuggled = { ...partial, note: "Outdoor seating is available and heated." };
+    await expect(
+      answerQuestion(targetId, question, setup(context, smuggled)),
+    ).rejects.toMatchObject({ name: "QaResponseError", code: "INVALID_MODEL_RESPONSE" });
+  });
+
+  it("tells the model to answer the supported part and mark the coverage as partial", async () => {
     const deps = setup(context, admitsGap);
     await answerQuestion(targetId, question, deps);
     expect(deps.callModel.mock.calls[0][0].instructions).toMatch(
-      /If the reviews\s+answer part of the question, use "answered" for that part, give a claim for each supported\s+finding, and state in "note" what the reviews do not cover/,
+      /If\s+the reviews answer part of the question, use "answered" for that part, give a claim for each\s+supported finding, and set "coverage" to "partial"/,
     );
   });
 });

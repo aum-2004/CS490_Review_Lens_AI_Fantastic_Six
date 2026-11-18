@@ -3,15 +3,14 @@
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 
-import { MAX_QUOTE_CHARACTERS } from "@/services/qa/qa-response";
+import { MAX_QUOTE_CHARACTERS, quoteSupportedByReview } from "@/services/qa/qa-response";
 
 import {
   answeredFromRequest,
   claimFrom,
   claimReply,
-  DEFAULT_DECLINE_NOTE,
-  DEFAULT_INSUFFICIENT_NOTE,
   evidenceFrom,
+  quoteChunksOf,
   quoteOf,
   UNKNOWN_REVIEW_QUOTE,
   type QaModelRequest,
@@ -54,20 +53,26 @@ describe("grounded reply builders", () => {
     });
   });
 
-  it("builds every outcome with the {outcome, claims, note} shape", () => {
+  it("builds every outcome with the {outcome, claims, coverage} shape and no free text", () => {
     const claims = [claimFrom("Crisp crust.", R1)];
-    expect(claimReply.answered(claims)).toEqual({ outcome: "answered", claims, note: null });
-    expect(claimReply.answered(claims, "No seating info.").note).toBe("No seating info.");
+    expect(claimReply.answered(claims)).toEqual({
+      outcome: "answered",
+      claims,
+      coverage: "complete",
+    });
+    expect(claimReply.answered(claims, "partial").coverage).toBe("partial");
     expect(claimReply.insufficientEvidence()).toEqual({
       outcome: "insufficient_evidence",
       claims: [],
-      note: DEFAULT_INSUFFICIENT_NOTE,
+      coverage: "none",
     });
     expect(claimReply.declined("declined_other_entity")).toEqual({
       outcome: "declined_other_entity",
       claims: [],
-      note: DEFAULT_DECLINE_NOTE,
+      coverage: "none",
     });
+    expect(claimReply.declined("declined_other_entity", claims).claims).toEqual(claims);
+    expect(claimReply.insufficientEvidence(claims).claims).toEqual(claims);
     expect(JSON.parse(claimReply.text(claimReply.answered(claims)))).toEqual(
       claimReply.answered(claims),
     );
@@ -77,7 +82,7 @@ describe("grounded reply builders", () => {
     expect(answeredFromRequest(requestWith([R1]), [])).toEqual({
       outcome: "answered",
       claims: [],
-      note: null,
+      coverage: "complete",
     });
   });
 
@@ -86,7 +91,7 @@ describe("grounded reply builders", () => {
   });
 
   it("quotes cited reviews from the request dataset, with a placeholder for unknown IDs", () => {
-    const payload = answeredFromRequest(requestWith([R1, R2]), ["r2", "invented"], "S.", "N.");
+    const payload = answeredFromRequest(requestWith([R1, R2]), ["r2", "invented"], "S.", "partial");
     expect(payload).toEqual({
       outcome: "answered",
       claims: [
@@ -98,7 +103,32 @@ describe("grounded reply builders", () => {
           ],
         },
       ],
-      note: "N.",
+      coverage: "partial",
+    });
+  });
+
+  describe("quoteChunksOf", () => {
+    it("returns a short text whole", () => {
+      expect(quoteChunksOf(R2.text)).toEqual(["Too slow."]);
+    });
+
+    it("splits a long text into contiguous, valid quotes that cover every word", () => {
+      const text = Array.from({ length: 200 }, (_, index) => `word${index}`).join(" ");
+      const chunks = quoteChunksOf(text);
+      expect(chunks.length).toBeGreaterThan(1);
+      for (const chunk of chunks) {
+        expect(chunk.length).toBeLessThanOrEqual(MAX_QUOTE_CHARACTERS);
+        expect(quoteSupportedByReview(chunk, text)).toBe(true);
+      }
+      expect(chunks.join(" ")).toBe(text);
+    });
+
+    it("folds a tail shorter than three words into an overlapping final span", () => {
+      const head = Array.from({ length: 99 }, () => "abcd").join(" "); // 494 characters
+      const text = `${head} tail1 tail2`;
+      const chunks = quoteChunksOf(text);
+      expect(chunks.at(-1)).toBe("abcd tail1 tail2");
+      for (const chunk of chunks) expect(quoteSupportedByReview(chunk, text)).toBe(true);
     });
   });
 });

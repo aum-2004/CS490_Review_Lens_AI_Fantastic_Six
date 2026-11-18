@@ -175,11 +175,9 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         // The model wrongly attaches citations to a decline. #79 treats that reply as
         // contradictory and rejects it; it must never be shown with the citations silently dropped.
         reply: reply.payload(
-          claimReply.declined(
-            "declined_other_platform",
-            "I can only analyze the Google Maps reviews for Restaurant A.",
-            [claimFrom("Reviewers mention the food.", reviewAt("restaurantA", 0))],
-          ),
+          claimReply.declined("declined_other_platform", [
+            claimFrom("Reviewers mention the food.", reviewAt("restaurantA", 0)),
+          ]),
         ),
         expect: rejectedAfterCall("unexpectedCitations"),
       },
@@ -461,7 +459,7 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         actor: "userA",
         target: "restaurantA",
         question: "How is the pizza?",
-        reply: reply.raw(JSON.stringify({ outcome: "maybe", claims: [], note: "Hmm." })),
+        reply: reply.raw(JSON.stringify({ outcome: "maybe", claims: [], coverage: "none" })),
         expect: rejectedAfterCall("invalidModelResponse"),
       },
     ],
@@ -504,7 +502,7 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         target: "restaurantA",
         question: "What do customers think about Restaurant B?",
         reply: reply.payload(
-          claimReply.declined("declined_other_entity", "I can only analyze Restaurant A.", [
+          claimReply.declined("declined_other_entity", [
             claimFrom("Invented.", {
               id: "00000000-0000-4000-8000-000000009999",
               text: "a review that was never supplied",
@@ -533,7 +531,7 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
   {
     id: "qa-claim-partial-answer",
     scenario: "answerable",
-    title: "A partial answer: a quoted finding plus a note on what the reviews do not cover",
+    title: "A partial answer: a quoted finding plus server text on what the reviews do not cover",
     steps: [
       {
         actor: "userA",
@@ -542,7 +540,7 @@ export const QA_GOLDEN_CASES: readonly QaGoldenCase[] = [
         reply: reply.payload(
           claimReply.answered(
             [claimFrom("Reviewers describe the pizza.", reviewAt("restaurantA", 0))],
-            "The reviews do not mention outdoor seating.",
+            "partial",
           ),
         ),
         expect: { result: "answered" },

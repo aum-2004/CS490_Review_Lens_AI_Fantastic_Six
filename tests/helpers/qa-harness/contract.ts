@@ -35,7 +35,12 @@ export {
   REVIEW_PLATFORM_LABELS,
   SYSTEM_PROMPT_VERSION,
 } from "@/services/qa/system-prompt";
-export type { QaDeclineOutcome, QaModelRequest, QaOutcome } from "@/services/qa/system-prompt";
+export type {
+  QaCoverage,
+  QaDeclineOutcome,
+  QaModelRequest,
+  QaOutcome,
+} from "@/services/qa/system-prompt";
 export type { QaModelCaller, QaModelReply } from "@/services/qa/answer-question";
 export type { QaAnswer } from "@/services/qa/qa-response";
 export type { QaReviewContextBuilder } from "@/services/qa/qa-request";
@@ -50,7 +55,7 @@ export function isDeclineOutcome(
 }
 
 /**
- * The JSON object the S2-013 prompt asks the model to return (`{"outcome", "claims", "note"}`,
+ * The JSON object the S2-013 prompt asks the model to return (`{"outcome", "claims", "coverage"}`,
  * defined in `grounded-reply.ts`). Harness-owned so replies can be scripted;
  * `contract-alignment.ts` checks it against S2-011 `QA_REPLY_JSON_SCHEMA`.
  */

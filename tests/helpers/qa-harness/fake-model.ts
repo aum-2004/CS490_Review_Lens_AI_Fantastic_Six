@@ -3,18 +3,19 @@ import { MAX_EVIDENCE_PER_CLAIM } from "@/services/qa/qa-response";
 
 import {
   QA_INPUT_QUESTION_HEADER,
+  type QaCoverage,
   type QaModelCaller,
   type QaModelReply,
   type QaModelReplyPayload,
   type QaModelRequest,
   type QaOutcome,
 } from "./contract";
+import { parseEvidenceRows } from "./assertions";
 import {
   answeredFromRequest,
   claimReply,
   DEFAULT_CLAIM_STATEMENT,
-  DEFAULT_DECLINE_NOTE,
-  DEFAULT_INSUFFICIENT_NOTE,
+  quoteChunksOf,
 } from "./grounded-reply";
 
 /**
@@ -244,31 +245,41 @@ export const reply = {
   answered(
     citedReviewIds: string[],
     statement = DEFAULT_CLAIM_STATEMENT,
-    note: string | null = null,
+    coverage: Exclude<QaCoverage, "none"> = "complete",
   ): QaReplySpec {
     return reply.dynamic((request) =>
-      reply.payload(answeredFromRequest(request, citedReviewIds, statement, note)),
+      reply.payload(answeredFromRequest(request, citedReviewIds, statement, coverage)),
     );
   },
-  /** Pass citations only to script a contradictory reply; it is rejected (UNEXPECTED_CITATIONS). */
+  /**
+   * Pass citations only to script a contradictory reply; it is rejected (UNEXPECTED_CITATIONS).
+   * `_legacyText` is ignored: since s2-013.v7 the model writes no explanation and the server owns
+   * the insufficient-evidence wording. It is accepted only so scripts written for the earlier
+   * note-based reply still compile; it never reaches the reply.
+   */
   insufficientEvidence(
     citedReviewIds: string[] = [],
-    note = DEFAULT_INSUFFICIENT_NOTE,
+    /** @deprecated Ignored since s2-013.v7 (no free-text field); remove in a follow-up cleanup. */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ignored on purpose, see above
+    _legacyText?: string,
   ): QaReplySpec {
-    if (citedReviewIds.length === 0) return reply.payload(claimReply.insufficientEvidence(note));
+    if (citedReviewIds.length === 0) return reply.payload(claimReply.insufficientEvidence());
     return reply.dynamic((request) =>
       reply.payload({
         ...answeredFromRequest(request, citedReviewIds),
         outcome: "insufficient_evidence",
-        note,
+        coverage: "none",
       }),
     );
   },
+  /** `_legacyText` is ignored for the same reason as in `insufficientEvidence`. */
   declined(
     outcome: Exclude<QaOutcome, "answered" | "insufficient_evidence">,
-    note = DEFAULT_DECLINE_NOTE,
+    /** @deprecated Ignored since s2-013.v7 (no free-text field); remove in a follow-up cleanup. */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ignored on purpose, see above
+    _legacyText?: string,
   ): QaReplySpec {
-    return reply.payload(claimReply.declined(outcome, note));
+    return reply.payload(claimReply.declined(outcome));
   },
   /** Exact model text, e.g. malformed JSON or prose with no JSON at all. */
   raw(text: string, delayMs?: number): QaReplySpec {
@@ -292,15 +303,18 @@ export const reply = {
     return { kind: "dynamic", respond } satisfies QaReplySpec;
   },
   /**
-   * Adversarial echo: answers with everything the application supplied (instructions plus review
-   * dataset, but not the user's own question) and cites every supplied review. If any foreign
-   * data reached the model, it is now in the answer too (S2-016 output check). The echo goes in
-   * `note`, the unverified free-text field shown with the answer; the citations are real quoted
-   * claims, grouped so no claim exceeds the evidence limit.
+   * Adversarial echo: answers by quoting the full text of every supplied review, in contiguous
+   * spans, and cites each one. If any foreign review reached the model, its text is now in the
+   * answer too, because the server shows every verified quote (S2-016 output check). Since
+   * s2-013.v7 there is no free-text field, so the system instructions cannot be echoed here; a
+   * statement that repeats them is rejected as PROMPT_ECHO.
    */
   echoContext(): QaReplySpec {
     return reply.dynamic((request) => {
-      const { evidence } = answeredFromRequest(request, request.reviewIds).claims[0];
+      const texts = new Map(parseEvidenceRows(request).map((row) => [row.id, row.text]));
+      const evidence = request.reviewIds.flatMap((reviewId) =>
+        quoteChunksOf(texts.get(reviewId) ?? "").map((quote) => ({ reviewId, quote })),
+      );
       const claims = [];
       for (let start = 0; start < evidence.length; start += MAX_EVIDENCE_PER_CLAIM) {
         claims.push({
@@ -308,12 +322,7 @@ export const reply = {
           evidence: evidence.slice(start, start + MAX_EVIDENCE_PER_CLAIM),
         });
       }
-      return reply.payload(
-        claimReply.answered(
-          claims,
-          `ECHO ${request.instructions}\n${applicationSuppliedInput(request)}`,
-        ),
-      );
+      return reply.payload(claimReply.answered(claims));
     });
   },
 };

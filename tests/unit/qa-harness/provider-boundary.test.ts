@@ -237,7 +237,7 @@ describe("provider replies", () => {
       "a cited decline",
       {
         generation: openAi.completed(
-          claimReply.declined("declined_other_platform", "Only Google Maps.", [
+          claimReply.declined("declined_other_platform", [
             claimFrom("Reviews.", targetA.reviews[0]),
           ]),
         ),

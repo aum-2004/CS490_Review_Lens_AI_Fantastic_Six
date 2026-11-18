@@ -15,7 +15,7 @@ import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
 import { reserveQuestionQuota, QuestionQuotaError } from "@/services/qa/question-quota";
 import { MAX_CITED_REVIEWS } from "@/lib/qa/citations";
-import { MAX_EVIDENCE_PER_CLAIM } from "@/services/qa/qa-response";
+import { MAX_EVIDENCE_PER_CLAIM, nonAnswerText } from "@/services/qa/qa-response";
 
 import { claimReply, evidenceFrom } from "../../../../../../helpers/qa-harness/grounded-reply";
 
@@ -139,7 +139,13 @@ it("returns the validated citations of an answer, deduplicated in first-appearan
     data: {
       targetId: TARGET_A,
       outcome: "answered",
-      answer: `Great bread and coffee. [${A2}, ${A1}]`,
+      // Each verified quote is shown beside the statement, with the ID of the review it quotes.
+      answer: [
+        "Great bread and coffee.",
+        `  "${textOf(A2)}" [${A2}]`,
+        `  "${textOf(A1)}" [${A1}]`,
+        `  "${textOf(A2)}" [${A2}]`,
+      ].join("\n"),
       citedReviewIds: [A2, A1],
     },
   });
@@ -151,15 +157,29 @@ it.each([
   ["declined_other_entity", "out_of_scope"],
   ["declined_other_platform", "out_of_scope"],
 ] as const)("returns no citations for the %s outcome", async (outcome, shown) => {
-  reply = { outcome, claims: [], note: "I can't answer that from these reviews." };
+  reply = { outcome, claims: [], coverage: "none" };
   const response = await post();
   expect(response.status).toBe(200);
   const body = await response.json();
-  expect(body.data).toMatchObject({ outcome: shown, citedReviewIds: [] });
+  // The text is written by the server (s2-013.v7), never by the model.
+  expect(body.data).toMatchObject({
+    outcome: shown,
+    answer: nonAnswerText(outcome, "Google Maps"),
+    citedReviewIds: [],
+  });
+});
+
+it("fails closed when a non-answer tries to carry model text in a note", async () => {
+  reply = { outcome: "insufficient_evidence", claims: [], coverage: "none", note: "SMUGGLED_TEXT" };
+  const response = await post();
+  expect(response.status).toBe(503);
+  const body = await response.json();
+  expect(body).toMatchObject({ success: false, error: { code: "INVALID_MODEL_RESPONSE" } });
+  expect(JSON.stringify(body)).not.toContain("SMUGGLED_TEXT");
 });
 
 it("fails closed when a refusal carries citations", async () => {
-  reply = { ...answered("Not enough.", A1), outcome: "insufficient_evidence", note: "Not enough." };
+  reply = { ...answered("Not enough.", A1), outcome: "insufficient_evidence", coverage: "none" };
   const response = await post();
   expect(response.status).toBe(503);
   const body = await response.json();
@@ -207,13 +227,13 @@ it("scopes citations to the requested target when switching targets", async () =
 
 it.each([
   ["invalid JSON", "not json"],
-  ["an unknown outcome", JSON.stringify({ outcome: "maybe", claims: [], note: "x" })],
+  ["an unknown outcome", JSON.stringify({ outcome: "maybe", claims: [], coverage: "none" })],
   [
     "non-string citations",
     JSON.stringify({
       outcome: "answered",
       claims: [{ statement: "x", evidence: [{ reviewId: 1, quote: "Review 1 text" }] }],
-      note: null,
+      coverage: "complete",
     }),
   ],
   ["an answer without citations", JSON.stringify(claimReply.answered([]))],

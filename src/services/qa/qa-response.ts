@@ -3,42 +3,73 @@ import "server-only";
 import { z } from "zod";
 
 import {
+  MAX_CLAIM_STATEMENT_CHARACTERS,
+  QA_COVERAGE,
   QA_OUTCOMES,
+  REVIEW_PLATFORM_LABELS,
   type PromptReview,
+  type PromptTarget,
   type QaModelRequest,
   type QaOutcome,
 } from "@/services/qa/system-prompt";
 
+export { MAX_CLAIM_STATEMENT_CHARACTERS };
+
 /**
  * S2-011 / S2-012: validates the model's reply before anything reaches the user.
  *
- * The prompt (S2-013) asks for `{"outcome", "claims", "note"}`:
+ * The prompt (S2-013) asks for `{"outcome", "claims", "coverage"}`:
  *   - `claims` holds every finding from the reviews. Each claim cites one or more reviews, and each
  *     citation carries a quote that must be one contiguous span of THAT review's text.
- *   - `note` holds only text that is not a finding: a decline, the insufficient-evidence
- *     explanation, or what a partial answer does not cover. It is free text and is NOT verified.
+ *   - `coverage` is a closed enum (complete | partial | none). The model writes no other text: the
+ *     server owns every word shown for a decline, insufficient evidence, or a partial answer.
  *
  * A valid review ID is not proof that a claim is grounded, so each quote is checked against the
- * cited review's persisted text. The reply is rejected (fail closed) rather than repaired: dropping
- * one bad claim would silently change the meaning of the rest.
+ * cited review's persisted text, and the quote is shown next to its statement so a mismatch is
+ * visible to the reader. The reply is rejected (fail closed) rather than repaired: dropping one bad
+ * claim would silently change the meaning of the rest.
  */
 
 /** Longest answer shown to the user. Well above what QA_RESERVED_OUTPUT_TOKENS can produce. */
 export const MAX_ANSWER_CHARACTERS = 8_000;
 export const MAX_CLAIMS = 20;
-export const MAX_CLAIM_STATEMENT_CHARACTERS = 1_000;
 export const MAX_EVIDENCE_PER_CLAIM = 10;
 export const MAX_QUOTE_CHARACTERS = 500;
 /** A shorter quote (such as "the") would match almost any review and prove nothing. */
 export const MIN_QUOTE_WORDS = 3;
-/** Fixed server text that frames `note` on a partial answer, so it never reads as a finding. */
-export const NOT_COVERED_PREFIX = "Not covered by these reviews:";
+/**
+ * A statement sharing this many consecutive words with the system prompt is treated as a prompt
+ * echo. Ordinary findings about reviews do not repeat eight words of the rules verbatim.
+ */
+export const PROMPT_ECHO_MIN_WORDS = 8;
+
+/** Server-written line appended to a partial answer (S2-012). */
+export const PARTIAL_COVERAGE_TEXT = "Parts of your question are not covered by these reviews.";
+
+type NonAnswerOutcome = Exclude<QaOutcome, "answered">;
+
+/**
+ * The whole answer for every outcome other than "answered". Written by the server, never by the
+ * model. `platform` is the trusted label from REVIEW_PLATFORM_LABELS, not model or user text.
+ */
+export function nonAnswerText(outcome: NonAnswerOutcome, platform: string): string {
+  switch (outcome) {
+    case "insufficient_evidence":
+      return "These reviews don't contain enough information to answer that question.";
+    case "declined_general_knowledge":
+      return `I can only answer questions about the ${platform} reviews for this target. Try asking what reviewers say about its service, quality, or prices.`;
+    case "declined_other_entity":
+      return `I can only analyze the ${platform} reviews for this target, not other businesses or comparisons with them. Try asking what reviewers say about this target.`;
+    case "declined_other_platform":
+      return `I can only analyze the ${platform} reviews for this target, not reviews from other platforms. Try asking what these reviews say.`;
+  }
+}
 
 /**
  * JSON schema sent to the provider as structured output. Mirrors `modelReplySchema`. Strict-mode
  * compatible: every object lists all of its properties as required and sets
- * `additionalProperties: false`; the optional `note` is expressed as nullable. Length and count
- * limits are enforced by `modelReplySchema`, not by the provider.
+ * `additionalProperties: false`, and nothing is nullable. Length and count limits are enforced by
+ * `modelReplySchema`, not by the provider.
  */
 export const QA_REPLY_JSON_SCHEMA = {
   type: "object",
@@ -67,9 +98,9 @@ export const QA_REPLY_JSON_SCHEMA = {
         additionalProperties: false,
       },
     },
-    note: { type: ["string", "null"] },
+    coverage: { type: "string", enum: [...QA_COVERAGE] },
   },
-  required: ["outcome", "claims", "note"],
+  required: ["outcome", "claims", "coverage"],
   additionalProperties: false,
 } as const;
 
@@ -88,7 +119,7 @@ const modelReplySchema = z
   .object({
     outcome: z.enum(QA_OUTCOMES),
     claims: z.array(claimSchema).max(MAX_CLAIMS),
-    note: z.string().trim().max(MAX_ANSWER_CHARACTERS).nullable(),
+    coverage: z.enum(QA_COVERAGE),
   })
   .strict();
 
@@ -96,8 +127,9 @@ const modelReplySchema = z
 export interface QaAnswer {
   outcome: QaOutcome;
   /**
-   * Text shown to the user. For `answered`, composed by the server from the verified claims (each
-   * followed by its cited review IDs), then the framed note if any. Otherwise, the model's note.
+   * Text shown to the user, always composed by the server. For `answered`: each verified claim's
+   * statement, then each of its quotes on an indented line with the cited review ID, then the
+   * partial-coverage line if any. Otherwise: the fixed `nonAnswerText` for the outcome.
    */
   answer: string;
   /** Review IDs that support the answer; always a subset of the request's `reviewIds`. */
@@ -107,7 +139,11 @@ export interface QaAnswer {
 }
 
 export type QaResponseErrorCode =
-  "INVALID_MODEL_RESPONSE" | "UNGROUNDED_ANSWER" | "UNEXPECTED_CITATIONS" | "UNSUPPORTED_CLAIM";
+  | "INVALID_MODEL_RESPONSE"
+  | "UNGROUNDED_ANSWER"
+  | "UNEXPECTED_CITATIONS"
+  | "UNSUPPORTED_CLAIM"
+  | "PROMPT_ECHO";
 
 const RESPONSE_ERROR_MESSAGE = "We couldn't produce a reliable answer. Please try again.";
 
@@ -121,6 +157,12 @@ export class QaResponseError extends Error {
 
 /** The evidence a reply is checked against: the reviews whose text was sent to the model. */
 export type QaEvidenceReview = Pick<PromptReview, "id" | "text">;
+
+/** The authorized context the request was built from (`QaPromptContext` satisfies it). */
+export interface QaEvidenceContext {
+  target: Pick<PromptTarget, "platform">;
+  reviews: readonly QaEvidenceReview[];
+}
 
 const SINGLE_QUOTES = /[‘’‚‛′`´]/g;
 const DOUBLE_QUOTES = /[“”„‟″«»]/g;
@@ -156,10 +198,35 @@ export function quoteSupportedByReview(quote: string, reviewText: string): boole
   return normalizedReview.includes(normalizedQuote);
 }
 
+/** Letter and digit runs of the normalized text; punctuation and spacing cannot hide an echo. */
+function echoWords(text: string): string[] {
+  return normalizeEvidenceText(text).match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
+/**
+ * True when `statement` repeats at least PROMPT_ECHO_MIN_WORDS consecutive words of
+ * `instructions`. A mechanical overlap check against the actual prompt, not a keyword list: it
+ * catches a verbatim (or re-punctuated) echo, not a paraphrase.
+ */
+export function echoesInstructions(statement: string, instructions: string): boolean {
+  const words = echoWords(statement);
+  const prompt = ` ${echoWords(instructions).join(" ")} `;
+  for (let start = 0; start + PROMPT_ECHO_MIN_WORDS <= words.length; start += 1) {
+    const window = words.slice(start, start + PROMPT_ECHO_MIN_WORDS).join(" ");
+    if (prompt.includes(` ${window} `)) return true;
+  }
+  return false;
+}
+
+/** One line of display text: line breaks and runs of spaces cannot forge extra answer lines. */
+function singleLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 export function parseQaModelReply(
   replyText: string,
   request: QaModelRequest,
-  reviews: readonly QaEvidenceReview[],
+  { target, reviews }: QaEvidenceContext,
 ): QaAnswer {
   let json: unknown;
   try {
@@ -170,8 +237,7 @@ export function parseQaModelReply(
 
   const parsed = modelReplySchema.safeParse(json);
   if (!parsed.success) throw new QaResponseError("INVALID_MODEL_RESPONSE");
-  const { outcome, claims } = parsed.data;
-  const note = parsed.data.note === "" ? null : parsed.data.note;
+  const { outcome, claims, coverage } = parsed.data;
 
   // Only reviews that were both in the request and supplied as evidence can be cited. An ID
   // outside that set means the model invented or mixed in evidence (for any outcome).
@@ -188,11 +254,11 @@ export function parseQaModelReply(
     // Declines and insufficient_evidence are not answers from the reviews, so claims make the
     // reply contradictory. Reject it rather than silently dropping them (prompt: empty list).
     if (claims.length > 0) throw new QaResponseError("UNEXPECTED_CITATIONS");
-    // The note is the only text the user sees for these outcomes.
-    if (note === null) throw new QaResponseError("INVALID_MODEL_RESPONSE");
+    // "complete"/"partial" describe an answer; a decline claiming either is contradictory.
+    if (coverage !== "none") throw new QaResponseError("INVALID_MODEL_RESPONSE");
     return {
       outcome,
-      answer: note,
+      answer: nonAnswerText(outcome, REVIEW_PLATFORM_LABELS[target.platform]),
       citedReviewIds: [],
       promptVersion: request.promptVersion,
       targetId: request.targetId,
@@ -201,25 +267,40 @@ export function parseQaModelReply(
 
   // S2-011: an answer must contain at least one finding from the reviews.
   if (claims.length === 0) throw new QaResponseError("UNGROUNDED_ANSWER");
+  if (coverage === "none") throw new QaResponseError("INVALID_MODEL_RESPONSE");
   for (const claim of claims) {
     if (claim.evidence.length === 0) throw new QaResponseError("UNSUPPORTED_CLAIM");
     for (const item of claim.evidence) {
       // KNOWN LIMITATION: this proves the quote is really in the cited review, not that it
-      // entails the statement. A parking claim that quotes a real food sentence passes.
+      // entails the statement. A parking claim that quotes a real food sentence passes; showing
+      // the quote beside the statement makes that mismatch visible, but does not reject it.
       if (!quoteSupportedByReview(item.quote, textById.get(item.reviewId)!)) {
         throw new QaResponseError("UNSUPPORTED_CLAIM");
       }
     }
+    // The server appends the citations. A review ID inside the statement could make model prose
+    // look like a cited quote once the UI turns IDs into [1], [2].
+    const statement = claim.statement.toLowerCase();
+    if (request.reviewIds.some((id) => statement.includes(id.toLowerCase()))) {
+      throw new QaResponseError("INVALID_MODEL_RESPONSE");
+    }
+    // Statements are the only model-written prose shown to the user.
+    if (echoesInstructions(claim.statement, request.instructions)) {
+      throw new QaResponseError("PROMPT_ECHO");
+    }
   }
 
   const cited: string[] = [];
-  const lines = claims.map((claim) => {
-    const ids = [...new Set(claim.evidence.map((item) => item.reviewId))];
-    for (const id of ids) if (!cited.includes(id)) cited.push(id);
-    return `${claim.statement} [${ids.join(", ")}]`;
+  const blocks = claims.map((claim) => {
+    const lines = [singleLine(claim.statement)];
+    for (const item of claim.evidence) {
+      if (!cited.includes(item.reviewId)) cited.push(item.reviewId);
+      lines.push(`  "${singleLine(item.quote)}" [${item.reviewId}]`);
+    }
+    return lines.join("\n");
   });
-  const answer =
-    note === null ? lines.join("\n") : `${lines.join("\n")}\n\n${NOT_COVERED_PREFIX} ${note}`;
+  if (coverage === "partial") blocks.push(PARTIAL_COVERAGE_TEXT);
+  const answer = blocks.join("\n\n");
   if (answer.length > MAX_ANSWER_CHARACTERS) throw new QaResponseError("INVALID_MODEL_RESPONSE");
 
   return {
