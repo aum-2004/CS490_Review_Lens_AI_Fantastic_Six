@@ -39,11 +39,7 @@ const reviews: QaEvidenceReview[] = [
 
 // The real v7 prompt, so the echo guard is tested against the text it protects and ordinary
 // statements are checked for false positives against it.
-const INSTRUCTIONS = buildSystemPrompt({
-  id: "00000000-0000-4000-8000-000000000001",
-  name: "Restaurant A",
-  platform: "google_maps",
-});
+const INSTRUCTIONS = buildSystemPrompt("Google Maps");
 
 const request: QaModelRequest = {
   promptVersion: "s2-013.v7",

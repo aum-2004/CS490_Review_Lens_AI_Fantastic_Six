@@ -21,7 +21,6 @@
 | `QA_RESERVED_OUTPUT_TOKENS`      | Output tokens reserved for the reply; sent to the provider as `maxOutputTokens`.                |
 | `runGroundedQaRequest`           | (`qa-request.ts`) Builds the S2-010 context, then the request, then calls the injected model.   |
 
-
 The prompt text lives only in source control (`src/services/qa/system-prompt.ts`). It is not
 configured in a hosted AI console. Changes go through a reviewed pull request and a version bump.
 

@@ -118,7 +118,6 @@ function answerFromInput(body: Record<string, unknown>): FakeOpenAiResponse {
   return openAi.completed(claimReply.answered([claimFrom("Fake provider answer.", rows[0])]));
 }
 
-
 function toResponse(spec: FakeOpenAiResponse): Response {
   switch (spec.kind) {
     case "json":
