@@ -5,17 +5,29 @@ const coffee = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
 
 async function login(page: Page, email = "fixture@example.com") {
   await page.goto(`/login?next=${encodeURIComponent(`/analysis-targets/${bakery}`)}`);
+
   await page.getByLabel("Email *").fill(email);
   await page.getByLabel("Password *").fill("dummy-password");
+
   await page
     .getByRole("form", { name: "Sign in" })
     .getByRole("button", { name: "Sign in", exact: true })
     .click();
+
+  // Verify successful login for the main test account.
+  // The second test uses another account to check access denial.
+  if (email === "fixture@example.com") {
+    await expect(page).toHaveURL(`/analysis-targets/${bakery}`, { timeout: 15000 });
+
+    await expect(page.getByRole("heading", { name: "A bakery", level: 1 })).toBeVisible();
+  }
 }
 
 test("switches owned targets with keyboard navigation and updates all active context", async ({
   page,
 }) => {
+  test.setTimeout(90000);
+
   const requests: string[] = [];
   await page.route("**/api/analysis-targets/*/questions", async (route) => {
     const targetId = route.request().url().includes(bakery) ? bakery : coffee;

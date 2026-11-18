@@ -44,7 +44,7 @@ test("establishes, refreshes, preserves, and clears SDK cookie sessions", async 
 
   await page.reload();
   await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
-  await page.getByRole("link", { name: "ReviewLens", exact: true }).click();
+  await page.getByRole("link", { name: "RL home", exact: true }).click();
   await expect(page).toHaveURL("/analysis-targets");
   await page.goto("/login");
   await expect(page).toHaveURL("/analysis-targets");
