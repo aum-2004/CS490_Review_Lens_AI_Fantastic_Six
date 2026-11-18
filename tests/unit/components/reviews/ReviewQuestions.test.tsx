@@ -26,6 +26,7 @@ const answer: ReviewAnswer = {
   targetId: "target-a",
   outcome: "answered",
   answer: "Reviewers like the bread.",
+  citedReviewIds: [],
 };
 
 function submit(question = "  What do reviewers like?  ") {
