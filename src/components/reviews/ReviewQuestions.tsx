@@ -24,6 +24,8 @@ import {
   type ReviewAnswer,
 } from "@/lib/api/review-questions";
 import { reviewQuestionSchema } from "@/lib/validation/review-question";
+import { buildCitationView, type CitableReview } from "@/lib/qa/citations";
+import { SupportingReviews } from "./SupportingReviews";
 
 type Props = {
   userId: string;
@@ -31,6 +33,8 @@ type Props = {
   targetName: string;
   reviewsAvailable: boolean;
   unavailableMessage?: string;
+  /** The active target's already-loaded reviews, used only to label citations. */
+  reviews?: readonly CitableReview[];
 };
 
 const outcomeLabels = {
@@ -55,6 +59,7 @@ function QuestionForm({
   targetId,
   targetName,
   reviewsAvailable,
+  reviews = [],
   unavailableMessage = "No saved reviews are available for this target. Complete ingestion in the Ingestion panel before asking ReviewLens questions.",
 }: Props) {
   const router = useRouter();
@@ -72,6 +77,12 @@ function QuestionForm({
     resolver: zodResolver(reviewQuestionSchema),
     defaultValues: { question: "" },
   });
+
+  // Never render a response for any target other than the active one.
+  const view =
+    answer && answer.targetId === targetId
+      ? buildCitationView(targetId, answer.answer, answer.citedReviewIds, reviews)
+      : null;
 
   const { reset } = form;
   useLayoutEffect(
@@ -206,13 +217,14 @@ function QuestionForm({
             ReviewLens is processing your question for {targetName}…
           </p>
         )}
-        {answer && !pending && (
+        {answer && view && !pending && (
           <>
             <h3 className="text-lg font-medium">{outcomeLabels[answer.outcome]}</h3>
             <p className="max-w-prose break-words text-sm text-muted-foreground">
               Question: {answeredQuestion}
             </p>
-            <p className="max-w-prose whitespace-pre-wrap break-words">{answer.answer}</p>
+            <p className="max-w-prose whitespace-pre-wrap break-words">{view.text}</p>
+            {answer.outcome === "answered" && <SupportingReviews citations={view.citations} />}
           </>
         )}
       </div>

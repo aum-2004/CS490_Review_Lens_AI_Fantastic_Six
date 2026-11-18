@@ -2,11 +2,14 @@ import {
   QUESTION_REQUIRED_MESSAGE,
   QUESTION_LENGTH_MESSAGE,
 } from "@/lib/validation/review-question";
+import { parseCitedReviewIds } from "@/lib/qa/citations";
 
 export type ReviewAnswer = {
   targetId: string;
   outcome: "answered" | "insufficient_evidence" | "out_of_scope";
   answer: string;
+  /** Server-validated review IDs; empty for non-answers. Never displayed raw. */
+  citedReviewIds: string[];
 };
 
 export class ReviewQuestionError extends Error {
@@ -125,7 +128,18 @@ export async function askReviewQuestion(
       typeof data.answer === "string" &&
       data.answer.trim()
     ) {
-      return data as ReviewAnswer;
+      const citedReviewIds = parseCitedReviewIds(
+        "citedReviewIds" in data ? data.citedReviewIds : undefined,
+        String(data.outcome),
+      );
+      if (citedReviewIds) {
+        return {
+          targetId: data.targetId,
+          outcome: data.outcome as ReviewAnswer["outcome"],
+          answer: data.answer,
+          citedReviewIds,
+        };
+      }
     }
   }
   throw new ReviewQuestionError(
