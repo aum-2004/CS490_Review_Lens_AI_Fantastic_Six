@@ -1,0 +1,8 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.1+reviewlens.1",
+  "private": true,
+  "description": "Local MIT-licensed deepmerge 4.3.1 security patch for Jest configuration merging",
+  "main": "index.cjs",
+  "license": "MIT"
+}

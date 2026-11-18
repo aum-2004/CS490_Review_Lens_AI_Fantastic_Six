@@ -1,0 +1,491 @@
+# Codex follow-up implementation and self-review transcript — melissa — S2-020
+
+Date: 2026-11-15. Tool: Codex. Branch: `s2-020`.
+
+This record covers the available user/assistant dialogue and tool outcomes for
+`f9cc17a`, `e12c734`, and `d46fd91`. The dialogue below is retained from this
+conversation; tool operations and results are recorded separately in condensed
+form. This is not a raw tool export. Repeated empty companion-page events and IDE
+snapshots are omitted. Full filesystem paths are omitted at melissa's request.
+No credentials, private review data, or unavailable dialogue are reconstructed.
+
+All AI review in this record is **self-review by the same Codex assistant that
+implemented the changes**. The historical term "independent" means a separate pass
+in this session, not an independent teammate or section 7 security approval.
+
+Earlier records:
+[implementation](2026-11-15_melissa_S2-020_codex.md),
+[self-review](2026-11-15_melissa_S2-020_review_codex.md).
+
+## Commit coverage
+
+| Commit | Work represented | Verification |
+| --- | --- | --- |
+| `f9cc17a` | Reconciled current main containing S2-019 and S2-006, preserved both stories, corrected unavailable-ingestion guidance, added configuration-state tests, and corrected PR links. | 86 Jest suites / 1,573 tests; nine production-browser tests; 100% changed-line coverage (44/44 against merged main); lint, typecheck, formatting, build, and scoped diff checks passed. |
+| `e12c734` | Revised the PR description and added the local reviewer-response draft. | Documentation formatting and diff checks passed. No source or test change from `f9cc17a`. |
+| `d46fd91` | Removed stale pending-push/local-only wording from both drafts after self-review. | Documentation formatting and diff checks passed. No source or test change from `f9cc17a`. |
+
+## Dialogue and work leading to f9cc17a
+
+User:
+
+> S2-019 is now merged, please remove any redunancy from past edits and handle any conflicts.
+
+Assistant:
+
+> I’ll refresh `main`, compare it with `s2-020`, and remove any remaining S2-019 overlap from the PR. I’ll preserve the S2-020 changes, resolve any conflicts, and verify the result without pushing.
+
+Tool record: the branch had an uncommitted deletion of the transcript imported
+from S2-019 and removal of its documentation link from an earlier request. Fetched
+origin with approval. Current main was `d59b509`, containing S2-019 (#92) and S2-006
+(#80). The pending deletion would now remove a main-owned file rather than reduce
+the S2-020 diff.
+
+User:
+
+> Note from reviewer:
+>
+> Hey Melissa, I reviewed [#94](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/pull/94) ([acfdf2c](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/commit/acfdf2cc81ed9c3345813602cfd5ca55626858c6)). CI and tests look solid, and my mutation checks were all caught. Two fixes before I approve:
+>
+> 1. When ingestion is unavailable (disabled / storage not approved / recovery not configured), the Q&A copy still says "Complete ingestion in the Ingestion panel" or "resolve the failure," but Start is disabled. Pass unavailableReason into the message choice and add a test.
+> 2. The PR body links (../ai-transcripts/…, s2-020-review\.md) are broken. Use full GitHub blob URLs to ai-transcripts/ and docs/.
+
+Assistant:
+
+> I’ll address both reviewer fixes as part of the cleanup: make the unavailable-Q&A message account for disabled ingestion, and replace the PR description’s relative links with full GitHub URLs. I’ll also keep S2-019 files out of the remaining PR diff.
+
+Tool record: restored the two now-main-owned S2-019 files, then ran
+`git merge --no-commit --no-ff origin/main` with approval. Git reported one content
+conflict in `src/components/reviews/ReviewQuestions.tsx`. Resolved it by keeping
+S2-019's `pending` state and S2-020's `aria-describedby` on the submit button.
+The merged workspace retained S2-006's summary and S2-019's verified user ID.
+
+Added twelve workspace cases for three configuration blockers across fresh,
+failed, processing, and succeeded ingestion. Before changing the message logic,
+all twelve new cases failed and nineteen existing workspace cases passed. The
+failures reproduced the reviewer's report: controls were disabled but copy asked
+the user to complete ingestion, resolve failure, or wait for completion.
+
+Computed `unavailableReason` once in the workspace and reused it for ingestion and
+Q&A. Review-load failure remains a separate reload instruction. When saved rows
+are empty, configuration blockers take precedence over ingestion-state advice.
+Updated the browser assertion for disabled ingestion. The three focused suites
+passed: 106 tests. Added three more cases preserving Q&A when saved reviews exist
+under those configuration blockers; these were included in the final full run.
+
+Assistant:
+
+> Current `main` includes both S2-019 and S2-006. I preserved their changes and resolved the remaining button conflict.
+>
+> The earlier S2-019 transcript removal would now delete a file owned by `main`, so I restored it to keep that deletion out of this PR. The reviewer’s copy issue reproduced in all 12 configuration/state combinations; the fix now uses the same ingestion-unavailable reason in both panels.
+
+Tool record: replaced all PR-body documentation/transcript links with full GitHub
+blob URLs on `s2-020` and removed the obsolete S2-019 integration paragraph.
+Marked the component conflict resolved. Lint and typecheck passed. Started the
+full coverage run and production build with previously authorized font access.
+
+`git diff --cached --check` reported whitespace and literal conflict-marker text
+inside an already-main-owned S2-006 transcript. Those were inherited transcript
+contents, not unresolved source conflicts; they were left intact. Checks against
+current main passed. This avoided unrelated edits to another story's transcript.
+
+Assistant:
+
+> The focused tests passed. The tests also verify that saved reviews remain usable when ingestion is disabled or misconfigured. The PR description now has full GitHub URLs, and its S2-019 integration paragraph is removed because that story is already on `main`. Lint and typecheck passed; the full suite and build checks are still running.
+
+User:
+
+> security review:Hey Melissa, I security-reviewed #94 at acfdf2c. The empty-dataset protection looks sound: authentication and ownership are checked server-side, and empty datasets stop before quota or OpenAI calls.
+>
+> One integration fix is needed before I approve: the branch conflicts with newly merged S2-019 in ReviewQuestions.tsx. Please update from main and preserve both stories’ changes—your unavailable-state messages/accessibility plus S2-019’s verified-user key, Activity cleanup, cancellation, and stale-response guards. Keep the workspace passing the verified user ID.
+>
+> All 1,514 current-branch tests pass, but eight merged S2-019 regression cases fail against this older component. This is an outdated-baseline issue, not a claim that your changes introduced those defects.
+>
+> Please retain both stories’ tests, address Deep’s recovery-copy and PR-link feedback, and rerun CI. Tag me on the updated commit for security reconfirmation.
+
+Assistant:
+
+> That matches the integration work already underway. The reconciled component keeps S2-019’s verified-user key, Activity cleanup, cancellation, and stale-response guards, alongside S2-020’s messages and accessibility. The workspace still passes the verified user ID, and both stories’ tests are retained.
+>
+> I’ll include the final local verification results for security reconfirmation. I won’t push or tag anyone remotely.
+
+Tool record: production build and repository formatting passed. Compared the
+remaining component diff with main and verified the account key, layout-effect
+cleanup, request-identity guards, and `userId={user.id}` in the workspace.
+S2-019's stale-context integration and browser tests matched main; the component
+test diff only added S2-020 cases and strengthened its empty-state test.
+
+Ran both browser suites against the reconciled production build using
+PLAYWRIGHT_AUTH_SERVER=production and the local synthetic auth/data fixture.
+All nine cases passed. The fixture does not implement S2-006's summary RPC, so
+summary-unavailable logs appeared; its summary behavior has separate unit tests.
+After all cases completed, stopped only the fixture/server processes started by
+this test command to finish teardown. The runner exited 0: nine passed (57.4s).
+
+Full Jest result: 86 suites, 1,573 tests passed in 180.527s. Statements/lines 94.31%,
+branches 94.13%, functions 93.29%. No live model or ingestion calls were made.
+
+Assistant:
+
+> All 1,573 tests across 86 suites passed, including the retained S2-019 regressions and the new ingestion-unavailable cases. All nine production-browser tests also passed.
+>
+> I’m updating the verification notes and checking the final diff against `main`. Then I’ll finish the local merge commit. GitHub CI and the reviewer tag will still require your push.
+
+Tool record: before finishing the merge, the coverage gate still used the old
+merge-base and passed at 281/281, including main's incoming S2-006 files. Updated
+verification notes and the PR draft, then finished the approved local merge commit
+as `f9cc17a` (parents `99e8da4` and `d59b509`). Reran the gate after the merge:
+
+```text
+Changed-code coverage vs origin/main (merge-base d59b509908bb)
+ProtectedTargetWorkspace.tsx: 21/21
+ReviewQuestions.tsx: 23/23
+Overall: 100.00% (44/44); changed branch outcomes: 25/25
+PASS
+```
+
+Confirmed main is an ancestor, no unresolved conflicts, clean worktree, and no
+S2-019 file changes in the remaining PR diff. No push or notification was sent.
+
+Assistant:
+
+> Completed locally in `f9cc17a`.
+>
+> - Updated from `main`; resolved conflicts while preserving both stories’ behavior and tests.
+> - Fixed unavailable-ingestion guidance and PR description links.
+> - Removed redundant S2-019 changes from the PR diff.
+> - All 1,573 tests, nine browser tests, and quality checks passed; changed-line coverage is 100%.
+>
+> Working tree is clean. Nothing pushed. GitHub CI and the security-reviewer tag remain pending your push.
+
+## Dialogue and work represented by e12c734
+
+User:
+
+> please locally modify the pr message and another comment addressing reviewer feedback
+
+Assistant:
+
+> I’ll revise the local PR description and draft a separate reviewer-response comment covering the fixes and verification. I won’t post or push either.
+
+Tool record: inspected the clean worktree, `f9cc17a`, the PR description, and review
+notes. Revised `docs/pr-s2-020.md` around the final functionality, configuration
+blockers, preserved S2-019 protections, 15 new configuration tests, and final
+verification. Added `docs/pr-s2-020-review-response.md` with the commit link, each
+reviewer fix, validation evidence, limitations, and request for reconfirmation.
+Prettier and `git diff --check` passed. No source or test changes were made.
+
+Assistant:
+
+> Updated locally:
+>
+> - [PR description](../docs/pr-s2-020.md)
+> - [Reviewer-response comment](../docs/pr-s2-020-review-response.md)
+>
+> Both cover the fixes and verification results. Formatting and diff checks passed. Nothing committed, posted, or pushed.
+
+The next Git inspection showed that these two document changes had been committed
+as `e12c734` ("Address reviewer feedback and merge conflict"). Codex did not execute
+that commit in the recorded documentation-editing turn.
+
+## Dialogue and work represented by d46fd91
+
+User:
+
+> Before I ask for a rereview do another thorough independent (read-only!) review for both functionality and security.
+
+Assistant:
+
+> I’ll make a fresh, read-only pass over the diff against `main`, trace the functionality and security boundaries, and check the test evidence. I won’t edit files, refresh Git refs, create commits, or rerun checks that write artifacts.
+
+Tool record: reviewed `e12c734` against local main `d59b509`. Read the actual diff,
+workspace/component/ingestion lifecycle, form and alert accessibility composition,
+authentication, ownership, context builder, question route/client, schema, prompt,
+logging, response headers, session client, review store and RLS, plus tests and
+requirements. No source/security issue requiring a fix was found in scope.
+
+Assistant:
+
+> So far, the diff preserves S2-019’s safeguards. The configuration blockers now produce usable Q&A guidance, saved reviews remain available, and the empty-data check still stops before quota reservation or model calls. I’m finishing the checks of error handling, accessibility, test assertions, and the PR links. No blocking issue found so far.
+
+Tool record: confirmed source, tests, and relevant configuration were unchanged
+from verified `f9cc17a`; S2-019's integration/browser tests matched main; main was
+included. All four PR blob links mapped to existing repository files. No tests
+were rerun during the read-only pass. One `git rev-parse --short` command supplied
+multiple revisions and failed ("Needed a single revision"); corrected the lookup
+with `git for-each-ref`, which showed both HEAD and local origin/s2-020 at e12c734.
+
+Found a minor documentation issue: drafts still claimed a push was pending and the
+implementation commit was local, despite the local remote-tracking ref matching
+HEAD. Live GitHub CI status was not queried or inferred.
+
+User:
+
+> Actually, ignore the read-only portion. Address and fix major errors.
+
+User:
+
+> if you encounter them
+
+Assistant:
+
+> Understood. I haven’t found a major functionality or security error, so there’s no code fix to make. I found one minor documentation issue: both reviewer drafts still say a push is pending, while the local `origin/s2-020` ref already matches the current commit. I’ll remove that stale wording and leave the CI status for GitHub to confirm.
+
+Tool record: changed the PR description to ask for CI confirmation on the updated
+commit. Changed the response draft to request reconfirmation once CI completes,
+without asserting the commit is local. Prettier and diff checks passed. Only two
+documents changed; no code, test, or transcript was modified in that turn.
+
+Assistant:
+
+> No major functionality or security errors found in `e12c734`.
+>
+> Confirmed that S2-019 safeguards remain intact, unavailable-state guidance is accurate, and empty datasets stop before quota or model calls. Source and tests are unchanged from the verified run: 1,573 tests and nine browser tests passed.
+>
+> Corrected stale “push pending” wording in both reviewer drafts. Formatting and diff checks passed. Changes remain uncommitted; nothing pushed. GitHub CI still needs confirmation.
+
+The next Git inspection showed these two documentation corrections committed as
+`d46fd91` ("Address stale wording"). Codex did not execute that commit in the recorded
+self-review turn.
+
+## Current documentation follow-up
+
+User:
+
+> Hey Melissa, I finished the §7 security review of #94. The code is solid: no security issues, the S2-019 protections survived the merge, and every mutation I tried was caught. I just need three small fixes before I approve:
+>
+> Add the Codex transcript for the later commits (f9cc17a, e12c734, d46fd91). The current ones stop at 1,514 tests / 5 browser tests.
+>
+> Change "Closes #71" to "Refs #71".
+>
+> Mark the review transcript as a self-review. Ping me when you've pushed and I'll recheck. Thanks!
+
+Assistant:
+
+> I’ll add a follow-up transcript for those commits, change “Closes #71” to “Refs #71,” and label the review transcript as a self-review. I’ll keep “melissa” in the transcript, omit full paths, and won’t push or ping anyone.
+
+Tool record: checked clean branch `s2-020` at `d46fd91` and the three commit stats.
+Added this follow-up record; preserved historical dialogue in the earlier
+self-review transcript while adding an explicit classification and follow-up link.
+Changed the PR issue reference and linked this file using a full GitHub blob URL.
+Also labeled the review report as self-review so it cannot be mistaken for a
+teammate's section 7 approval. This is documentation-only work; it does not rerun
+or extend the earlier test results. No push, remote PR edit, or reviewer ping is
+part of this task.
+
+Assistant:
+
+> The follow-up transcript now covers all three commits and records the 1,573-test/nine-browser-test verification. It distinguishes the original dialogue from condensed tool records and labels the AI review as self-review. I’ve also changed the issue reference to “Refs #71” and added a full GitHub link to the follow-up.
+
+Final documentation checks: Prettier passed for the edited documentation (the
+repository intentionally excludes transcripts from formatting to preserve their
+text), and `git diff --check` passed. A first path scan also matched a GitHub URL;
+the refined drive-path check excludes URL schemes. No full filesystem paths were
+included. The changes are local and uncommitted; no code or tests were changed,
+no tests were rerun for these documentation edits, and nothing was pushed or sent.
+
+## Reconciliation after S2-018 merged
+
+The preceding documentation follow-up was subsequently committed as `f7b7368`
+("Address reviewer feedback"). The initial Git status in this turn was clean.
+
+User:
+
+> s2-018 was merged please remove any redunancy and handle any conflicts, also update transcripts
+
+Assistant:
+
+> I’ll refresh `main`, reconcile the merged S2-018 changes with `s2-020`, and check for conflicts or redundant changes in the PR diff. I’ll update the follow-up transcript and verify the integration without pushing.
+
+Tool record: fetched origin with approval. Main advanced from `d59b509` to
+`4c866eb` (S2-018 #93). Incoming work consists of S2-018's documentation/transcripts,
+target-switching tests, workspace browser-test assertions, and a local synthetic
+summary-RPC fixture. No new production implementation is introduced by S2-018.
+Read the bundled Next.js useRouter guide and inspected the incoming diff before
+merging. Ran the approved `git merge --no-commit --no-ff origin/main` on `s2-020`;
+Git reported a clean automatic merge with no conflicts.
+
+Started lint/typecheck and full Jest coverage for the combined branch. One initial
+test-file read used the wrong directory and returned file not found; located it
+under `tests/unit/app/analysis-targets/target-switching.production.test.tsx` with
+`rg --files`. No files were changed by that lookup.
+
+Assistant:
+
+> S2-018 merged cleanly—there were no source conflicts. Its files match `main`, so they won’t add unrelated changes to the S2-020 PR diff.
+>
+> S2-018 also adds summary-RPC support to the browser fixture. I’ll verify that integration and remove the outdated note saying the browser tests only cover a summary-unavailable state.
+
+Tool record: checked that S2-018's fixture and browser files match main. Removed the
+obsolete earlier-main integration paragraph and summary-unavailable limitation from
+the PR description. The earlier nine-browser-test run and its limitation remain
+unchanged in the historical transcript sections above. Current verification uses
+the updated fixture and includes the S2-018 target-switching suites.
+
+Assistant:
+
+> The branch still has only S2-020 production changes relative to current `main`; no source changes were needed for this merge. Lint and typecheck passed. I’ve added the integration steps to the transcript and am running the S2-018 switching tests alongside the S2-019 and S2-020 regressions.
+
+Tool record: production build and repository formatting passed. Confirmed that all
+five S2-018 fixture/browser/unit integration files match main. Started the production
+browser run with `review-questions.spec.ts`, `stale-review-context.spec.ts`,
+`target-context-switching.spec.ts`, and `target-workspace.spec.ts`, using the local
+synthetic auth/data fixture. These include summary switching and persisted workspace
+behavior, not only the earlier empty-Q&A checks.
+
+User supplied an earlier S2-018 reviewer comment, with its filesystem example
+redacted here as requested:
+
+> this was a comment made on s2-018's pr:
+>
+> Deep9:19 PM
+>
+> **@shawn** Hey Shawn, reviewed #93 at db54914 and I'm approving the code review. CI is green, tests pass, and all 3 mutations got caught. One fix before merge: ai-transcripts/2026-11-12_shawn_S2-018_codex.md still has 20 unredacted <USER_HOME> paths (first at line 101), but the header says paths were redacted. Swap them for <USER_HOME>. Also heads-up: #91 conflicts with your target-workspace.spec.ts badge counts and duplicates the summary-RPC fixture handler, so sync with Melissa
+>
+> i just want to be clear that theres no conflicts at the end
+
+The quoted reviewer comment has its full filesystem example replaced with
+<USER_HOME>; it is not an assertion that its old transcript findings still apply
+to the merged files.
+
+Assistant:
+
+> I’ll check the two overlaps mentioned in that comment: the workspace badge assertions and the summary-RPC fixture handler. I’ll compare the reconciled branch with current `main` and S2-017 (#91), so I can distinguish any remaining PR-to-PR conflict from a clean merge with `main`.
+
+Tool record: the first 19-test production-browser run had 18 passing cases and one
+failure. The workspace target-list test expected one "Not ingested" badge but saw
+two because the preceding S2-020 creation test had added a target to the shared
+seeded account. Stopped only this runner's fixture/server processes after all cases
+completed; the runner exited 1 with that assertion failure.
+
+Checked current main and `origin/s2-017` (`cc3a534`). Current main has exactly one
+summary-RPC handler and S2-018's corrected workspace badge counts. A read-only
+merge preview of main with unmerged S2-017 reports three conflict hunks in
+`tests/e2e/auth/target-workspace.spec.ts`. S2-017 also adds a summary handler at a
+different location; combining it unchanged would duplicate the one now on main.
+These are existing S2-017/main integration issues, not unresolved S2-020 merge
+conflicts. The unmerged S2-017 branch was not modified or incorporated into S2-020.
+
+Assistant:
+
+> The broader browser run found a test-isolation issue: S2-020’s new empty-target test adds a target to the shared account, which makes a later workspace badge-count assertion see two empty targets instead of one. I’ll move that creation test to an existing separate fixture account.
+>
+> The current branch has one summary-RPC handler, and S2-018 already corrected the workspace badge counts. S2-017 is still unmerged and carries the older overlap, so I’ll check and report its remaining compatibility separately.
+
+Tool record: changed only S2-020's empty-target browser test to sign in with the
+existing synthetic creation account before creating the target. This preserves
+the seeded account used by workspace assertions without altering S2-018 tests or
+weakening badge-count checks. The full deterministic run completed successfully:
+88 suites, 1,590 tests, lines/statements 94.31%, branches 94.29%, functions 93.29%.
+Started a rerun of all 19 browser cases against the same verified production build;
+only browser test code changed after the build. Formatting and scoped diff checks
+passed, and lint was rerun for the modified browser test.
+
+The rerun printed all 19 browser cases as passing, including the formerly failing
+badge-count case. The turn was interrupted before the runner's final teardown
+result was collected. A subsequent attempt to resume that session returned
+"Unknown process id"; the old fixture/server processes were no longer present.
+No final exit status is claimed for that interrupted run. The next integration
+below starts fresh verification against the newly merged S2-017 implementation.
+The merged S2-018 transcript's raw user-home-path scan returned zero matches, as
+did the scan of this updated melissa transcript.
+
+## Reconciliation after S2-017 merged and functional/security self-review
+
+User:
+
+> s2-017 was merged please remove any redunancy and conflict in this branch.
+> once done re-review from a functional/security perspective and make any necessary adjustments.
+
+Assistant:
+
+> I’ll finish reconciling the branch with current `main`, including S2-017, then review the combined functionality and security. I’ll preserve S2-020’s behavior, update its transcript and PR notes, and verify any fixes without pushing.
+
+Tool record: the worktree contained the interrupted, cleanly applied S2-018 merge
+plus the documented browser-test-isolation fix. Fetched origin; main advanced to
+`5f865ce` (S2-017 #91). This merge already consolidates the summary-RPC handler and
+retains S2-018's corrected workspace badge assertions. The earlier warning about
+the unmerged S2-017 branch describes historical state, not current main.
+
+Read the bundled Next.js component/useRouter guidance and inspected incoming main.
+Finished the pending S2-018 checkpoint with approval as `31aceb1` ("Merge S2-018
+main and isolate empty-target browser fixture"), preserving transcript and document
+updates. Then ran `git merge --no-commit --no-ff origin/main`; Git automatically
+merged the workspace and its tests without conflicts.
+
+Assistant:
+
+> The S2-017 merge applied cleanly. Current `main` already resolves the two overlaps from the earlier reviewer comment: it has one summary-RPC handler and corrected workspace badge assertions. I’m preserving those versions along with S2-017’s target switcher and S2-019’s Q&A safeguards.
+>
+> The test-isolation fix is also retained. I’m now reviewing the switching and authorization flow and running the combined checks.
+
+Tool record: verified that the switcher, summary fixture and workspace browser
+assertions match main. Only S2-020 production differences remain in
+`ProtectedTargetWorkspace` and `ReviewQuestions`. Re-read target listing and its
+owner filter, parent ownership checks, question route, review-context guard, the
+switcher's encoded same-origin links, and pending-request cleanup. Verified that
+the workspace still passes the session-verified user ID and that empty contexts
+fail before quota/model invocation. This is an AI-assisted self-review, not an
+independent teammate or section 7 approval.
+
+Started a fresh full Jest coverage run, lint and typecheck against the integrated
+branch. Lint and typecheck passed. Started the production build before rerunning
+browser integration checks. No live provider or deployed database calls were made.
+
+Assistant:
+
+> The production build, lint, typecheck, and formatting checks passed. The functional/security review has found no new blocking issue: the switcher lists owned targets, the workspace passes the verified user ID, and each Q&A request still loads authorized reviews before quota or model access.
+>
+> I’m running the full authenticated browser suite, including the new switcher tests, alongside the full unit/integration suite.
+
+Tool record: ran the complete `test:e2e:auth` suite against the integrated production
+build with local synthetic services. All 36 cases passed, including seeded-account
+badge counts after the isolated empty-target creation, keyboard target switching,
+summary context, delayed replies, account changes, and cross-user denials. Stopped
+only the two fixture/server processes started by this run after all cases completed
+so teardown could finish. The runner exited 0 with "36 passed (1.9m)".
+
+Assistant:
+
+> All 36 authenticated browser tests passed, including keyboard target switching, summary changes, empty-target Q&A, delayed responses, and cross-user denials. The earlier badge-count failure is gone.
+>
+> The full unit/integration run is still finishing. After that, I’ll record the results and complete the local merge commit. There are no unresolved Git conflicts.
+
+Assistant:
+
+> The combined browser suite is green, including the badge assertions and target-switching checks. I’ve also confirmed there is exactly one summary-RPC fixture handler and no unresolved merge entries.
+>
+> The full coverage run is still active. I’m waiting for its result before recording the final verification and completing the merge.
+
+Final tool result: full Jest coverage completed successfully in 371.3s. All 89
+suites and 1,596 tests passed. Statements/lines: 94.38%; branches: 94.35%; functions:
+93.37%. Retained the successful production build, lint, typecheck, formatting, and
+36-browser-test results from this integrated checkout. Updated the PR description,
+reviewer-response draft, implementation notes, and self-review report with the new
+baseline and removed obsolete summary-fixture limitations. Historical results above
+remain unchanged. No further production adjustment was necessary beyond preserving
+S2-020's existing behavior and fixing its browser-account isolation.
+
+Assistant:
+
+> The full suite passed: 1,596 tests across 89 suites, plus all 36 authenticated browser tests. The functional/security self-review found no additional blocking issue.
+>
+> I’ve updated the transcript, PR description, reviewer response, and verification notes. The remaining diff is scoped to S2-020; I’m completing the local merge commit and checking coverage against the new `main` baseline.
+
+Tool record: requested approval to stage the updated notes and finish the local
+S2-017 merge commit. The command was rejected by the user before execution. No
+staging or commit from that request took place, and the action was not retried.
+
+Assistant:
+
+> The commit approval was declined, so I’ll leave the merged changes and updated notes uncommitted. The tests and review are complete. I’m checking the final state without retrying the commit or pushing anything.
+
+Final state checks: MERGE_HEAD is main `5f865ce`; there are no unmerged files.
+The summary fixture contains exactly one handler. The switcher, fixture and badge
+assertions match main. `git diff --check origin/main` passes. The standard coverage
+gate passes at 163/163 (100%), with 48/48 changed branch outcomes. Because the merge
+is not committed, the gate still uses merge-base `4c866eb` and includes incoming
+S2-017 lines; the remaining direct diff against current main only contains S2-020
+production/test changes. Removed an obsolete 44/44 count from the current PR draft
+so it does not mislabel this pending-merge measurement. No production code changed
+after verification, no commit was retried, and nothing was pushed or posted.

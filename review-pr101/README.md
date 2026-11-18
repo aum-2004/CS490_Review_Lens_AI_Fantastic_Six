@@ -1,0 +1,602 @@
+# ReviewLens AI
+
+ReviewLens AI is a multi-user web application for analyzing public customer reviews. A user creates
+an **analysis target** (a business or product), ReviewLens ingests that target's reviews from a
+supported review platform, and the user can later ask questions that are answered only from that
+persisted review evidence. Each user's targets and reviews are private to that user.
+
+NJIT CS490 — Fall 2026 — Group B (Fantastic Six).
+
+> **Status:** Sprint 1 implementation is merged: authentication and authorization, analysis target
+> creation and listing, the target workspace, and guarded review ingestion, persistence, status,
+> and recovery. Hosted acceptance and readiness for paid ingestion are separate and remain pending.
+> Sprint 2 AI features and Sprint 3 production deployment are not implemented. See
+> [Implemented vs. planned](#implemented-vs-planned).
+
+---
+
+## Technology stack
+
+| Layer           | Technology                                               | Status                         |
+| --------------- | -------------------------------------------------------- | ------------------------------ |
+| Frontend        | Next.js 16 (App Router), React 19, TypeScript (strict)   | In place                       |
+| Styling         | Tailwind CSS 4; shadcn/ui-compatible `components/ui`     | In place                       |
+| Backend         | Next.js Route Handlers + server-side TypeScript services | In place                       |
+| Database / Auth | Supabase PostgreSQL + Supabase Auth                      | Sprint 1 implementation merged |
+| Lint / Format   | ESLint 9 with `eslint-config-next`; Prettier             | In place                       |
+| Tests           | Jest, React Testing Library, Playwright                  | In place                       |
+| CI              | GitHub Actions                                           | In place (S1-007)              |
+| Hosting         | Vercel                                                   | Planned (Sprint 3)             |
+| Package manager | npm (only — do not use Yarn or pnpm)                     | In place                       |
+
+Exact versions are pinned in `package-lock.json`.
+
+---
+
+## Prerequisites
+
+| Tool    | Version                                    | Check with       |
+| ------- | ------------------------------------------ | ---------------- |
+| Node.js | **24.x LTS** (team baseline; see `.nvmrc`) | `node --version` |
+| npm     | 10 or newer (bundled with Node.js)         | `npm --version`  |
+| Git     | Any recent version                         | `git --version`  |
+
+Install Node.js from <https://nodejs.org> (choose the LTS download). This installs npm too.
+
+---
+
+## Getting started
+
+These commands work the same in macOS Terminal, Windows PowerShell, and the VS Code terminal
+unless noted.
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six.git
+cd CS490_Review_Lens_AI_Fantastic_Six
+```
+
+> **macOS:** don't clone into `~/Desktop` or `~/Documents` if iCloud "Desktop & Documents" sync
+> is on. iCloud can offload files in `.git` and `node_modules`, which corrupts the repository.
+> Use a folder such as `~/Developer` instead.
+>
+> **Windows:** avoid OneDrive-synced folders for the same reason, and prefer a short path such
+> as `C:\dev\`.
+
+### 2. Install dependencies
+
+```bash
+npm ci
+```
+
+`npm ci` installs the exact versions recorded in `package-lock.json`. Use `npm install <package>`
+only when you are intentionally adding a dependency (and commit the updated lockfile).
+
+### 3. Create your local environment file
+
+Authentication and target features require Supabase public configuration. Create your local file:
+
+```bash
+# macOS / Linux
+cp .env.example .env.local
+```
+
+```powershell
+# Windows (PowerShell or Command Prompt)
+copy .env.example .env.local
+```
+
+Then fill in the values in `.env.local`. See [Environment variables and secrets](#environment-variables-and-secrets).
+
+### 4. Start the development server
+
+```bash
+npm run dev
+```
+
+Open <http://localhost:3000>. The home route redirects to login or your protected target list.
+The page reloads automatically when you edit files.
+
+You can also confirm the backend is running at <http://localhost:3000/api/health>, which returns:
+
+```json
+{ "success": true, "data": { "status": "ok" } }
+```
+
+Stop the server with `Ctrl+C`.
+
+---
+
+## Available scripts
+
+| Command                          | What it does                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `npm run dev`                    | Starts the development server at <http://localhost:3000>                                          |
+| `npm run build`                  | Creates an optimized production build in `.next/`                                                 |
+| `npm run start`                  | Serves the production build (run `npm run build` first)                                           |
+| `npm run lint`                   | Runs ESLint across the project                                                                    |
+| `npm run format`                 | Formats supported project files with Prettier                                                     |
+| `npm run format:check`           | Verifies formatting without changing files                                                        |
+| `npm run typecheck`              | Generates Next.js route types, then runs TypeScript without emitting                              |
+| `npm run test`                   | Runs Jest unit and component tests; no browser is required                                        |
+| `npm run test:watch`             | Re-runs relevant Jest tests while files change                                                    |
+| `npm run test:coverage`          | Runs Jest and writes an HTML/text coverage report to `coverage/`                                  |
+| `npm run test:qa`                | Runs only the deterministic Q&A harness suites (no network, no OpenAI, no Supabase)               |
+| `npm run coverage:changed`       | Runs Jest with coverage, then the S2-001 changed-code coverage gate against `origin/main`         |
+| `npm run coverage:changed:check` | Runs only the gate, reusing an existing `coverage/coverage-final.json`                            |
+| `npm run test:e2e`               | Starts the app and runs Playwright tests in headless Chromium                                     |
+| `npm run test:e2e:auth`          | Runs authentication browser tests against an isolated local test provider                         |
+| `npm run test:db`                | Applies `supabase/migrations/` to a throwaway local PostgreSQL database and runs `tests/db/`      |
+| `npm run check:migrations`       | Rejects malformed SQL migration names and duplicate Supabase timestamp versions before deployment |
+
+### Run automated tests
+
+Jest covers the current frontend starter page and backend health Route Handler:
+
+```bash
+npm test
+```
+
+These tests are deterministic and require no browser download, manual interaction, environment
+variables, external service, or credentials. Use `npm run test:coverage` when you also want a
+local coverage report.
+
+Playwright provides a separate end-to-end smoke check of the running application. Install its
+Chromium browser once after `npm ci`:
+
+```bash
+npx playwright install chromium
+npm run test:e2e
+```
+
+`npm run test:e2e` starts and stops the Next.js development server automatically. Playwright runs
+headlessly by default; reports and temporary test results are generated locally and ignored by Git.
+
+Authentication specifications live under `tests/e2e/auth/` and run separately with
+`npm run test:e2e:auth`, which starts a local dummy provider and an isolated app instance.
+The smoke command excludes those tests so it does not require the provider. Neither auth test
+accounts nor live Supabase credentials are needed. Both suites can use an existing supported
+browser by setting `PLAYWRIGHT_CHANNEL` (for example, `msedge`); otherwise they use bundled Chromium.
+
+### Changed-code coverage gate (S2-001)
+
+Every pull request must execute at least **80%** of the source lines it adds or modifies (**90%**
+inside `src/services/qa/**`), and no changed source file may have 0% changed-line coverage. CI
+enforces this in the required **Lint, typecheck, test, build** check. Run the same check locally
+before opening a PR:
+
+```bash
+git fetch origin main
+npm run coverage:changed
+```
+
+See [docs/changed-code-coverage.md](docs/changed-code-coverage.md) for the policy, exclusions, how
+to read a failure, and how to request an exclusion.
+
+### Deterministic Q&A test harness (S2-003)
+
+Q&A tests never call OpenAI, the network, or a live Supabase project. Each question runs through
+the **real** Q&A pipeline with only the infrastructure underneath it faked. The harness records
+every request sent to the model and to Supabase, and blocks all network access while a test runs.
+
+**What is real and what is faked.**
+
+| Layer                                                                        | In the harness                                                                     |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `answerQuestion` (S2-011), `runGroundedQaRequest`, input limits              | **Real**                                                                           |
+| `buildReviewDatasetContext` (S2-010), ownership guard, target repository     | **Real** (wrapped only to count calls; never replaced)                             |
+| `getAuthenticatedUser` (S1-009)                                              | **Real**: verifies a fake session against a fake `/auth/v1/user`                   |
+| supabase-js query builders and response parsing                              | **Real** client; only its `fetch` is replaced                                      |
+| `buildQaModelRequest` / system prompt (S2-013), `parseQaModelReply` (S2-011) | **Real**                                                                           |
+| `createOpenAiQaModel` (S2-011)                                               | **Real** in the provider-boundary suite, over a fake `fetch`                       |
+| `createSupabaseServerClient` (cookies, Next headers)                         | Faked: Jest module mock returning the fake Supabase client                         |
+| Supabase HTTP (auth + PostgREST)                                             | Faked: `fake-supabase.ts` over the fixture rows                                    |
+| The model (`callModel`)                                                      | Faked: scripted `fake-model.ts`, or the OpenAI adapter over `fake-openai-fetch.ts` |
+
+> **The fake Supabase does not emulate Row Level Security.** Rows are filtered only by the
+> query's own filters, so every cross-user and wrong-target denial these tests prove comes from
+> the **application-layer** checks (session verification, `getOwnedTargetOrThrow`, the S2-010
+> row checks). RLS itself is tested against real PostgreSQL by `npm run test:db`.
+
+| Path                                             | Contents                                                                             |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `tests/helpers/qa-harness/`                      | Harness: real-pipeline adapter, fakes, network guard, assertions, golden-case runner |
+| `tests/helpers/qa-harness/contract.ts`           | Re-exports of the production Q&A types and constants, plus harness-owned error table |
+| `tests/helpers/qa-harness/contract-alignment.ts` | Compile-time checks that harness types and error codes match production              |
+| `tests/helpers/qa-harness/fake-supabase.ts`      | Real supabase-js client over a fake `fetch`: fake session, PostgREST subset          |
+| `tests/helpers/qa-harness/fake-openai-fetch.ts`  | Fake OpenAI Responses endpoints for `createOpenAiQaModel({ fetcher })`               |
+| `tests/fixtures/qa/datasets.ts`                  | Synthetic datasets: normal, empty, mixed ratings, Target A/B, User B, malformed rows |
+| `tests/fixtures/qa/golden-cases.ts`              | Table of golden Q&A cases                                                            |
+| `tests/unit/qa-harness/`                         | Golden suite, integration and provider-boundary suites, harness self-tests           |
+
+**Run it.** `npm run test:qa` runs every harness suite. It is also part of `npm test`, so CI runs
+it with no secrets. To run only the real-pipeline integration suites:
+
+```bash
+npx jest --runInBand tests/unit/qa-harness/real-pipeline.integration.test.ts \
+  tests/unit/qa-harness/provider-boundary.test.ts tests/unit/qa-harness/golden-cases.test.ts
+```
+
+**Required preamble.** The real pipeline imports `server-only` modules, and the context builder
+takes no client factory, so the fake Supabase is injected with a module mock. Jest hoists
+`jest.mock` only in test files, so every test file that imports the harness starts with:
+
+```ts
+/** @jest-environment node */
+jest.mock("server-only", () => ({}));
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+```
+
+Without the second line, creating a harness throws an error that prints this preamble.
+
+**Script a fake model reply.** Rules are checked in order; the first match wins. Matchers:
+`question` (exact), `questionIncludes`, `targetId`, `predicate`. A call that matches no rule fails
+the test unless you set a `fallback`.
+
+```ts
+import { reply, setupQaTestHarness, expectGroundedAnswer } from "../../helpers/qa-harness";
+
+const qa = setupQaTestHarness({
+  script: [
+    { when: { questionIncludes: "pizza" }, then: reply.answered([reviewId]) },
+    { when: { questionIncludes: "weather" }, then: reply.declined("declined_general_knowledge") },
+  ],
+});
+
+it("answers from the reviews", async () => {
+  const result = await qa().ask(targetId, "How is the pizza?");
+  if (!result.ok) throw result.error;
+  expectGroundedAnswer(result.answer, qa().model.lastCall().request);
+});
+```
+
+Other replies: `reply.insufficientEvidence()`, `reply.raw("not json")`, `reply.empty()`,
+`reply.providerError("MODEL_UNAVAILABLE")` (throws the real `QaModelError`), `reply.timeout(ms)`
+(use Jest fake timers), and `reply.echoContext()`, which echoes everything the app sent so leaks
+show up in the answer.
+
+**Control identity and persisted data.** `qa().setActor(QA_USERS.userB)` switches the verified
+session; `qa().setActor(null)` signs out. `qa().supabase.setAuthMode("rejected" | "unavailable")`
+makes Supabase Auth answer 401 or 500. `qa().supabase.tables` holds the mutable rows, and
+`qa().supabase.failTable("reviews", 500)` fails a table. Each `ask` result reports `calls` (model),
+`contextBuilds` (real builder calls) and `supabaseRequests` (auth and REST, with the resolved actor).
+
+**Test the provider boundary.** Swap `callModel` for the real adapter over a fake fetch. Pass the
+synthetic env; never a real key:
+
+```ts
+const provider = createFakeOpenAiFetch({ count: openAi.count(14_501) });
+const callModel = createOpenAiQaModel({ fetcher: provider.fetcher, env: FAKE_OPENAI_ENV });
+const qa = setupQaTestHarness({ pipeline: (input) => realQaPipeline({ ...input, callModel }) });
+// ...then inspect provider.countCalls() / provider.generationCalls() bodies.
+```
+
+**Add a golden case.** Append an entry to `QA_GOLDEN_CASES` in `tests/fixtures/qa/golden-cases.ts`
+with one or more steps of `{ actor, auth?, target, question, reply, expect }` (`actor` may be
+`"anonymous"`). The runner automatically checks the real system prompt and prompt version, that
+only the active target's reviews were sent, that no reviewer names were sent, that no other
+dataset's data reached the request or the answer, and that no review row was read before an
+authorization or input-validation error. `contextLoaded: false` additionally requires that the
+context builder never ran and Supabase was never touched. Assertions cover behaviour and
+structure, never exact model wording.
+
+**What the context and prompt checks verify.**
+
+- `expectContextOnlyForTarget` parses the `REVIEW DATASET` JSON in the model input. Every row's
+  `id`, `rating`, `date` and `text` must match the persisted review at the same position, with
+  nothing dropped, added or reordered, and no extra fields.
+- `expectSystemPromptApplied` checks the JSON-encoded target name, the platform label, and the
+  named rules in `QA_SYSTEM_PROMPT_INVARIANTS` (`contract.ts`) against the real S2-013 prompt:
+  grounded in the supplied reviews, no outside knowledge, say so when evidence is insufficient,
+  and decline out-of-scope, other-entity and other-platform questions. Each rule must be stated
+  within one sentence, but any wording is accepted.
+
+**Two different size limits.** A question over 2,000 characters (after trimming) is rejected at
+the service boundary as `QaInputValidationError`/`QA_QUESTION_TOO_LONG` before any data is loaded.
+The provider token budget is separate: the OpenAI adapter rejects a request whose counted input
+tokens plus the reserved output exceed the cap as `QaPromptError`/`REQUEST_TOO_LARGE`, before the
+generation call. Both have their own tests.
+
+**Replies with citations.** Following S2-011, an `answered` reply must cite at least one review
+from the request. Every other outcome (`insufficient_evidence` and the three declines) must cite
+none. A reply that breaks this is rejected (`UNGROUNDED_ANSWER` or `UNEXPECTED_CITATIONS`), never
+repaired by dropping its citations.
+
+**Contract alignment.** Production types and constants are re-exported, never copied. Values a
+teammate may change (`SYSTEM_PROMPT_VERSION`, budgets, outcome lists) are imported at runtime and
+asserted in tests. `contract-alignment.ts` fails `npm run typecheck` if a harness error code is not
+a member of its production error's code type, or if the reply payload or evidence-row shapes drift.
+
+> **Limitation:** golden cases prove what the application does around the model (what it sends,
+> what it accepts, when it refuses to call). They do not prove a real model would choose the
+> scripted outcome; that needs an approved live-model evaluation (S2-004/S2-014/S2-015).
+
+### Configured-model refusal evaluation (S2-014/S2-015)
+
+The separate local-only runner defaults to a recording fake transport and makes zero external
+requests:
+
+```bash
+npm run eval:configured-model
+```
+
+The exact 12-case matrix, 36-call/72-request guards, ignored artifacts, independent human
+assessment workflow, and explicitly **not yet authorized** paid command are documented in
+[`docs/s2-configured-model-evaluation-harness.md`](docs/s2-configured-model-evaluation-harness.md).
+Normal tests, builds, CI, and the web application never invoke this runner.
+
+### Run database tests
+
+`npm run test:db` checks the real schema and Row Level Security policies, not a mock. It creates a
+throwaway PostgreSQL database, applies a small test-only stand-in for Supabase Auth
+(`tests/db/supabase-auth-shim.sql`), applies every migration in `supabase/migrations/`, runs each
+`tests/db/*.test.sql` file and the two-session owner-budget regression, and drops the database. The tests use two
+users, A and B, to prove cross-user access and direct source changes are denied at the database.
+
+Before creating a database or executing SQL, the runner checks migration filename/version
+uniqueness. Distinct names with the same 14-digit prefix fail, matching Supabase's migration
+identity rule. CI runs this check in both application and database jobs. Run it separately with
+`npm run check:migrations` before deploying or combining branches; raw SQL execution alone cannot
+detect a Supabase history-version collision.
+
+It needs Node 24+ and PostgreSQL 15 or newer running locally (macOS: `brew install postgresql@16` and
+`brew services start postgresql@16`). Connection settings come from the standard `PG*` variables.
+CI runs them in the "Database tests" job against a PostgreSQL 16 container.
+
+For WSL without a Linux Node installation, set `MIGRATION_CHECK_NODE` to the mounted
+Windows `node.exe` executable when invoking the database runner. This changes only the
+preflight executable; PostgreSQL still runs inside the local Linux test environment.
+
+The concurrency test holds the fifth owner reservation uncommitted on one target,
+starts the sixth on a different target in another session, observes its advisory
+lock wait, then commits the fifth and requires INGESTION_START_LIMIT. Its explicit
+handshake avoids relying on simultaneous scheduling or an arbitrary sleep. Removing
+the reservation's owner advisory lock causes failure.
+
+### Run a production build locally
+
+```bash
+npm run build
+npm run start
+```
+
+Then open <http://localhost:3000>.
+
+---
+
+## Project structure
+
+```text
+.
+├── src/
+│   ├── app/                  # FRONTEND routes, layouts, pages (Next.js App Router)
+│   │   ├── api/              # BACKEND Route Handlers (HTTP endpoints)
+│   │   │   └── health/       #   GET /api/health
+│   │   ├── layout.tsx        # Root layout shared by every page
+│   │   ├── page.tsx          # Home / starter page
+│   │   └── globals.css       # Tailwind CSS entry point and theme tokens
+│   ├── components/
+│   │   └── ui/               # FRONTEND shared form/UI primitives
+│   ├── services/             # BACKEND server-side business logic and data access
+│   └── lib/
+│       └── supabase/         # DATA boundary: the only place Supabase clients are created
+├── supabase/
+│   └── migrations/           # DATA schema and Row Level Security policies (SQL)
+├── tests/
+│   ├── unit/                 # Jest and React Testing Library tests
+│   ├── db/                   # SQL tests for migrations and RLS (`npm run test:db`)
+│   └── e2e/                  # Playwright browser tests
+├── docs/                     # Team engineering, UX, security, and AI-development documents
+├── .github/workflows/        # Pull-request CI and the sprint-issue importer
+├── .env.example              # Environment variable names, no real values
+├── AGENTS.md                 # Next.js-provided notes for AI coding agents
+├── eslint.config.mjs         # ESLint configuration
+├── jest.config.ts            # Jest and Next.js test configuration
+├── playwright.config.ts      # Headless end-to-end test configuration
+├── next.config.ts            # Next.js configuration
+├── tsconfig.json             # TypeScript configuration (strict, `@/*` → `src/*`)
+├── package.json              # Scripts and dependencies
+└── package-lock.json         # Exact dependency versions (always commit)
+```
+
+### Responsibilities
+
+**Frontend**
+
+- `src/app/` — URL routes. A folder with a `page.tsx` becomes a page; `layout.tsx` wraps pages.
+- `src/components/` — Reusable React components. shadcn/ui primitives go in `ui/`;
+  feature components go in folders like `analysis-targets/`; shared ones in `shared/`.
+
+**Backend**
+
+- `src/app/api/` — Route Handlers. Each `route.ts` is an HTTP endpoint. Handlers stay thin:
+  validate input, authenticate, authorize, call a service, return the shared response shape.
+- `src/services/` — Business logic and data access, organized by domain (`auth`,
+  `analysis-targets`, `ingestion`, `reviews`). Server-only.
+
+**Data / persistent storage**
+
+- `src/lib/supabase/` — Supabase client configuration and Auth cookie/session integration.
+- `.env.example` / `.env.local` — Connection settings. Values are never hard-coded in source.
+- `supabase/migrations/` — Database schema and RLS policies, applied in filename order. S1-014
+  added `analysis_targets`.
+
+**Shared code**
+
+- `src/lib/` — Framework clients and small utilities (`supabase/`, and later `validation/`,
+  `utils/`).
+- `src/types/` — Shared TypeScript types, created when first needed.
+
+Import from `src` using the `@/` alias, for example `import { x } from "@/lib/utils/x"`.
+
+Folders are created by the stories that need them; each reserved folder contains a short
+`README.md` describing what belongs there. The full conventions (naming, error handling,
+response shapes, testing) are in `docs/engineering-standards.md` (S1-001).
+
+---
+
+## Environment variables and secrets
+
+ReviewLens AI uses environment variables to configure Supabase and external services without exposing private credentials.
+
+### Local environment setup
+
+1. Copy `.env.example` to `.env.local`.
+2. Add your Supabase project URL and publishable key to `.env.local`.
+3. Install dependencies using `npm ci`.
+4. Start the application using `npm run dev`.
+
+The public health route can run without environment variables. Authentication and target features
+require the Supabase public configuration.
+
+### Required environment variables
+
+| Variable                               | Description              | Visibility |
+| -------------------------------------- | ------------------------ | ---------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL     | Public     |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key | Public     |
+
+The Supabase URL and publishable key can be obtained from the team's Supabase project dashboard.
+
+Ingestion also requires server-only Supabase, Outscraper, storage-approval, and signed-callback
+configuration. Keep `INGESTION_ENABLED=false` until the team has completed the hosted and paid-use
+readiness steps described below; `.env.example` lists every required variable.
+
+### Security requirements
+
+- Store local configuration values in `.env.local`.
+- Never commit `.env.local` or files containing real credentials.
+- `.gitignore` excludes environment files except `.env.example`.
+- Only browser-safe configuration may use the `NEXT_PUBLIC_` prefix.
+- Supabase service-role keys, database credentials, and review-provider API keys must remain server-side.
+- Never hard-code credentials or environment-specific values into source files.
+- Never expose credentials through logs or error messages.
+- Restart the development server after modifying `.env.local`.
+
+- If a secret is ever committed, tell the team immediately and rotate the key. Deleting it in a later commit does not remove it from Git history.
+
+### Configuration validation
+
+Supabase environment configuration is validated in
+`src/lib/supabase/config.ts`.
+
+The `getSupabasePublicConfig()` function:
+
+- Checks that the required environment variables exist.
+- Rejects missing or empty values.
+- Validates the Supabase URL format and protocol.
+- Produces understandable errors without exposing credentials.
+
+Validation occurs when the function is called by
+Supabase-dependent code.
+
+The public health route can run without Supabase credentials, but authentication and target routes
+require them. S1-009 supplies Supabase client initialization and authentication.
+See [authentication setup and verification](docs/s1-009-authentication.md) for dashboard settings,
+email confirmation, `/login`, the session endpoint, and pending manual checks.
+
+### Deployment configuration
+
+For deployment on Vercel, required environment variables must be configured through the Vercel project's environment settings.
+
+Public variables must be available during the appropriate build process. Private credentials must remain server-side and must never be committed to GitHub.
+
+### Testing
+
+Supabase environment configuration is tested in
+`tests/unit/supabase-config.test.ts`.
+
+Tests cover:
+
+- Valid Supabase configuration.
+- Missing required environment variables.
+- Empty or whitespace-only values.
+- Invalid Supabase URLs.
+- Unsupported URL protocols.
+- Error messages that do not expose configuration values.
+
+Run the configuration tests using:
+
+```bash
+npm run test -- supabase-config.test.ts --runInBand
+```
+
+These tests use dummy configuration values and do not
+require a live Supabase connection.
+
+---
+
+## Troubleshooting
+
+| Problem                                                                  | Fix                                                                                                                                                      |
+| ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm ci` says the lockfile is out of sync                                | Someone changed `package.json` without updating the lockfile. Pull the latest branch; if it persists, tell the author. Don't delete `package-lock.json`. |
+| `next: command not found` / `'next' is not recognized`                   | Dependencies aren't installed. Run `npm ci` from the repository root.                                                                                    |
+| Node version error, or `npm ci` warns `EBADENGINE`                       | Install Node.js 24 LTS (the `.nvmrc` baseline) and open a new terminal.                                                                                  |
+| Port 3000 is already in use                                              | Stop the other process, or run `npm run dev -- -p 3001` and open <http://localhost:3001>.                                                                |
+| Build fails fetching Google Fonts                                        | The Geist font downloads at build time. Check your internet connection or proxy, then retry.                                                             |
+| Changes to `.env.local` are ignored                                      | Restart the dev server. Browser-side variables must start with `NEXT_PUBLIC_`.                                                                           |
+| Strange errors after switching branches                                  | Stop the server, delete the `.next` folder, run `npm ci`, and start again. macOS: `rm -rf .next` · PowerShell: `Remove-Item -Recurse -Force .next`       |
+| Playwright says the Chromium executable is missing                       | Run `npx playwright install chromium`, then retry `npm run test:e2e`.                                                                                    |
+| Git reports a corrupt object or "far too short to be a packfile" (macOS) | The clone is in an iCloud-synced folder. Re-clone into a non-synced folder such as `~/Developer`.                                                        |
+| Windows: `npm` scripts blocked by execution policy                       | In PowerShell run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or use Command Prompt.                                                          |
+
+---
+
+## Implemented vs. planned
+
+### Merged Sprint 1 implementation
+
+- Next.js App Router application with TypeScript (strict) and Tailwind CSS.
+- `GET /api/health` Route Handler.
+- Frontend, backend, and data directory boundaries with documentation.
+- ESLint, Prettier, clean-checkout type-checking, Jest/React Testing Library, Playwright, and
+  pull-request CI for formatting, lint, typecheck, unit tests, and build.
+- Supabase environment validation and unit tests.
+- Supabase registration/confirmation, sign-in, cookie sessions, verified server identity, logout,
+  protected navigation, and safe post-login returns (S1-009 and S1-010).
+- Server-side ownership checks, cross-user denial, owner-only Row Level Security, restricted client
+  writes, and database authorization tests for targets, reviews, and ingestion (S1-011 – S1-014).
+- Validated analysis target creation through the protected form and `POST /api/analysis-targets`,
+  with ownership derived only from the authenticated session (S1-015 and S1-016).
+- Protected, responsive My Targets listing with ingestion status and shared navigation (S1-017).
+  See [listing and integration guidance](docs/s1-017-analysis-targets.md).
+- An ownership-gated target workspace that displays source provenance, saved reviews, and ingestion
+  controls and status (S1-018).
+- Outscraper ingestion submission, response validation, review normalization, bounded atomic
+  persistence, and source-identity verification (S1-019 – S1-022).
+- Persisted ingestion states, safe refresh/retry behavior, signed callback binding recovery,
+  duplicate-paid-start protections, limits, and an operator recovery runbook (S1-023). See
+  [the recovery runbook](docs/s1-023-job-recovery.md).
+
+### Hosted acceptance and paid-ingestion readiness
+
+Merged code and local/CI tests do not establish that every migration and flow has passed acceptance
+against the shared hosted Supabase and Vercel environments. The repository's ingestion tests use
+synthetic provider data; they do not prove a paid extraction or persistence of real provider reviews.
+
+Paid ingestion remains disabled by default. Before enabling it, the team must apply and verify the
+hosted migrations, configure the server-only provider and callback secrets, record approval for
+provider/source review storage, complete the documented security and human acceptance checks, and
+decide the global paid-start/spend-control policy. The implemented per-account limit is not a global
+spend cap.
+
+### Pending
+
+| Capability                                    | Planned sprint |
+| --------------------------------------------- | -------------- |
+| AI question answering and ingestion summaries | Sprint 2       |
+| Production deployment                         | Sprint 3       |
+
+---
+
+## Next steps for the team
+
+- Pull-request CI now runs the S1-006 commands. Confirm the required-check and branch-protection
+  settings in GitHub; workflow configuration alone does not establish those settings.
+- Browser CI may additionally install Chromium and run `npm run test:e2e`.
+- Apply new files in `supabase/migrations/` to the team Supabase project after their PR merges.
+
+Work branches off `main` using `feature/<story-id>-<short-name>` and merges through a reviewed pull
+request.

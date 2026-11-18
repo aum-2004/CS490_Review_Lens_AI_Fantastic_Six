@@ -1,0 +1,61 @@
+{
+  "implementation": "c80492d",
+  "provider": "local dummy fixture; actual app and SDK",
+  "steps": [
+    {
+      "step": "Separate User A and User B sessions display only their own target names",
+      "result": "PASS"
+    },
+    {
+      "step": "Each target shows name, platform, source reference and target-selection link",
+      "result": "PASS"
+    },
+    {
+      "step": "Forged owner arguments do not expose User A data; API response is minimal and private/no-store",
+      "result": "PASS"
+    },
+    {
+      "step": "All three targets survive refresh and home navigation despite a two-row provider cap",
+      "result": "PASS"
+    },
+    {
+      "step": "Skip link is the first keyboard target and focuses main content",
+      "result": "PASS"
+    },
+    {
+      "step": "375px layout has no horizontal overflow; account menu supports Enter/Escape",
+      "result": "PASS"
+    },
+    {
+      "step": "Empty state is distinct and links to S1-015 creation",
+      "result": "PASS"
+    },
+    {
+      "step": "Database failure shows generic retry feedback, no partial/empty success and no protected API data",
+      "result": "PASS"
+    },
+    {
+      "step": "Logout and browser Back do not expose targets; User B remains signed in independently",
+      "result": "PASS"
+    },
+    {
+      "step": "No unhandled browser runtime errors during the walkthrough",
+      "result": "PASS"
+    }
+  ],
+  "screenshots": [
+    "user-a-desktop.png",
+    "user-b-desktop.png",
+    "user-a-mobile.png",
+    "user-a-mobile-dark.png",
+    "empty-desktop.png",
+    "error-desktop.png"
+  ],
+  "pageErrors": [],
+  "afterBack": {
+    "url": "http://127.0.0.1:3100/login?next=%2Fanalysis-targets",
+    "targetVisible": false,
+    "signInVisible": true
+  },
+  "result": "PASS — local agent-run acceptance; hosted and human verification not claimed"
+}

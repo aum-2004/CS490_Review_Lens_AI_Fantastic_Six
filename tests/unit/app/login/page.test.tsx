@@ -50,7 +50,7 @@ it("offers the shared theme control alongside sign-in without changing its safe 
     "/analysis-targets",
   );
   document.documentElement.dataset.theme = "light";
-  fireEvent.click(screen.getByRole("button", { name: "Toggle dark mode" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dark mode" }));
   expect(document.documentElement).toHaveAttribute("data-theme", "dark");
   expect(localStorage.getItem("reviewlens-theme")).toBe("dark");
   expect(redirect).not.toHaveBeenCalled();
@@ -60,7 +60,7 @@ it("keeps the theme control available when authentication is unavailable", async
   jest.mocked(getAuthenticatedUser).mockRejectedValue(new Error("private provider detail"));
   render(await resolvePage());
   expect(screen.getByRole("alert")).toHaveTextContent("Authentication is temporarily unavailable");
-  expect(screen.getByRole("button", { name: "Toggle dark mode" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
   expect(screen.queryByRole("form")).not.toBeInTheDocument();
   expect(screen.queryByText("private provider detail")).not.toBeInTheDocument();
 });
@@ -72,7 +72,7 @@ it("shows the signed-in account and the theme control when no return path is req
   render(await resolvePage());
   expect(screen.getByRole("status")).toHaveTextContent("a@example.com");
   expect(screen.getByText("Your account")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Toggle dark mode" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
 });
 
 it("redirects a verified account only to a protected application route", async () => {
@@ -86,5 +86,5 @@ it("rejects an external return URL and presents confirmation errors without remo
   expect(redirect).not.toHaveBeenCalled();
   expect(screen.getByRole("alert")).toHaveTextContent("Try signing in");
   expect(screen.getByRole("form", { name: "Sign in" })).not.toHaveAttribute("data-return-to");
-  expect(screen.getByRole("button", { name: "Toggle dark mode" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
 });

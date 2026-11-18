@@ -7,7 +7,7 @@ test("Analyst Studio keeps the selected theme across routes, reloads, and mobile
 }) => {
   await page.emulateMedia({ colorScheme: "light" });
   await page.goto(`/login?next=${encodeURIComponent(target)}`);
-  const signInToggle = page.getByRole("button", { name: "Toggle dark mode" });
+  const signInToggle = page.getByRole("button", { name: "Dark mode" });
   await expect(page.getByLabel("Email *")).toHaveCSS("border-top-color", "rgb(129, 144, 167)");
   await signInToggle.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -30,10 +30,10 @@ test("Analyst Studio keeps the selected theme across routes, reloads, and mobile
     fullPage: true,
     caret: "initial",
   });
-  const toggle = page.getByRole("button", { name: "Toggle dark mode" });
+  const toggle = page.getByRole("button", { name: "Dark mode" });
   await toggle.click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(toggle).toHaveText("Light mode", { useInnerText: true });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("body")).toHaveCSS("background-color", "rgb(20, 25, 34)");
   await expect(page.getByRole("button", { name: /^Switch target:/ })).toHaveCSS(
     "background-color",

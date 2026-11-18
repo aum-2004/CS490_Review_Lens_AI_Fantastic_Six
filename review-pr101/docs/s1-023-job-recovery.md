@@ -1,0 +1,192 @@
+# S1-023 accepted-job recovery
+
+This fixes the accepted-job failure window without introducing a paid submission
+retry. `INGESTION_ENABLED` and real-review storage approval remain off by default.
+Merged S1-019 source-URL submission now uses the same reservation/recovery lifecycle.
+URL results explicitly retain provider-resolved provenance without independent URL
+identity claims; returned identities are not promoted to configured target identities.
+
+## Binding and reconciliation
+
+Before contacting the provider, the database reserves an attempt with its verified
+owner, target, source/query snapshot and generated ID. The server derives a signed
+callback URL scoped to that attempt and registers it on the same provider request.
+The accepted job binding is retried at most three times, with 100ms and 200ms delays.
+Those retries do not repeat the provider call. An exhausted binding returns a safe
+503; no provider job ID or signed callback URL is included in UI/API summaries.
+Authenticated owners can read their own job IDs through RLS-protected SELECT;
+they cannot bind or override a reconciliation job from browser input.
+
+Outscraper documents the per-request
+[`webhook` parameter](https://docs.outscraper.com/endpoints/google-maps-reviews/)
+and [native webhook signatures](https://outscraper.com/how-to-verify-webhook-request/).
+The callback verifies both the per-attempt HMAC capability and the provider's
+`X-Hub-Signature-256` over the raw body using OUTSCRAPER_API_KEY. It reads a maximum
+of 8KiB, accepts only a valid provider ID, and ignores claimed owner/source/status,
+reviews and results URLs. It never starts a job, fetches results, or persists reviews.
+
+Ownership comes from the stored attempt; the binding RPC rechecks its parent owner.
+Only service_role can mutate bindings. Late callbacks can recover an unbound
+SUBMISSION_UNCERTAIN attempt to processing. Duplicate callbacks for the same job
+return existing state, including terminal state, without resetting it. A conflicting
+job ID cannot overwrite an existing binding.
+
+Unbound expiry locks the row and rechecks both age and null provider ID. A stale
+application read cannot fail a job which bound in the meantime. Losing storage
+approval produces a retryable gate response while preserving the accepted job and
+its active-submission lock. Restoring approval resumes that same job.
+
+## Configuration before enabling live ingestion
+
+Apply all four ingestion migrations, including
+`20261107030000_bound_ingestion_completions.sql`. The 010000 migration is restored
+to e69f084; completion limits are installed by 030000 for fresh and already-migrated
+databases. Browser users cannot DELETE
+analysis_targets, so deleting a target cannot erase its billing hold or audit rows.
+Administrative deletion remains privileged and must not be used to bypass recovery.
+
+The database permits at most five reservations per owner in a rolling 24 hours,
+serialized across different targets. Rejected and uncertain submissions also count;
+operator release does not refund a reservation. Existing held/succeeded attempts
+remain readable/idempotent at the limit. Do not delete audit rows to reset it.
+
+This is a per-account budget, not a global paid-start cap. Before enabling ingestion,
+the team must decide and record a global spend-control policy. Cross-account
+protection is not claimed by this implementation; keep INGESTION_ENABLED off until
+that decision and the other live-use prerequisites are satisfied.
+
+Provider result bodies are streamed with a 2 MiB ceiling. Completion accepts at
+most 30 reviews, bounded review fields and metadata, and a bounded business identity;
+the completion RPC independently enforces limits before inserting anything.
+Metadata uses a 16 KiB compact JSON application limit and a 32 KiB jsonb::text SQL
+allowance so PostgreSQL's rendering spaces do not reject an application-valid
+batch. The remaining count/field guards are unchanged.
+INGESTION_RESULT_LIMIT preserves the accepted binding and submission hold and saves
+no partial batch. Investigate the provider result and storage limits with the project
+team; starting another paid job is not a recovery step.
+
+When INGESTION_ENABLED is off, refresh returns INGESTION_DISABLED before any
+database/provider reconciliation. Read-only status remains available and signed
+callbacks can still recover bindings. Restore the approved configuration before
+resuming the same job, subject to its existing deadline.
+
+Callback availability while disabled is intentional: late callbacks retain the
+provider-body and per-attempt signature checks and only recover an existing
+binding. They do not start paid jobs, fetch results or save reviews. Start and
+refresh remain disabled. The route tests cover both unset/false enable flags and
+forged-signature denial while disabled.
+
+- INGESTION_CALLBACK_ORIGIN must be the stable, publicly reachable HTTPS application
+  origin, without credentials, path, query or fragment. Keep the old endpoint
+  reachable for outstanding jobs if changing domains.
+- INGESTION_CALLBACK_SECRET must contain at least 32 randomly generated bytes. It is
+  server-only, and must stay stable while jobs using its capabilities are outstanding.
+- OUTSCRAPER_API_KEY authenticates the provider body signature. Coordinate rotation
+  with outstanding webhook deliveries; do not silently accept unsigned callbacks.
+- Treat signed callback URLs as secrets. Next.js request logging excludes this path;
+  hosting/proxy access logs must also redact the signature query parameter. Never
+  paste signed URLs, webhook signatures or API keys into tickets or transcripts.
+- A missing recovery configuration prevents new paid submissions, even if the main
+  enable flag is true. Recorded provider/source storage approval remains separately
+  required. This work does not assert that permission has been granted.
+
+## Operator recovery if binding or callback storage fails
+
+1. Restore database availability and the configured callback endpoint. A failed
+   storage write returns 503 so delivery can be retried. Do not assume the provider
+   guarantees retries: its public docs establish callbacks, not an unlimited durable
+   delivery guarantee.
+2. Locate the reserved attempt in server storage. In the provider's request record,
+   verify the exact registered callback attempt ID and the submitted query/source
+   against that reservation. Similar business names, Place IDs or timestamps alone
+   are not sufficient evidence to select a job from another user's request.
+3. If the original signed callback is available, replay it from a trusted server
+   with the original raw bytes, signature header and callback URL. Otherwise, only
+   an authorized operator with verified provider correlation evidence may invoke
+   `public.bind_ingestion_job(attempt_id, stored_owner_id, verified_provider_job_id)`
+   using the service role or database administration workflow. Never expose this
+   operation as a browser job-ID input.
+4. Reload the workspace. It reads the recovered processing attempt and resumes
+   verified-result reconciliation when storage approval is present. A callback's
+   Success status by itself never records application success.
+5. If reliable correlation evidence is unavailable, leave the attempt blocked and
+   investigate with the provider. Do not clear the block or start another paid job
+   merely because the application did not receive its original response.
+
+The provider documents a four-hour result availability window after completion;
+recover promptly. Separately, the application imposes a conservative four-hour
+deadline from submission, checked using database time under the row lock. This is
+an application limit, not a claim that the provider's window starts at submission.
+Pending and 404 lookups cannot keep an attempt processing forever. Expiry records
+RESULT_WINDOW_EXPIRED, retains the job binding and blocks another paid start.
+The check runs before lookup and again before finalization, including a stale fetch
+that finishes after the deadline. Returning to the workspace triggers the check;
+this implementation does not claim a background worker while no workspace is open.
+
+No claim is made that external HTTP submission and PostgreSQL
+commit form a single transaction. The durable pre-submission correlation, binding
+retries, authenticated callback and operator procedure provide a recovery path;
+an unbound result is never disclosed or saved as a successful ingestion.
+
+## Operator release after confirming that no job exists
+
+1. Keep new submissions blocked while investigating SUBMISSION_UNCERTAIN or
+   RESULT_WINDOW_EXPIRED. Check the exact reserved attempt, owner, target, source,
+   callback correlation and stored provider job ID against the provider's records.
+   HTTP 404, inaccessible results, elapsed time, invalid JSON and an account outage
+   alone do not prove no paid job exists.
+2. Obtain independent provider confirmation that no accepted job exists (for an
+   uncertain start), or that the known expired job is no longer active and cannot
+   produce a recoverable result. Record that evidence and the decision to permit
+   a further charged request in a restricted team incident/ticket. If uncertain,
+   do not release the hold. Recover/reconcile an existing job instead.
+3. An authorized operator may call the following using service_role or the normal
+   database administration workflow. These are placeholders, not client inputs:
+
+   ```sql
+   select public.resolve_ingestion_no_job(
+     'ATTEMPT_UUID'::uuid,
+     'STORED_OWNER_UUID'::uuid,
+     'restricted-team-ticket-reference'
+   );
+   ```
+
+4. The RPC locks and rechecks both attempt and parent ownership, accepts only the
+   two held failure states, requires a nonblank evidence reference, retains the job
+   binding and records resolution_reference/resolved_at. It changes the safe error
+   category to SUBMISSION_NOT_ACCEPTED or EXPIRED_JOB_RECONCILED, releasing the hold.
+   Never delete attempts, clear provider IDs or expose this RPC as a browser action.
+5. Reload the workspace. A further submission is an explicit user action, never
+   an automatic retry. A successful target remains ineligible for another run.
+
+Apply `20261107010000_harden_ingestion_lifecycle.sql` as well as the initial attempt
+migration. Callback recovery explicitly has service-role SELECT permission and an
+RLS read policy; it does not depend on Supabase's default table grants.
+
+Operator resolution_reference and resolved_at are restricted server/operator
+columns. The follow-up migration replaces authenticated table-wide SELECT with an
+explicit lifecycle/binding column allowlist. Owners can still read their own job
+IDs under RLS, but cannot retrieve these operator fields through the Data API.
+Keep evidence references free of secrets even though their access is restricted.
+The database suite verifies denied owner reads, permitted service-role reads,
+the operator state guard and direct unique-index protection of expired holds.
+
+## Regression coverage
+
+Historical results after S1-019 integration: 42 Jest suites / 541 tests passed; all 20 auth/browser
+tests passed; all six SQL files passed in isolated PGlite PostgreSQL. Formatting,
+lint and explicit typecheck passed. The production build is recorded in the
+acceptance evidence.
+
+Tests cover approval withdrawal/restoration without another paid start, stale expiry
+after binding, binding retry without provider retry, uncertain-attempt recovery,
+duplicate terminal callbacks, conflicting IDs, missing/forged provider signatures,
+body tampering, owner-field spoofing, bounded bodies and safe storage failures.
+PR #48 review regressions now cover HTTP 401/402/403/404/502, missing configuration
+and invalid JSON without a second paid start, restoration of the same bound job,
+post-success submission blocking, pending/404 expiry, and operator release. Only
+explicit provider failure, identity failure, no usable reviews or the separate
+application deadline can end an accepted job. Clear submission 4xx rejections
+(except 408) fail normally; timeouts, 5xx and malformed acceptance remain uncertain.
+All fixtures are synthetic; no paid extraction or live review data was
+used, and no hosted migration was applied.
