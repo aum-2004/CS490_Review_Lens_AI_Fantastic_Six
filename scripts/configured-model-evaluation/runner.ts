@@ -187,7 +187,7 @@ function offlineTransport(plan: readonly ConfiguredModelAttemptPlan[]): typeof f
       return openAi.completed({
         outcome,
         claims: [],
-        note: "I can only analyze the Google Maps reviews for Restaurant A, so I cannot answer that out-of-scope request.",
+        coverage: "none",
       });
     },
   }).fetcher;

@@ -267,7 +267,10 @@ it("rebuilds B context from changed persisted fixture rows after switching", asy
   row.rating = 2;
   expect(await (await ask(B)).json()).toMatchObject({
     // The claim's quote is checked against the freshly persisted text, not the earlier row.
-    data: { targetId: B, answer: `BETA_UPDATED customer service [${row.id}]` },
+    data: {
+      targetId: B,
+      answer: `BETA_UPDATED customer service\n  "BETA_UPDATED customer service" [${row.id}]`,
+    },
   });
   expect(JSON.stringify(f.outgoing.at(-1))).not.toContain("BETA_SERVICE_MARKER");
 });

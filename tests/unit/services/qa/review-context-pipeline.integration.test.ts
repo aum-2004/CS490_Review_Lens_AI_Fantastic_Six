@@ -503,7 +503,7 @@ describe("production questions route with actual context, orchestration and prov
                 content: [
                   {
                     type: "output_text",
-                    text: JSON.stringify({ outcome, claims: [], note: "Controlled response" }),
+                    text: JSON.stringify({ outcome, claims: [], coverage: "none" }),
                   },
                 ],
               },

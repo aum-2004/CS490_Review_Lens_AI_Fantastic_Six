@@ -245,7 +245,7 @@ describe("S2-014 real answerQuestion integration", () => {
       reply.payload({
         outcome: GENERAL_KNOWLEDGE_REFUSAL_OUTCOME,
         claims: [claimFrom("Reviewers mention this.", dataset.reviews[0])],
-        note: SCOPE_CLEAR_ANSWER,
+        coverage: "none",
       }),
     );
 
