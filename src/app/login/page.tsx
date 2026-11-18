@@ -3,7 +3,6 @@ import { Suspense } from "react";
 import { connection } from "next/server";
 import Loading from "@/app/login/loading";
 import { AuthForm } from "@/components/auth/AuthForm";
-import { SessionPanel } from "@/components/auth/SessionPanel";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Card } from "@/components/ui/Card";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
@@ -35,7 +34,7 @@ async function AccountPage({ searchParams }: LoginPageProps) {
     unavailable = true;
   }
   // redirect throws; keep it outside the provider-error catch.
-  if (user && returnTo) redirect(returnTo);
+  if (user) redirect(returnTo ?? "/analysis-targets");
 
   return (
     <main className="flex flex-1 items-center justify-center bg-background px-4 py-16 text-foreground">
@@ -43,17 +42,13 @@ async function AccountPage({ searchParams }: LoginPageProps) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold">ReviewLens AI</h1>
-            <p className="mt-2 text-muted-foreground">
-              {user ? "Your account" : "Please sign in to continue."}
-            </p>
+            <p className="mt-2 text-muted-foreground">Please sign in to continue.</p>
           </div>
           <ThemeToggle />
         </div>
         <Card>
           {unavailable ? (
             <p role="alert">Authentication is temporarily unavailable. Please try again later.</p>
-          ) : user ? (
-            <SessionPanel email={user.email} />
           ) : (
             <>
               {notice === "confirmation-error" && (

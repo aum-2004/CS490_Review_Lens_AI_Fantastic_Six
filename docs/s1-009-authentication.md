@@ -9,7 +9,8 @@
    publishable key. Do not share `.env.local`, credentials, tokens, or real account passwords.
 4. Restart `npm run dev` after changing environment configuration.
 5. Open `/login`. Without valid configuration, it shows a safe unavailable message.
-   The public `/` starter and `/api/health` remain usable without Supabase credentials.
+   The `/` entry routes visitors to login or My Targets using verified identity; `/api/health`
+   remains public and usable without Supabase credentials.
 
 ## Supabase dashboard setup (performed by the project administrator)
 
@@ -31,18 +32,74 @@
   old link. SMTP configuration, provider email limits, and delivery must be checked in the dashboard.
 - No service-role key, database password, or ingestion-provider secret is needed for this story.
 
+### Registration password guidance and visibility (2026-11-17)
+
+The registration form displays a live checklist for the administrator/user-confirmed policy:
+at least eight characters, an uppercase letter (A-Z), a lowercase letter (a-z), a digit (0-9),
+and a symbol. Checks update immediately after typing or deletion. Symbols follow the
+[documented Supabase set](https://supabase.com/docs/guides/auth/password-security); whitespace
+and arbitrary Unicode characters do not satisfy the symbol requirement. Length counts Unicode
+code points, so a supplementary character is not counted twice. Passwords are never trimmed.
+
+The checklist is guidance, not a new credential validator or a guarantee of registration success.
+Supabase remains authoritative, including any additional provider checks. Sign-in keeps its existing
+nonempty-password validation; registration composition is not imposed on existing sign-in inputs.
+Keep the displayed policy synchronized if the hosted project's requirements change.
+
+Both sign-in and registration offer keyboard-accessible Show/Hide password buttons. These are
+non-submit buttons, preserve the exact input and autocomplete attribute, and are disabled while
+submitting. Submission and mode changes conceal the password; successful submissions and mode
+changes clear it as before. Checklist help and validation errors remain linked to the password
+input, and status changes have text/icon cues with polite screen-reader announcements.
+
+Verification: 59 focused password/auth UI tests and the full 1,744-test Jest suite passed. All 37
+isolated Edge browser tests passed; the keyboard test was strengthened with valid filled credentials
+and rerun successfully. Lint, typecheck, formatting and the production build passed. Four temporary
+faults in the separate validation worktree were caught: UTF-16 length counting (1 failed test),
+whitespace accepted as a symbol (3), missing submit-time masking (1), and a submitting visibility
+button (3). All faults were restored. No new dependencies, provider configuration changes, real
+signup emails, or paid calls were used. Original available task records are retained in
+`ai-transcripts/2026-11-17_shawn_password-controls_codex.md`.
+
+### PR #101 CI coverage follow-up (2026-11-17)
+
+CI run #249 passed formatting, lint, typecheck, unit tests, build and database checks,
+but failed changed-code coverage because Jest did not execute the login page's new redirect.
+The earlier browser checks did not contribute to that Jest coverage gate.
+
+Added tests execute the actual login page and its async child with mocked authentication and
+Next.js infrastructure. They cover verified-user redirects, permitted and rejected return links,
+anonymous form rendering, return-link propagation, provider failure and confirmation notices.
+An additional form test checks password-error correction on blur without submitting credentials.
+No application logic, coverage thresholds or exclusions changed.
+
+Local verification: 98 suites / 1,761 tests passed with full coverage; the exact changed-code
+gate against `origin/main` passed at 100% (88/88 lines, 27/27 branch outcomes). Typecheck,
+focused ESLint, test formatting and whitespace checks passed. This local result does not claim
+a new passing GitHub CI run. The original available follow-up session is recorded in
+`ai-transcripts/2026-11-17_shawn_auth-ci-followup_codex.md`.
+
 The `/auth/confirm` handler uses Supabase's `verifyOtp` API to establish cookie storage, then
 redirects to `/login` without forwarding the token. Invalid/expired links show a safe notice.
 Confirmation URLs contain sensitive one-time tokens; do not paste them into logs or transcripts.
 
 ## Behavior and handoff
 
+Post-demo navigation update (2026-11-17): the temporary account confirmation screen is no longer
+the post-login destination. Automated verification passed 1,698 unit tests and all 36 isolated
+Edge authentication/workspace browser tests, including default sign-in, valid return links,
+external-link rejection, signed-in login visits, session refresh, confirmation-required registration
+and logout. Formatting, lint, explicit typecheck and a production build also passed. Browser
+checks used the local dummy provider; no hosted configuration or real account credentials changed.
+
 - `/login` offers sign-in and registration using one shared AuthForm. Email is trimmed; passwords
   are passed unchanged. Fields are validated in the browser and again in the server service.
 - Registration without a session asks the user to check their email; it does not claim login.
-- Signed-in `/login` shows the verified email and logout. This is an explicitly temporary S1-009
-  session demonstration. The `/analysis-targets` destination, AppShell/account menu, requested-route
-  return behavior, and broader protected-route UX are handed off to their owning stories.
+- Successful sign-in opens `/analysis-targets` directly. A valid protected `next` destination takes
+  precedence; external, malformed or unrelated destinations fall back to My Targets. A signed-in
+  visit to `/login` follows the same rule instead of rendering the former account confirmation panel.
+  Logout remains available from the shared navigation's account menu. Registration that still
+  requires email confirmation stays on the form and displays the confirmation instructions.
 - `getAuthenticatedUser()` supplies `{ id, email }` from Supabase `getUser()` to server operations.
   Missing/invalid sessions return `null`; configuration or provider failures throw only a safe error.
 - `GET /api/auth/session` demonstrates the shared API contract: verified identity returns 200;
@@ -50,8 +107,8 @@ Confirmation URLs contain sensitive one-time tokens; do not paste them into logs
 - Server Actions implement sign-in, registration, and logout using Next.js same-origin POST handling.
   Auth mutations and confirmation use a writable per-request client; rendering uses a read-only one.
 - Proxy refreshes tokens via `getClaims()` and forwards cookie changes to both downstream requests
-  and browser responses. Session responses use private/no-store headers. The public starter and
-  health route do not invoke Proxy or require Supabase.
+  and browser responses. Session responses use private/no-store headers. The health route remains
+  public and does not require Supabase.
 - Logout uses Supabase's local-session scope, clears the current browser's cookie session and
   invalidates Next.js cached navigation. Other devices remain signed in. Failed logout is reported
   and can be retried. Already-issued access JWTs can remain valid until expiry under Supabase's

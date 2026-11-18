@@ -175,6 +175,13 @@ export async function ProtectedTargetWorkspace({
               targetId={target.id}
               targetName={target.name}
               reviewsAvailable={reviews !== null && reviews.length > 0}
+              reviews={reviews?.map(({ id, analysisTargetId, rating, text, reviewDate }) => ({
+                id,
+                analysisTargetId,
+                rating,
+                text,
+                reviewDate,
+              }))}
               unavailableMessage={
                 reviews === null
                   ? "We couldn't load the saved reviews, so review questions are unavailable. Retry loading the reviews before asking ReviewLens questions."

@@ -1,40 +1,106 @@
-import type { ReactElement, ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import LoginPage from "@/app/login/page";
-import { getAuthenticatedUser } from "@/services/auth/auth-service";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { connection } from "next/server";
 import { redirect } from "next/navigation";
+import LoginPage from "@/app/login/page";
+import { signIn } from "@/app/login/actions";
+import { getAuthenticatedUser } from "@/services/auth/auth-service";
 
+const replace = jest.fn();
+const refresh = jest.fn();
+jest.mock("next/navigation", () => ({
+  redirect: jest.fn(),
+  useRouter: () => ({ replace, refresh }),
+}));
+jest.mock("next/server", () => ({ connection: jest.fn() }));
 jest.mock("@/services/auth/auth-service", () => ({ getAuthenticatedUser: jest.fn() }));
-jest.mock("next/server", () => ({ connection: jest.fn().mockResolvedValue(undefined) }));
-jest.mock("next/navigation", () => ({ redirect: jest.fn() }));
-jest.mock("@/components/auth/AuthForm", () => ({
-  AuthForm: ({ returnTo }: { returnTo: string | null }) => (
-    <form aria-label="Sign in" data-return-to={returnTo} />
-  ),
-}));
-jest.mock("@/components/auth/SessionPanel", () => ({
-  SessionPanel: ({ email }: { email: string | null }) => <p role="status">{email}</p>,
-}));
-
-type SearchParams = { notice?: string; next?: string | string[] };
-
-// Resolve the async server child inside the page's Suspense boundary before
-// handing the resulting client-renderable tree to Testing Library.
-async function resolvePage(searchParams: SearchParams = {}) {
-  const page = LoginPage({ searchParams: Promise.resolve(searchParams) });
-  const child = page.props.children as ReactElement<{ searchParams: Promise<SearchParams> }>;
-  const renderAccount = child.type as (props: typeof child.props) => Promise<ReactNode>;
-  return renderAccount(child.props);
-}
+jest.mock("@/app/login/actions", () => ({ signIn: jest.fn(), register: jest.fn() }));
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   delete document.documentElement.dataset.theme;
   localStorage.clear();
+  jest.mocked(connection).mockResolvedValue(undefined);
   jest.mocked(getAuthenticatedUser).mockResolvedValue(null);
   jest.mocked(redirect).mockImplementation(() => {
     throw new Error("NEXT_REDIRECT");
   });
+});
+
+// Resolve the actual async child behind the page's Suspense boundary before DOM rendering.
+// Jest cannot render async Server Components itself; browser tests cover Next's runtime.
+async function loginView(params: { notice?: string; next?: string | string[] } = {}) {
+  const shell = LoginPage({ searchParams: Promise.resolve(params) });
+  const content = shell.props.children;
+  return content.type(content.props);
+}
+
+it.each<{ next?: string | string[]; expected: string }>([
+  { expected: "/analysis-targets" },
+  { next: "/analysis-targets", expected: "/analysis-targets" },
+  { next: "/analysis-targets/new?source=direct", expected: "/analysis-targets/new?source=direct" },
+  {
+    next: "/analysis-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+    expected: "/analysis-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+  },
+  { next: "https://example.com", expected: "/analysis-targets" },
+  { next: "//example.com", expected: "/analysis-targets" },
+  { next: "javascript:alert(1)", expected: "/analysis-targets" },
+  { next: "/login", expected: "/analysis-targets" },
+  { next: "/analysis-targets-other", expected: "/analysis-targets" },
+  { next: "/analysis-targets\n", expected: "/analysis-targets" },
+  { next: ["/analysis-targets/new", "https://example.com"], expected: "/analysis-targets" },
+])("redirects a verified signed-in login visit safely: %j", async ({ next, expected }) => {
+  jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: "verified-user", email: null });
+  await expect(loginView({ next })).rejects.toThrow("NEXT_REDIRECT");
+  expect(redirect).toHaveBeenCalledTimes(1);
+  expect(redirect).toHaveBeenCalledWith(expected);
+  expect(getAuthenticatedUser).toHaveBeenCalledTimes(1);
+  expect(connection).toHaveBeenCalledTimes(1);
+});
+
+it("renders the actual sign-in form for an anonymous visitor", async () => {
+  render(await loginView());
+  expect(screen.getByRole("heading", { name: "ReviewLens AI" })).toBeInTheDocument();
+  expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
+  expect(screen.getByText("Please sign in to continue.")).toBeInTheDocument();
+  expect(screen.queryByText("Your account")).not.toBeInTheDocument();
+  expect(redirect).not.toHaveBeenCalled();
+});
+
+it("preserves a signed-out visitor's valid return link through the rendered form", async () => {
+  jest.mocked(signIn).mockResolvedValue({ success: true });
+  const destination = "/analysis-targets/new?source=direct";
+  render(await loginView({ next: destination }));
+  fireEvent.change(screen.getByLabelText("Email *"), { target: { value: "fixture@example.test" } });
+  fireEvent.change(screen.getByLabelText("Password *"), { target: { value: "existing-password" } });
+  fireEvent.submit(screen.getByRole("form", { name: "Sign in" }));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith(destination));
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+it("fails closed with safe feedback when identity verification is unavailable", async () => {
+  jest.mocked(getAuthenticatedUser).mockRejectedValue(new Error("private-provider-diagnostic"));
+  render(await loginView({ next: "/analysis-targets/new" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("Authentication is temporarily unavailable.");
+  expect(screen.queryByRole("form")).not.toBeInTheDocument();
+  expect(document.body).not.toHaveTextContent("private-provider-diagnostic");
+  expect(redirect).not.toHaveBeenCalled();
+});
+
+it("keeps expired-confirmation feedback on the signed-out form", async () => {
+  render(await loginView({ notice: "confirmation-error" }));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "The link may have expired or already been used.",
+  );
+  expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
+  expect(redirect).not.toHaveBeenCalled();
+});
+
+it("does not display arbitrary notice text", async () => {
+  render(await loginView({ notice: "private-token-do-not-show" }));
+  expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(document.body).not.toHaveTextContent("private-token-do-not-show");
 });
 
 afterEach(() => {
@@ -42,49 +108,23 @@ afterEach(() => {
   localStorage.clear();
 });
 
-it("offers the shared theme control alongside sign-in without changing its safe return path", async () => {
-  render(await resolvePage({ next: "/analysis-targets" }));
-  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("ReviewLens AI");
-  expect(screen.getByRole("form", { name: "Sign in" })).toHaveAttribute(
-    "data-return-to",
-    "/analysis-targets",
-  );
-  document.documentElement.dataset.theme = "light";
-  fireEvent.click(screen.getByRole("button", { name: "Dark mode" }));
-  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+it("retains the visible theme toggle and pressed state on the merged sign-in form", async () => {
+  render(await loginView({ next: "/analysis-targets" }));
+  const toggle = screen.getByRole("button", { name: "Dark mode", pressed: false });
+  await act(async () => {
+    fireEvent.click(toggle);
+  });
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  expect(toggle).not.toHaveAttribute("aria-label");
   expect(localStorage.getItem("reviewlens-theme")).toBe("dark");
+  expect(screen.getByRole("form", { name: "Sign in" })).toBeInTheDocument();
   expect(redirect).not.toHaveBeenCalled();
 });
 
-it("keeps the theme control available when authentication is unavailable", async () => {
-  jest.mocked(getAuthenticatedUser).mockRejectedValue(new Error("private provider detail"));
-  render(await resolvePage());
+it("keeps the theme control available during authentication failure", async () => {
+  jest.mocked(getAuthenticatedUser).mockRejectedValue(new Error("private-provider-diagnostic"));
+  render(await loginView());
+  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
   expect(screen.getByRole("alert")).toHaveTextContent("Authentication is temporarily unavailable");
-  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
-  expect(screen.queryByRole("form")).not.toBeInTheDocument();
-  expect(screen.queryByText("private provider detail")).not.toBeInTheDocument();
-});
-
-it("shows the signed-in account and the theme control when no return path is requested", async () => {
-  jest
-    .mocked(getAuthenticatedUser)
-    .mockResolvedValue({ id: "verified-user", email: "a@example.com" });
-  render(await resolvePage());
-  expect(screen.getByRole("status")).toHaveTextContent("a@example.com");
-  expect(screen.getByText("Your account")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
-});
-
-it("redirects a verified account only to a protected application route", async () => {
-  jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: "verified-user", email: null });
-  await expect(resolvePage({ next: "/analysis-targets" })).rejects.toThrow("NEXT_REDIRECT");
-  expect(redirect).toHaveBeenCalledWith("/analysis-targets");
-});
-
-it("rejects an external return URL and presents confirmation errors without removing sign-in", async () => {
-  render(await resolvePage({ next: "https://outside.example", notice: "confirmation-error" }));
-  expect(redirect).not.toHaveBeenCalled();
-  expect(screen.getByRole("alert")).toHaveTextContent("Try signing in");
-  expect(screen.getByRole("form", { name: "Sign in" })).not.toHaveAttribute("data-return-to");
-  expect(screen.getByRole("button", { name: "Dark mode" })).toBeEnabled();
+  expect(document.body).not.toHaveTextContent("private-provider-diagnostic");
 });

@@ -108,6 +108,23 @@ it("passes the verified session user identity to ReviewQuestions", async () => {
   );
 });
 
+it("passes the active target's saved review evidence to the merged citation display", async () => {
+  const evidence = {
+    id: "11111111-1111-4111-8111-111111111111",
+    analysisTargetId: "owned-target",
+    rating: 4,
+    text: "Saved review used to label supporting evidence.",
+    reviewDate: null,
+  };
+  listReviews.mockResolvedValue([{ ...evidence, reviewerName: "Private reviewer name" }]);
+
+  render(await ProtectedTargetWorkspace({ params }));
+
+  const props = jest.mocked(ReviewQuestions).mock.calls[0][0];
+  expect(props.reviews).toEqual([evidence]);
+  expect(props.reviews?.[0]).not.toHaveProperty("reviewerName");
+});
+
 const persistedAttempt: IngestionAttemptRow = {
   id: "attempt-a",
   analysis_target_id: "owned-target",

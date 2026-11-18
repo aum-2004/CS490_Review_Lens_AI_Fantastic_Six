@@ -16,7 +16,11 @@ test("establishes, refreshes, preserves, and clears SDK cookie sessions", async 
 
   await page.getByLabel("Password *").fill("dummy-password");
   await form.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("fixture@example.com");
+  await expect(page).toHaveURL("/analysis-targets");
+  await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "fixture@example.com", exact: true }),
+  ).toBeVisible();
 
   // Use only dummy fixture data to expire cookie storage deterministically.
   // Normal login tokens retain Supabase's recommended lifetime rather than
@@ -33,22 +37,24 @@ test("establishes, refreshes, preserves, and clears SDK cookie sessions", async 
     },
   ]);
   await page.reload();
-  await expect(page.getByRole("status")).toContainText("fixture@example.com");
+  await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
   await expect
     .poll(async () => (await (await request.get("http://127.0.0.1:54329/stats")).json()).refreshed)
     .toBeGreaterThan(0);
 
   await page.reload();
-  await expect(page.getByRole("status")).toContainText("fixture@example.com");
-  await page.getByRole("link", { name: "Back to home" }).click();
+  await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "ReviewLens", exact: true }).click();
   await expect(page).toHaveURL("/analysis-targets");
   await page.goto("/login");
-  await expect(page.getByRole("status")).toContainText("fixture@example.com");
+  await expect(page).toHaveURL("/analysis-targets");
+  await expect(page.getByRole("heading", { name: "My Targets", exact: true })).toBeVisible();
   const identity = await context.request.get("/api/auth/session");
   expect(identity.status()).toBe(200);
   expect((await identity.json()).data.user.id).toBe("00000000-0000-4000-8000-000000000009");
 
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("button", { name: "fixture@example.com", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("form", { name: "Sign in" })).toBeVisible();
   expect((await context.request.get("/api/auth/session")).status()).toBe(401);
   await page.reload();
@@ -67,11 +73,19 @@ test("registration reports confirmation rather than creating an authenticated se
     .getByRole("button", { name: "Register" })
     .click();
   await page.getByLabel("Email *").fill("new-fixture@example.com");
-  await page.getByLabel("Password *").fill("dummy-new-password");
+  await page.getByLabel("Password *").fill("FixtureConfirm8!");
   await page
     .getByRole("form", { name: "Register" })
     .getByRole("button", { name: "Register", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("Check your email");
+  await expect(page.getByLabel("Password *")).toHaveValue("");
+  await expect(page.getByLabel("Password *")).toHaveAttribute("type", "password");
+  await expect(
+    page
+      .getByRole("list", { name: "Password requirements" })
+      .getByRole("listitem")
+      .filter({ hasText: /^Not met:/ }),
+  ).toHaveCount(5);
   expect((await context.request.get("/api/auth/session")).status()).toBe(401);
 });

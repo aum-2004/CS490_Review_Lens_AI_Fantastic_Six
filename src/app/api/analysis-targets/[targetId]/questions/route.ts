@@ -17,6 +17,7 @@ import { QaPromptError } from "@/services/qa/system-prompt";
 import { QaBudgetError } from "@/services/qa/token-budget";
 import { QaResponseError } from "@/services/qa/qa-response";
 import { QaInputValidationError } from "@/services/qa/qa-request";
+import { responseCitations } from "@/lib/qa/citations";
 import {
   reviewQuestionSchema,
   QUESTION_REQUIRED_MESSAGE,
@@ -75,6 +76,8 @@ export async function POST(
       targetId: result.targetId,
       outcome: result.outcome.startsWith("declined_") ? "out_of_scope" : result.outcome,
       answer: result.answer,
+      // Already validated against the active target's evidence by parseQaModelReply.
+      citedReviewIds: responseCitations(result.outcome, result.citedReviewIds),
     });
   } catch (error) {
     logFailure("ask-question", error);
