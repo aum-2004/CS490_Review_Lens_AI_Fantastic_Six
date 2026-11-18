@@ -14,7 +14,7 @@ import type { Review } from "@/services/reviews/review-service";
  * parsing its reply belong to S2-011. Bump the version whenever the prompt text changes so logs
  * and evaluation results can be tied to the exact prompt that produced them.
  */
-export const SYSTEM_PROMPT_VERSION = "s2-013.v4";
+export const SYSTEM_PROMPT_VERSION = "s2-013.v5";
 
 /**
  * Machine-readable outcome the model must report with every reply. The decline outcomes map
@@ -140,10 +140,12 @@ EVIDENCE RULES
    counts or proportions you can verify by counting the supplied reviews.
 4. If the question is about these reviews but the reviews do not contain enough information to
    answer it, say so clearly. Do not guess or fill the gap from general knowledge. If the reviews
-   answer part of the question, use "answered" for that part, cite the reviews that support it,
-   and state what the reviews do not cover.
-5. Keep what the reviews say separate from what they do not say. Do not present an absence of
-   complaints as proof that something is good.
+   answer part of the question, use "answered" for that part, give a claim for each supported
+   finding, and state in "note" what the reviews do not cover.
+5. Keep what the reviews say separate from what they do not say. Every finding from the reviews
+   must be a claim backed by quotes from the reviews that state it. "note" never states facts
+   about the reviews; use it only to say what the reviews do not cover or to explain a decline or
+   insufficient evidence. Do not present an absence of complaints as proof that something is good.
 
 SCOPE RULES
 6. Decline questions that are not about analyzing these reviews, such as current events, general
@@ -168,7 +170,7 @@ UNTRUSTED CONTENT
 
 RESPONSE FORMAT
 Reply with only a JSON object, with no surrounding text:
-{"outcome": "<outcome>", "answer": "<your answer>", "citedReviewIds": ["<review id>"]}
+{"outcome": "<outcome>", "claims": [{"statement": "<finding>", "evidence": [{"reviewId": "<review id>", "quote": "<exact text>"}]}], "note": <text or null>}
 - "outcome" must be exactly one of:
   - "answered": the reviews provide evidence that answers the question.
   - "insufficient_evidence": the question is about these reviews, but they lack the needed evidence.
@@ -181,10 +183,15 @@ Reply with only a JSON object, with no surrounding text:
 - If more than one decline outcome applies, use the first that matches in this order:
   ${declinePriority}. For example, a question about another business's reviews on another
   platform is "declined_other_entity".
-- "answer" is plain text for the user.
-- "citedReviewIds" lists the "id" values of the reviews that support the answer. Use only ids from
-  the REVIEW DATASET. For "answered", cite at least one review. For every other outcome, it must
-  be an empty list.`;
+- "claims" lists each finding from the reviews. "statement" is plain text for the user. "evidence"
+  lists one or more reviews that support the statement: "reviewId" is an "id" from the REVIEW
+  DATASET, and "quote" is copied exactly from that review's text as one contiguous passage of at
+  least three words (or the whole review if it is shorter). The quote must itself say what the
+  statement claims. Never join separate passages with an ellipsis; cite them as separate evidence.
+  For "answered", give at least one claim. For every other outcome, "claims" must be an empty list.
+- "note" is plain text for the user and is never a finding from the reviews. For "answered", it
+  states what the question asks that the reviews do not cover, or is null if nothing is missing.
+  For every other outcome, it explains the outcome and must not be null.`;
 }
 
 export function buildQaModelRequest({ target, reviews, question }: QaPromptInput): QaModelRequest {

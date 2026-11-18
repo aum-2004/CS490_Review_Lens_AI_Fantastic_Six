@@ -84,8 +84,15 @@ export function assertRequestWithinSizeLimit(request: QaModelRequest): void {
 /** Builds the authorized context for a target, or throws. In production: S2-010's builder. */
 export type QaReviewContextBuilder = (targetId: unknown) => Promise<QaReviewContext>;
 
-/** The single model boundary. S2-011 supplies the provider call; S2-003 supplies a mock. */
-export type QaModelInvoker<T> = (request: QaModelRequest) => Promise<T>;
+/** The prompt input built from the authorized context: exactly the reviews sent to the model. */
+export type QaPromptContext = ReturnType<typeof toPromptContext>;
+
+/**
+ * The single model boundary. S2-011 supplies the provider call; S2-003 supplies a mock. `context`
+ * is the authorized context the request was built from, so the reply can be checked against the
+ * same review text without re-reading or re-parsing it.
+ */
+export type QaModelInvoker<T> = (request: QaModelRequest, context: QaPromptContext) => Promise<T>;
 
 export interface GroundedQaDependencies<T> {
   buildReviewDatasetContext: QaReviewContextBuilder;
@@ -123,7 +130,7 @@ export function toPromptContext(context: QaReviewContext): {
  *   2. build the authorized review context (S2-010): ReviewContextError / TargetNotFoundError;
  *   3. build the model request (S2-013): QaPromptError;
  *   4. check the serialized request size: QaInputValidationError;
- *   5. call the model.
+ *   5. call the model with the request and the prompt context it was built from.
  * If any step throws, the error propagates and `invokeModel` is never called. `question` is
  * `unknown` because callers may pass unvalidated input; it is checked at runtime.
  */
@@ -133,8 +140,8 @@ export async function runGroundedQaRequest<T>(
   { buildReviewDatasetContext, invokeModel }: GroundedQaDependencies<T>,
 ): Promise<T> {
   assertValidQuestion(question);
-  const context = await buildReviewDatasetContext(targetId);
-  const request = buildQaModelRequest({ ...toPromptContext(context), question });
+  const promptContext = toPromptContext(await buildReviewDatasetContext(targetId));
+  const request = buildQaModelRequest({ ...promptContext, question });
   assertRequestWithinSizeLimit(request);
-  return invokeModel(request);
+  return invokeModel(request, promptContext);
 }
