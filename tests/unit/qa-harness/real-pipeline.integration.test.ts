@@ -105,7 +105,7 @@ describe("real pipeline wiring", () => {
       order: "created_at.asc,id.asc",
       limit: String(MAX_CONTEXT_REVIEWS + 1),
     });
-    expect(request.instructions).toBe(buildSystemPrompt(restaurantA.target));
+    expect(request.instructions).toBe(buildSystemPrompt());
     expect(request.maxOutputTokens).toBe(QA_RESERVED_OUTPUT_TOKENS);
   });
 

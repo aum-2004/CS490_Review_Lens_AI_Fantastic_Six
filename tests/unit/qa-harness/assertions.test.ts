@@ -67,7 +67,7 @@ describe("request-side assertions", () => {
     }).not.toThrow();
   });
 
-  it("expectSystemPromptApplied rejects a missing, wrong-target or contaminated prompt", async () => {
+  it("expectSystemPromptApplied rejects missing rules, wrong metadata, or contamination", async () => {
     const request = await validRequest();
     rejects(() => expectSystemPromptApplied({ ...request, instructions: " " }, targetA), /empty/);
     rejects(() => expectSystemPromptApplied(request, targetB), /not the active target/);
@@ -77,20 +77,42 @@ describe("request-side assertions", () => {
           { ...request, instructions: "Generic prompt about Google Maps" },
           targetA,
         ),
-      /do not name the active target/,
+      /missing prompt rules/,
     );
     rejects(
       () =>
         expectSystemPromptApplied(
-          { ...request, instructions: request.instructions.replaceAll("Google Maps", "Yelp") },
+          {
+            ...request,
+            input: request.input.replace(
+              `"name":"${targetA.target.name}"`,
+              `"name":"${targetB.target.name}"`,
+            ),
+          },
           targetA,
         ),
-      /platform/,
+      /Target metadata names/,
+    );
+    rejects(
+      () =>
+        expectSystemPromptApplied(
+          { ...request, input: request.input.replace("Google Maps", "Yelp") },
+          targetA,
+        ),
+      /review platform/,
     );
     rejects(
       () =>
         expectSystemPromptApplied(request, targetA, { promptVersion: "not-the-current-version" }),
       /Prompt version/,
+    );
+    rejects(
+      () =>
+        expectSystemPromptApplied(
+          { ...request, instructions: `${request.instructions}\n${targetA.target.name}` },
+          targetA,
+        ),
+      /target-independent production prompt/i,
     );
     rejects(
       () =>

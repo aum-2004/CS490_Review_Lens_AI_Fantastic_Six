@@ -56,7 +56,14 @@ describe("harness contract alignment with production", () => {
       question: '  Does "battery" last?  ',
     });
     expect(harness.extractQuestion(request.input)).toBe('Does "battery" last?');
-    expect(request.input.split("\n")[0]).toMatch(harness.QA_INPUT_DATASET_HEADER_PATTERN);
+    expect(request.input.split("\n")[0]).toBe(harness.QA_INPUT_TARGET_METADATA_HEADER);
+    expect(harness.parseTargetMetadata(request)).toEqual({
+      name: target.name,
+      reviewPlatform: "Google Maps",
+    });
+    expect(request.input.split("\n")).toEqual(
+      expect.arrayContaining([expect.stringMatching(harness.QA_INPUT_DATASET_HEADER_PATTERN)]),
+    );
     expect(harness.parseEvidenceRows(request).map((row) => row.id)).toEqual(
       reviews.map((review) => review.id),
     );

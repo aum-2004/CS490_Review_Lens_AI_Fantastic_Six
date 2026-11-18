@@ -1,8 +1,10 @@
 import type { QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
+  buildSystemPrompt,
   isDeclineOutcome,
   QA_EVIDENCE_ROW_FIELDS,
   QA_INPUT_DATASET_HEADER_PATTERN,
+  QA_INPUT_TARGET_METADATA_HEADER,
   QA_SYSTEM_PROMPT_INVARIANTS,
   REVIEW_PLATFORM_LABELS,
   type QaAnswer,
@@ -12,6 +14,7 @@ import {
   type QaPipelineErrorShape,
   type QaPromptInvariant,
   type QaPromptInvariantId,
+  type QaTargetMetadata,
 } from "./contract";
 import { applicationSuppliedInput, extractQuestion } from "./fake-model";
 
@@ -54,10 +57,11 @@ export function missingPromptInvariants(instructions: string): QaPromptInvariant
 }
 
 /**
- * S2-013: the system prompt is present, names the active target (JSON-encoded) and platform,
- * states every rule in `QA_SYSTEM_PROMPT_INVARIANTS` (grounding, no outside knowledge,
- * insufficient evidence, and the three decline rules), and keeps untrusted content (review text
- * and the user's question) out of the system instructions. It checks meaning, not exact wording.
+ * S2-013: the system prompt is present, states every rule in `QA_SYSTEM_PROMPT_INVARIANTS`
+ * (grounding, no outside knowledge, insufficient evidence, and the three decline rules), and
+ * keeps untrusted target metadata, review text, and the user's question out of the system
+ * instructions. Target identity is checked in the structured user-turn metadata instead. The
+ * final equality check ensures no target-specific value has been appended to the canonical rules.
  */
 export function expectSystemPromptApplied(
   request: QaModelRequest,
@@ -69,12 +73,19 @@ export function expectSystemPromptApplied(
   if (request.targetId !== target.id) {
     fail(`Request targetId ${request.targetId} is not the active target ${target.id}.`);
   }
-  if (!request.instructions.includes(JSON.stringify(target.name))) {
-    fail(`System instructions do not name the active target ${JSON.stringify(target.name)}.`);
+  const metadata = parseTargetMetadata(request);
+  if (metadata.name !== target.name) {
+    fail(
+      `Target metadata names ${JSON.stringify(metadata.name)} instead of ` +
+        `${JSON.stringify(target.name)}.`,
+    );
   }
   const platform = REVIEW_PLATFORM_LABELS[target.platform];
-  if (!request.instructions.includes(platform)) {
-    fail(`System instructions do not name the review platform "${platform}".`);
+  if (metadata.reviewPlatform !== platform) {
+    fail(
+      `Target metadata names review platform ${JSON.stringify(metadata.reviewPlatform)} ` +
+        `instead of ${JSON.stringify(platform)}.`,
+    );
   }
   const missing = missingPromptInvariants(request.instructions);
   if (missing.length > 0) {
@@ -95,10 +106,43 @@ export function expectSystemPromptApplied(
       fail(`Review ${review.id} text was placed in the system instructions.`);
     }
   }
+  if (request.instructions !== buildSystemPrompt()) {
+    fail("System instructions differ from the target-independent production prompt.");
+  }
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Parses and shape-checks the untrusted target metadata at the start of `request.input`. */
+export function parseTargetMetadata(request: QaModelRequest): QaTargetMetadata {
+  const supplied = applicationSuppliedInput(request).replace(/\n+$/, "");
+  const separator = "\n\n";
+  const end = supplied.indexOf(separator);
+  const section = end === -1 ? supplied : supplied.slice(0, end);
+  const newline = section.indexOf("\n");
+  const header = newline === -1 ? section : section.slice(0, newline);
+  if (header !== QA_INPUT_TARGET_METADATA_HEADER || newline === -1) {
+    fail("Model input does not start with a TARGET METADATA section.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(section.slice(newline + 1));
+  } catch {
+    fail("The TARGET METADATA section is not one valid JSON object.");
+  }
+  if (!isRecord(parsed)) fail("The TARGET METADATA section is not a JSON object.");
+  const keys = Object.keys(parsed).sort().join(",");
+  if (keys !== "name,reviewPlatform") {
+    fail(`Target metadata has fields [${keys}]; expected [name,reviewPlatform].`);
+  }
+  const { name, reviewPlatform } = parsed;
+  if (typeof name !== "string" || typeof reviewPlatform !== "string") {
+    fail("Target metadata has a field of the wrong type.");
+  }
+  return { name, reviewPlatform };
+}
 
 /**
  * Parses the S2-013 evidence section of `request.input` (see `QA_INPUT_DATASET_HEADER_PATTERN`)
@@ -107,14 +151,17 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  */
 export function parseEvidenceRows(request: QaModelRequest): QaEvidenceRow[] {
   const supplied = applicationSuppliedInput(request).replace(/\n+$/, "");
-  const newline = supplied.indexOf("\n");
-  const header = newline === -1 ? supplied : supplied.slice(0, newline);
+  const lines = supplied.split("\n");
+  const headerIndex = lines.findIndex((line) => QA_INPUT_DATASET_HEADER_PATTERN.test(line));
+  const header = headerIndex === -1 ? "" : lines[headerIndex];
   const match = QA_INPUT_DATASET_HEADER_PATTERN.exec(header);
-  if (!match || newline === -1) fail("Model input does not start with a REVIEW DATASET section.");
+  if (!match || headerIndex === lines.length - 1) {
+    fail("Model input does not contain a REVIEW DATASET section after target metadata.");
+  }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(supplied.slice(newline + 1));
+    parsed = JSON.parse(lines.slice(headerIndex + 1).join("\n"));
   } catch {
     fail("The REVIEW DATASET section is not a single valid JSON array.");
   }
@@ -153,6 +200,18 @@ export function expectContextOnlyForTarget(
 ): void {
   if (request.targetId !== dataset.target.id) {
     fail(`Request targetId ${request.targetId} is not ${dataset.target.id} (${dataset.key}).`);
+  }
+
+  const metadata = parseTargetMetadata(request);
+  const expectedMetadata: QaTargetMetadata = {
+    name: dataset.target.name,
+    reviewPlatform: REVIEW_PLATFORM_LABELS[dataset.target.platform],
+  };
+  if (JSON.stringify(metadata) !== JSON.stringify(expectedMetadata)) {
+    fail(
+      `Target metadata ${JSON.stringify(metadata)} is not ${JSON.stringify(expectedMetadata)} ` +
+        `(${dataset.key}).`,
+    );
   }
 
   const rows = parseEvidenceRows(request);

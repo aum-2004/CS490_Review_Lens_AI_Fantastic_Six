@@ -125,7 +125,9 @@ function setup() {
     async (_input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const payload = JSON.parse(String(init?.body));
       outgoing.push(payload);
-      const reviews = JSON.parse(payload.input.split("\n")[1]);
+      const inputLines = String(payload.input).split("\n");
+      const datasetHeader = inputLines.findIndex((line) => line.startsWith("REVIEW DATASET ("));
+      const reviews = JSON.parse(inputLines[datasetHeader + 1]);
       return new Response(
         JSON.stringify({
           status: "completed",

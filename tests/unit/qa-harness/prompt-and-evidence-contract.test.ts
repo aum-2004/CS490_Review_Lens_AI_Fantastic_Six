@@ -42,12 +42,14 @@ const rejects = (run: () => void, message: RegExp) =>
 /** Rebuilds the evidence section from mutated rows, keeping the question and `reviewIds`. */
 function withRows(request: QaModelRequest, mutate: (rows: QaEvidenceRow[]) => unknown[]) {
   const rows = mutate(structuredClone(parseEvidenceRows(request)));
+  const datasetStart = request.input.indexOf("REVIEW DATASET (");
+  const metadata = request.input.slice(0, datasetStart);
   const question = request.input.slice(
     request.input.lastIndexOf(`\n\n${QA_INPUT_QUESTION_HEADER}\n`),
   );
   return {
     ...request,
-    input: `REVIEW DATASET (${rows.length} reviews, JSON array):\n${JSON.stringify(rows)}${question}`,
+    input: `${metadata}REVIEW DATASET (${rows.length} reviews, JSON array):\n${JSON.stringify(rows)}${question}`,
   };
 }
 
@@ -162,7 +164,7 @@ describe("expectContextOnlyForTarget: full evidence projection", () => {
     [
       "a missing REVIEW DATASET section",
       (input) => input.slice(input.indexOf(QA_INPUT_QUESTION_HEADER) - 1),
-      /does not start with a REVIEW DATASET section/,
+      /does not start with a TARGET METADATA section/,
     ],
   ])("catches %s", async (_label, rewrite, message) => {
     const request = await validRequest();
@@ -208,7 +210,7 @@ describe("expectSystemPromptApplied: semantic prompt contract", () => {
 
   it("the request carries exactly the real S2-013 system prompt, which states every rule", async () => {
     const request = await validRequest();
-    expect(request.instructions).toBe(buildSystemPrompt(targetA.target));
+    expect(request.instructions).toBe(buildSystemPrompt());
     expect(request.promptVersion).toBe(SYSTEM_PROMPT_VERSION);
     expect(missingPromptInvariants(request.instructions)).toEqual([]);
     expect(() =>
@@ -220,7 +222,7 @@ describe("expectSystemPromptApplied: semantic prompt contract", () => {
     for (const dataset of allQaDatasets()) {
       expect({
         key: dataset.key,
-        missing: missingPromptInvariants(buildSystemPrompt(dataset.target)),
+        missing: missingPromptInvariants(buildSystemPrompt()),
       }).toEqual({ key: dataset.key, missing: [] });
     }
   });
@@ -235,8 +237,8 @@ describe("expectSystemPromptApplied: semantic prompt contract", () => {
     ];
     const instructions = strip(request.instructions, removed);
 
-    expect(instructions).toContain(JSON.stringify(targetA.target.name));
-    expect(instructions).toContain("Google Maps");
+    expect(instructions).toContain("TARGET METADATA.name");
+    expect(instructions).toContain("TARGET METADATA.reviewPlatform");
     expect(missingPromptInvariants(instructions)).toEqual(removed);
     rejects(
       () => expectSystemPromptApplied({ ...request, instructions }, targetA),

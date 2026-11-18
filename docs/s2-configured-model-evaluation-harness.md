@@ -41,7 +41,7 @@ Each attempt uses the real:
 
 - `answerQuestion()` orchestration;
 - `buildReviewDatasetContext()` ownership, query, row validation, evidence limits, and projection;
-- `s2-013.v4` request and system-prompt construction;
+- the current `s2-013.v5` request and target-independent system-prompt construction;
 - `createOpenAiQaModel()` token-count and generation adapter; and
 - `parseQaModelReply()` production reply validation, called by `answerQuestion()`.
 
@@ -178,3 +178,13 @@ shape, budgets, raw-output capture, validation, stop behavior, and artifact/repo
 scripted reply does not prove semantic refusal quality, model support, or configured-model
 availability. Only the separately authorized `gpt-6-luna` run plus independent human review can
 provide that evidence.
+
+### Prompt-version provenance
+
+Configured-model artifacts are valid only for the `promptVersion` recorded in their manifest and
+attempt events. Results produced before the target-name hardening are v4 evidence and do not
+validate v5. After this change, run the offline path to validate v5 mechanics with zero external
+requests. A fresh paid v5 run must not occur unless the existing budget and explicit-authorization
+conditions are satisfied; when authorized, human review must additionally exercise adversarial
+target names and confirm that the reply still identifies the active target and Google Maps without
+following metadata-borne instructions or changing the authorized review set.

@@ -48,7 +48,9 @@ function assertLastBodies(
     expect(extractQuestion(String(body.input))).toBe(question);
     for (const earlier of earlierQuestions) expect(JSON.stringify(body)).not.toContain(earlier);
   }
-  const rows = JSON.parse(String(generation.input).split("\n")[1]);
+  const lines = String(generation.input).split("\n");
+  const datasetHeader = lines.findIndex((line) => line.startsWith("REVIEW DATASET ("));
+  const rows = JSON.parse(lines[datasetHeader + 1]);
   expect(rows).toEqual(
     active.reviews.map((r) => ({ id: r.id, text: r.text, rating: r.rating, date: r.reviewDate })),
   );

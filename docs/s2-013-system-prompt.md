@@ -8,7 +8,7 @@
 
 | Export                      | Purpose                                                                                        |
 | --------------------------- | ---------------------------------------------------------------------------------------------- |
-| `buildSystemPrompt`         | The ReviewLens system prompt for one AnalysisTarget.                                           |
+| `buildSystemPrompt`         | Target-independent ReviewLens system rules.                                                    |
 | `buildQaModelRequest`       | The full provider-neutral model request: system instructions plus review dataset and question. |
 | `SYSTEM_PROMPT_VERSION`     | Version tag sent with every request. Bump it whenever the prompt text changes.                 |
 | `QA_OUTCOMES`               | The machine-readable outcomes the model must return.                                           |
@@ -26,15 +26,32 @@ configured in a hosted AI console. Changes go through a reviewed pull request an
 
 | S2-013 requirement                                   | Prompt section     | Test                                                    |
 | ---------------------------------------------------- | ------------------ | ------------------------------------------------------- |
-| Names the product/entity being analyzed              | Active dataset     | `names the active entity and its review platform`       |
-| Names the review platform                            | Active dataset     | same                                                    |
+| Identifies the product/entity being analyzed         | Target metadata    | `supplies the active target name as structured data`    |
+| Identifies the review platform                       | Target metadata    | same                                                    |
 | Answers come only from the supplied reviews          | Evidence rules 1–2 | `restricts answers to the supplied review dataset`      |
 | Unsupported information is not invented              | Evidence rules 3–5 | `forbids inventing unsupported information…`            |
 | General-knowledge questions are declined             | Scope rule 6       | `requires declining general-knowledge questions`        |
 | Other products, entities, and platforms are declined | Scope rules 7–8    | `requires declining other entities and other platforms` |
 
-The prompt also tells the model to treat review text and questions as untrusted data, and not to
-repeat reviewer personal details.
+The prompt also tells the model to treat target metadata values, review text, and questions as
+untrusted data, and not to repeat reviewer personal details.
+
+## Target-name injection hardening (`s2-013.v5`)
+
+The v5 system instructions contain no AnalysisTarget name or other user-controlled target value.
+They refer only to the fixed `TARGET METADATA.name` and `TARGET METADATA.reviewPlatform` fields.
+`buildQaModelRequest` serializes those two values into one JSON object at the start of the user
+turn, before the authorized review dataset. The prompt permits the model to use them only as labels
+for the active dataset; metadata values cannot change the system rules, authorize additional
+evidence, select another target, or turn text into instructions.
+
+This is a message-hierarchy control, not a claim that JSON escaping sanitizes natural-language
+instructions. JSON encoding prevents a hostile value from forging the surrounding sections, while
+keeping the value out of the system message prevents it from receiving system-level authority.
+Deterministic tests cover names that ask to ignore prior instructions, reveal the system prompt,
+switch businesses, forge role delimiters, and inject quotes or JSON-like text. They also prove that
+the instructions remain byte-for-byte target-independent and that the review IDs and evidence rows
+remain those selected by the authenticated context builder.
 
 ## Model response contract
 
@@ -68,7 +85,7 @@ Restaurant A on Google Maps active) is `declined_other_entity`. The prompt text 
 label multi-category questions. Test: `S2-015: labels another entity's reviews on another
 platform as declined_other_entity`.
 
-### General knowledge versus another entity (`s2-013.v4`)
+### General knowledge versus another entity (retained from `s2-013.v4`)
 
 An open-ended recommendation or ranking that is not about the target and points to no particular
 business, such as "What are the best restaurants in New York?", is `declined_general_knowledge`
@@ -134,12 +151,29 @@ Other safeguards:
 
 - Only `id`, `rating`, `reviewDate`, and `text` are sent per review. Reviewer names, review URLs,
   and source metadata are never sent.
-- The target name, review text, and question are JSON-encoded. This preserves the request's
-  structure (their content cannot close or forge a prompt section). It does **not** make the
-  request resistant to prompt injection: the model still reads the text and may follow
-  instructions inside it. The prompt's untrusted-content rule reduces this risk but does not
-  remove it.
+- The target name and platform are JSON-encoded in `TARGET METADATA`; review text and the question
+  are separately JSON-encoded. This preserves section structure. The system instructions also
+  explicitly treat all three user-turn sections as data and prohibit metadata from changing rules
+  or authorizing evidence.
+- `targetId` and the exact review IDs remain application-side authorization/audit fields. A target
+  name never selects persisted rows; S2-010 ownership and target-scoped review queries do that, and
+  `REVIEW_TARGET_MISMATCH` remains the final fail-closed check.
 - The module imports `server-only`, so the prompt text is never shipped to the browser.
+
+## Evaluation provenance and v5 validation
+
+All configured-model results recorded before this change belong to `s2-013.v4`, including the
+S2-014 general-knowledge results, S2-015 entity/platform refusal results, and any artifacts whose
+manifest says `promptVersion: "s2-013.v4"`. They must not be reported as evidence for v5. The
+historical S2-014 and S2-015 documents intentionally keep their v4 labels.
+
+V5 requires a fresh deterministic offline harness run to verify request construction, prompt
+version capture, refusal-case orchestration, budgets, and artifact/report mechanics. Before any
+production enablement decision, it also needs independent security review and a separately
+authorized configured-model evaluation covering target identification, Google Maps labeling,
+refusal priority, scope behavior, adversarial target names, and unchanged citation behavior. No
+live or paid model run is authorized by this change; the spending guard and explicit approval
+requirements in `s2-configured-model-evaluation-harness.md` still apply.
 
 ## Responsibilities of other stories
 
@@ -159,13 +193,10 @@ Other safeguards:
   is measured with the S2-004 evaluation set; S2-011 validates the response structure.
 - The token budget caps total request size, but the route should still apply its own question
   length limit (S2-009) so users get a clear message before any database work.
-- **Still to verify during S2-011 integration:**
-  - Provider-input isolation: `instructions` is sent as the system message and review text and
-    the question only in the user message, never concatenated into the system message.
-  - Response validation: unknown outcomes, malformed JSON, and `citedReviewIds` outside the
-    request's `reviewIds` are rejected before anything reaches the user.
-  - Full request-size limits: now enforced by S2-011 using OpenAI's token-count endpoint
-    before the generation call; the smoke test confirms the count matches reported usage.
+- Provider-input isolation is deterministic: `instructions` contains only fixed v5 rules, while
+  target metadata, review evidence, and the question are sent only in `input`. The adapter tests
+  exercise both token counting and generation with fake HTTP; semantic adherence still requires
+  the v5 evaluation described above.
 - The S2-BR rule text was not available in the repository when this was written. The prompt was
   written from the S2-013, S2-011, S2-012, S2-014, S2-015, and S2-020 issue guidance and should be
   checked against the business rules document.
