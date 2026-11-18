@@ -300,9 +300,11 @@ generation call. Both have their own tests.
 
 **Replies with citations.** Following S2-011, an `answered` reply must contain at least one claim,
 and each claim's evidence must quote a contiguous span of the cited review from the request.
-Every other outcome (`insufficient_evidence` and the three declines) must have no claims. A reply
-that breaks this is rejected (`UNGROUNDED_ANSWER`, `UNSUPPORTED_CLAIM` or `UNEXPECTED_CITATIONS`),
-never repaired by dropping claims. Script replies with `reply.answered([ids])`, which quotes each
+Every other outcome (`insufficient_evidence` and the three declines) must have no claims. Since
+prompt `s2-013.v7` the reply has no free-text `note`: `coverage` (`complete`, `partial`, `none`)
+replaces it and the server writes all decline, gap and partial-answer text. A reply that breaks
+this is rejected (`UNGROUNDED_ANSWER`, `UNSUPPORTED_CLAIM`, `UNEXPECTED_CITATIONS`,
+`PROMPT_ECHO` or `INVALID_MODEL_RESPONSE`), never repaired by dropping claims. Script replies with `reply.answered([ids])`, which quotes each
 cited review from the request at call time, or with the builders in `grounded-reply.ts`.
 
 **Contract alignment.** Production types and constants are re-exported, never copied. Values a

@@ -11,27 +11,32 @@ to answer it, ReviewLens says so. It does not infer an answer from general knowl
 
 Example from the issue: the reviews discuss food quality and service, and the user asks "Do
 customers think the parking lot is safe at night?". No review mentions parking, so the correct
-reply is `insufficient_evidence`, with no claims and a `note` that explains the gap.
+reply is `insufficient_evidence`, with no claims and coverage `none`. The server shows its own
+fixed explanation.
 
-**Update (S2-011 grounded claims, prompt `s2-013.v5`).** The reply is now
-`{"outcome", "claims", "note"}`. This separates the two things the issue asks the model to
+**Update (S2-011 grounded claims, prompt `s2-013.v7`).** The reply is
+`{"outcome", "claims", "coverage"}`. This separates the two things the issue asks the model to
 distinguish: (1) information supported by the reviews is in `claims`, each with a quote checked
-against the cited review; (2) information absent from the reviews is in `note`, which never states
-facts about the reviews. A partial answer shows its claims first, then
-`Not covered by these reviews: <note>`. A model that answers the parking question by citing a real
-food review now fails unless it quotes words that are actually in that review
-(`UNSUPPORTED_CLAIM`). See `docs/s2-011-answers.md`.
+against the cited review and shown beside its statement; (2) information absent from the reviews
+is reported only through the closed `coverage` enum (`partial`, or `none` with
+`insufficient_evidence`). The model writes no explanation: the server shows
+"These reviews don't contain enough information to answer that question." for
+`insufficient_evidence`, and appends "Parts of your question are not covered by these reviews." to
+a partial answer. The v5 free-text `note` is gone, and a reply that still sends one is rejected
+(`INVALID_MODEL_RESPONSE`). A model that answers the parking question by citing a real food review
+fails unless it quotes words that are actually in that review (`UNSUPPORTED_CLAIM`). See
+`docs/s2-011-answers.md`.
 
 ## How the behavior is produced
 
 S2-012 adds no production code. It relies on two pieces that already exist, and this change tests
 them together against controlled datasets.
 
-| Piece                           | Where                                           | What it does for S2-012                                                                                                                                                                                                                                                                      |
-| ------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| System prompt (S2-013)          | `src/services/qa/system-prompt.ts`, `s2-013.v5` | Evidence rule 4: if the reviews lack the information, say so clearly and do not fill the gap from general knowledge. Rule 5: keep what the reviews say separate from what they do not say. A partial answer uses `answered` for the supported part and states what is not covered.           |
-| Reply validation (S2-011)       | `src/services/qa/qa-response.ts`                | `insufficient_evidence` must have no claims (`UNEXPECTED_CITATIONS` otherwise) and a non-empty note. An `answered` reply with no claims, or with a review ID outside the dataset, is rejected as `UNGROUNDED_ANSWER`; a claim whose quote is not in its cited review is `UNSUPPORTED_CLAIM`. |
-| Outcome mapping (S2-013/S2-004) | `docs/s2-013-system-prompt.md`                  | `insufficient_evidence` corresponds to the S2-004 category `insufficient_review_evidence`.                                                                                                                                                                                                   |
+| Piece                           | Where                                           | What it does for S2-012                                                                                                                                                                                                                                                                                               |
+| ------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| System prompt (S2-013)          | `src/services/qa/system-prompt.ts`, `s2-013.v7` | Evidence rule 4: if the reviews lack the information, use `insufficient_evidence` and do not fill the gap from general knowledge. Rule 5: keep what the reviews say separate from what they do not say. A partial answer uses `answered` for the supported part and sets coverage `partial`.                          |
+| Reply validation (S2-011)       | `src/services/qa/qa-response.ts`                | `insufficient_evidence` must have no claims (`UNEXPECTED_CITATIONS` otherwise) and coverage `none`; its text is the server's. An `answered` reply with no claims, or with a review ID outside the dataset, is rejected as `UNGROUNDED_ANSWER`; a claim whose quote is not in its cited review is `UNSUPPORTED_CLAIM`. |
+| Outcome mapping (S2-013/S2-004) | `docs/s2-013-system-prompt.md`                  | `insufficient_evidence` corresponds to the S2-004 category `insufficient_review_evidence`.                                                                                                                                                                                                                            |
 
 The issue asks the prompt to make the model distinguish (1) information supported by the reviews
 from (2) information absent from them. Rules 4 and 5 are that instruction, and the tests assert
@@ -106,9 +111,11 @@ and removing "clearly" from evidence rule 4 fails the prompt assertions.
   approves the smoke test.
 - **Absence is checked by keyword.** See above. It covers the listed words on fixed fixtures, not
   every way a review could discuss the topic.
-- **The wording of the limitation is not checked.** The validator confirms the outcome and the
-  citations, not that the answer text names the missing topic. The prompt asks for it.
+- **The explanation does not name the missing topic.** Since `v7` the server writes a fixed
+  sentence, so it can never carry an unsupported claim, but it also does not say which part of the
+  question is missing.
 - **Quotes are checked, entailment is not** (S2-011 known limitation): each claim's quote must be
   a contiguous span of its cited review, so invented or misattributed evidence is rejected. A real
-  quote that does not support its statement still passes, and the `note` (what is not covered)
-  is unverified free text. See `docs/s2-011-answers.md`, "Known limitations".
+  quote that does not support its statement still passes (measured: 0 of 3 semantic mismatches
+  caught), but the quote is shown beside the statement. See `docs/s2-011-answers.md`, "Known
+  limitations".

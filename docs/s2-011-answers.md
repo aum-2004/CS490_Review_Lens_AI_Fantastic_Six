@@ -74,7 +74,7 @@ said "The parking lot is safe at night" while citing a real pizza review passed,
 answer mixing one supported claim with one invented claim. A citation proved that a review
 existed, not that it said anything the answer claimed.
 
-### The reply contract (`s2-013.v5`)
+### The reply contract (`s2-013.v7`)
 
 ```json
 {
@@ -85,37 +85,44 @@ existed, not that it said anything the answer claimed.
       "evidence": [{ "reviewId": "<uuid>", "quote": "the crust was perfectly crisp" }]
     }
   ],
-  "note": "The reviews do not mention outdoor seating."
+  "coverage": "partial"
 }
 ```
 
 - **`claims`** holds every finding from the reviews. Each claim lists its own evidence, so the
   validator knows which review supports which statement.
+- **`statement`** is one short sentence (at most 300 characters, `MAX_CLAIM_STATEMENT_CHARACTERS`)
+  with no review IDs. It is the only text the model writes for the user.
 - **`quote`** must be copied from the cited review as one contiguous passage.
-- **`note`** holds only text that is not a finding: a decline, the insufficient-evidence
-  explanation, or what a partial answer does not cover. The prompt says `note` never states facts
-  about the reviews. That rule cannot be verified (see the limitations below).
+- **`coverage`** is a closed enum: `complete` or `partial` for `answered`, `none` for every other
+  outcome. It replaced the v5 free-text `note` (PR #104 review, item 2).
+
+`s2-013.v5` was this PR's first claims prompt. `v6` is used by PR #103 (target-name hardening), so
+this change is `v7`.
 
 `QA_REPLY_JSON_SCHEMA` is strict-mode compatible at every level: every object lists all of its
-properties as required with `additionalProperties: false`, and `note` is nullable
-(`["string", "null"]`) instead of optional. A test walks the schema to check this.
+properties as required with `additionalProperties: false`, every node has a single non-null type,
+and both enums contain only strings. Nothing is nullable. Tests walk the schema to check this and
+that the only unconstrained strings are `statement`, `reviewId` and `quote`.
 
 ### What the validator checks
 
 Rejected, not repaired. Dropping one bad claim would silently change what the rest of the answer
 means.
 
-| Check                                                                                  | Error                    |
-| -------------------------------------------------------------------------------------- | ------------------------ |
-| Not JSON, wrong or extra fields at any level, unknown outcome, the legacy reply shape  | `INVALID_MODEL_RESPONSE` |
-| Statement empty or > 1,000 chars; > 20 claims; > 10 evidence items; quote > 500 chars  | `INVALID_MODEL_RESPONSE` |
-| A `reviewId` that is not in the request, or whose text was not supplied (any outcome)  | `UNGROUNDED_ANSWER`      |
-| `answered` with no claims                                                              | `UNGROUNDED_ANSWER`      |
-| `answered` claim with no evidence                                                      | `UNSUPPORTED_CLAIM`      |
-| `answered` quote that is not a contiguous span of **that** review, or is under 3 words | `UNSUPPORTED_CLAIM`      |
-| Non-answer outcome with claims, even valid ones                                        | `UNEXPECTED_CITATIONS`   |
-| Non-answer outcome whose note is null or empty                                         | `INVALID_MODEL_RESPONSE` |
-| Composed answer over `MAX_ANSWER_CHARACTERS` (8,000)                                   | `INVALID_MODEL_RESPONSE` |
+| Check                                                                                        | Error                    |
+| -------------------------------------------------------------------------------------------- | ------------------------ |
+| Not JSON, wrong or extra fields at any level (including `note`), unknown outcome or coverage | `INVALID_MODEL_RESPONSE` |
+| Statement empty or > 300 chars; > 20 claims; > 10 evidence items; quote > 500 chars          | `INVALID_MODEL_RESPONSE` |
+| A `reviewId` that is not in the request, or whose text was not supplied (any outcome)        | `UNGROUNDED_ANSWER`      |
+| `answered` with no claims                                                                    | `UNGROUNDED_ANSWER`      |
+| `answered` with coverage `none`; any other outcome with `complete` or `partial`              | `INVALID_MODEL_RESPONSE` |
+| `answered` claim with no evidence                                                            | `UNSUPPORTED_CLAIM`      |
+| `answered` quote that is not a contiguous span of **that** review, or is under 3 words       | `UNSUPPORTED_CLAIM`      |
+| A statement that contains any requested review ID (any case)                                 | `INVALID_MODEL_RESPONSE` |
+| A statement that shares 8+ consecutive words with the system prompt                          | `PROMPT_ECHO`            |
+| Non-answer outcome with claims, even valid ones                                              | `UNEXPECTED_CITATIONS`   |
+| Composed answer over `MAX_ANSWER_CHARACTERS` (8,000)                                         | `INVALID_MODEL_RESPONSE` |
 
 **Quote matching** (`normalizeEvidenceText`, `quoteSupportedByReview`). The quote and the review
 text get the same normalization: Unicode NFKC (which also turns `…` into `...`), a per-character
@@ -127,46 +134,99 @@ contains that exact text. A quote must have at least `MIN_QUOTE_WORDS` (3) words
 "the" cannot anchor a claim, unless it is the whole review (for very short reviews such as
 "Too slow.").
 
-**Composed answer.** For `answered`, the server builds the text shown to the user from the
-verified claims: one line per claim, `statement [id, id]`, followed by
-`Not covered by these reviews: <note>` when there is a note. `citedReviewIds` is built from the
-claims in first-seen order, without duplicates. The route response (`outcome`, `answer`,
-`citedReviewIds`) and the UI are unchanged: the existing `buildCitationView` already turns the
-bracketed UUIDs into `[1]`, `[2]`. For other outcomes, the note is the answer and there are no
-citations.
+**Prompt-echo guard** (`echoesInstructions`). Statements are the only model prose left, so each
+one is compared with the request's actual `instructions`: both are normalized as above and split
+into letter/digit words, and the statement is rejected if any 8 consecutive words also appear
+consecutively in the prompt. This is an overlap check against the real prompt, not a keyword list.
+Tests cover a true echo, a re-cased and re-punctuated echo, a 7-word near miss (accepted), and
+ordinary supported statements (no false positives against the real v7 prompt).
 
-**Errors.** `UNSUPPORTED_CLAIM` is a `QaResponseError`, so the route returns it like the others:
-503 with the generic message "We couldn't produce a reliable answer." Neither the error message
-nor the response body includes model output, quotes, or review IDs.
+**Composed answer.** The server builds every word the user sees:
+
+```text
+Reviewers praise the crust.
+  "the crust was perfectly crisp" [<uuid>]
+
+Parts of your question are not covered by these reviews.
+```
+
+For `answered`: each statement on its own line, then each of its quotes on an indented line with
+the ID of the review it quotes, a blank line between claims, then `PARTIAL_COVERAGE_TEXT` when
+coverage is `partial`. Statements and quotes are collapsed to one line, so a statement cannot
+forge a quote line. For every other outcome the answer is the fixed `nonAnswerText(outcome,
+platform)`, where `platform` is the trusted label from `REVIEW_PLATFORM_LABELS`. `citedReviewIds`
+is built from the evidence in first-seen order, without duplicates. The route response (`outcome`,
+`answer`, `citedReviewIds`) and the UI are unchanged: `buildCitationView` turns each bracketed
+UUID into `[1]`, `[2]`, and the answer is rendered with `whitespace-pre-wrap`, so the indentation
+is kept.
+
+**Errors.** `UNSUPPORTED_CLAIM` and `PROMPT_ECHO` are `QaResponseError`s, so the route returns
+them like the others: 503 with the generic message "We couldn't produce a reliable answer." Neither
+the error message nor the response body includes model output, quotes, or review IDs.
+
+### Measured: adversarial grounding set
+
+`tests/fixtures/qa/grounding-adversarial.ts` and `tests/unit/services/qa/grounding-adversarial.test.ts`
+run scripted replies (S2-003 fake model, no network) through the real `answerQuestion` pipeline.
+This measures a limitation; it is **not** a guarantee.
+
+| Case                | What the reply does                                                 | Validator today               |
+| ------------------- | ------------------------------------------------------------------- | ----------------------------- |
+| supported           | Quote states the claim                                              | accepts                       |
+| irrelevant quote    | Parking claim backed by a real food sentence                        | **accepts**                   |
+| partial support     | Quote supports half of the statement                                | **accepts**                   |
+| contradictory quote | Quote on the right topic says the opposite ("felt unsafe at night") | **accepts**                   |
+| fabricated quote    | Quote is not in the review                                          | rejects (`UNSUPPORTED_CLAIM`) |
+| wrong review        | Real quote attributed to another review                             | rejects (`UNSUPPORTED_CLAIM`) |
+| ellipsis join       | Two fragments joined with `...`                                     | rejects (`UNSUPPORTED_CLAIM`) |
+
+**Result: the validator catches 0 of 3 semantic mismatches and 3 of 3 deterministic controls.**
+For every accepted case, the test checks that each quote appears verbatim on the line below its
+statement, so the mismatch is visible to the reader.
+
+### Options considered for semantic grounding
+
+| Option                                                         | Decision                                                                                                                                         |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| (a) Show each verified quote next to its statement             | **Done.** Server-side only; no route or UI change.                                                                                               |
+| (b) Extractive display (quotes only, statement short/optional) | **Partly done:** statements capped at 300 characters. Dropping statements entirely changes the product; it is the fallback if (a) is not enough. |
+| (c) Adversarial fixture set with deterministic mocks           | **Done** (above).                                                                                                                                |
+| (d) Optional verifier behind the provider boundary             | **Not built; design only** (below).                                                                                                              |
+
+**(d) design, for later.** A `QaClaimVerifier` would take `(statement, quotes)` and return
+`supported | unsupported | unknown`, run after the deterministic checks, and fail closed on anything
+but `supported`. It would sit behind the same injected-caller boundary as `QaModelCaller`, be off
+by default (a separate env flag, like `QA_ENABLED`), and be tested only with deterministic mocks.
+Mocks would prove the wiring, not the semantics: any real signal needs live model calls, which
+need separate approval (cost, latency, and a second model's own error rate) before they are made.
 
 ### Known limitations
 
-- **A real but irrelevant quote passes.** The checks prove the quoted words are in the cited
-  review, not that they support the statement. "The parking lot is safe at night" with the quote
-  "The crust was perfectly crisp" passes, because that quote really is in the review. Deciding
-  whether a quote entails a claim would need a model or keyword rules, and keyword rules were
-  ruled out as brittle. The prompt requires that "the quote must itself say what the statement
-  claims", and a test (`KNOWN LIMITATION: accepts a real quote that does not support the claim`)
-  documents the gap. The S2-004 / configured-model evaluations should include such cases.
-- **`note` is unverified free text.** It is shown after a fixed server prefix
-  (`Not covered by these reviews:`) and is never treated as a finding, but a finding written into
-  it reaches the user unchecked. A test (`DOCUMENTED: note is unverified free text`) shows this.
-  The prompt-injection suite also shows that a prompt echo can still leave through `note`.
+- **A relevant-looking quote can still contradict its statement.** The checks prove the quoted
+  words are in the cited review, not that they support the statement. Irrelevant, partial and
+  contradictory quotes all pass (measured above: 0 of 3 caught). Showing the quote beside the
+  statement makes the mismatch visible, but the reader has to notice it.
+- **Statements are model-written prose.** They can still contain invented text or personal
+  details (PII) that their quotes do not support, up to 300 characters each. The prompt-injection
+  suite records this (`documented limitation: production accepts structurally valid ... prose`).
+  The echo guard only catches word-for-word (or re-punctuated) prompt echoes, not paraphrases.
+- **Quotes are review text.** A quote can contain anything the cited review contains, including
+  text written to look like instructions. It is shown as plain text, and the same review is
+  already shown in the supporting-reviews panel.
 - **Paraphrase is not accepted.** A quote that changes wording, not just case, whitespace, or
   quote and dash style, is rejected. The reply fails closed with the generic error. A live
   evaluation should measure how often this happens with the configured model.
 - **Reviews that cannot be quoted.** A review under 3 words that is longer than 500 characters
   (a single very long token) cannot be cited. This does not happen with real review text.
-- **Quotes are not shown in the UI yet** (follow-up). The supporting-reviews panel shows the full
-  text of each cited review.
 
 ## Insufficient evidence (S2-012)
 
 S2-012 is documented in `docs/s2-012-insufficient-evidence.md`. S2-011 provides what it relies on:
-an `insufficient_evidence` reply has no claims and must explain itself in `note`; an `answered`
-reply with no claims is rejected as `UNGROUNDED_ANSWER`; and every claim must quote its cited
-review, so an answer about a topic the reviews never mention cannot point at a real review to pass
-as grounded.
+an `insufficient_evidence` reply has no claims and coverage `none`, and the server writes its
+explanation; an `answered` reply with no claims is rejected as `UNGROUNDED_ANSWER`; and every claim
+must quote its cited review, so an answer about a topic the reviews never mention cannot point at a
+real review to pass as grounded. Since `v7`, no model-written text can appear in an
+insufficient-evidence or decline answer: a reply that adds a `note` is rejected.
 
 ## OpenAI client (`openai-qa-client.ts`)
 
@@ -293,7 +353,7 @@ const answer = await answerQuestion("t1", "Any complaints?", {
       claims: [
         { statement: "Service is slow.", evidence: [{ reviewId: "r1", quote: "Slow service." }] },
       ],
-      note: null,
+      coverage: "complete",
     }),
   }),
   // Option B: the real adapter with a fake fetch (inspect the outgoing request body):
