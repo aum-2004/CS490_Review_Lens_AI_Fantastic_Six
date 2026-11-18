@@ -85,7 +85,7 @@ The citation rules in one table:
 | `insufficient_evidence`  | Accepted            | `UNEXPECTED_CITATIONS` | `UNGROUNDED_ANSWER`  |
 | `declined_*` (all three) | Accepted            | `UNEXPECTED_CITATIONS` | `UNGROUNDED_ANSWER`  |
 
-The prompt (`s2-013.v5`) states the same contract: a partial answer uses `answered` with
+The prompt (`s2-013.v6`) states the same contract: a partial answer uses `answered` with
 citations and says what the reviews do not cover; every other outcome has an empty
 `citedReviewIds`. Accepted replies are normalized: the answer is trimmed, and duplicate citations
 are removed.

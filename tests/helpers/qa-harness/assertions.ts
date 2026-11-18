@@ -60,8 +60,9 @@ export function missingPromptInvariants(instructions: string): QaPromptInvariant
  * S2-013: the system prompt is present, states every rule in `QA_SYSTEM_PROMPT_INVARIANTS`
  * (grounding, no outside knowledge, insufficient evidence, and the three decline rules), and
  * keeps untrusted target metadata, review text, and the user's question out of the system
- * instructions. Target identity is checked in the structured user-turn metadata instead. The
- * final equality check ensures no target-specific value has been appended to the canonical rules.
+ * instructions. Target identity is checked in the structured user-turn metadata and the trusted
+ * platform is checked against the validated target's label. The final equality check ensures the
+ * prompt contains the correct platform without any other target-specific value.
  */
 export function expectSystemPromptApplied(
   request: QaModelRequest,
@@ -81,11 +82,8 @@ export function expectSystemPromptApplied(
     );
   }
   const platform = REVIEW_PLATFORM_LABELS[target.platform];
-  if (metadata.reviewPlatform !== platform) {
-    fail(
-      `Target metadata names review platform ${JSON.stringify(metadata.reviewPlatform)} ` +
-        `instead of ${JSON.stringify(platform)}.`,
-    );
+  if (!request.instructions.includes(`Authoritative review platform: ${platform}.`)) {
+    fail(`System instructions do not identify ${JSON.stringify(platform)} as authoritative.`);
   }
   const missing = missingPromptInvariants(request.instructions);
   if (missing.length > 0) {
@@ -106,8 +104,8 @@ export function expectSystemPromptApplied(
       fail(`Review ${review.id} text was placed in the system instructions.`);
     }
   }
-  if (request.instructions !== buildSystemPrompt()) {
-    fail("System instructions differ from the target-independent production prompt.");
+  if (request.instructions !== buildSystemPrompt(platform)) {
+    fail("System instructions differ from the production prompt for the active platform.");
   }
 }
 
@@ -134,14 +132,14 @@ export function parseTargetMetadata(request: QaModelRequest): QaTargetMetadata {
   }
   if (!isRecord(parsed)) fail("The TARGET METADATA section is not a JSON object.");
   const keys = Object.keys(parsed).sort().join(",");
-  if (keys !== "name,reviewPlatform") {
-    fail(`Target metadata has fields [${keys}]; expected [name,reviewPlatform].`);
+  if (keys !== "name") {
+    fail(`Target metadata has fields [${keys}]; expected [name].`);
   }
-  const { name, reviewPlatform } = parsed;
-  if (typeof name !== "string" || typeof reviewPlatform !== "string") {
+  const { name } = parsed;
+  if (typeof name !== "string") {
     fail("Target metadata has a field of the wrong type.");
   }
-  return { name, reviewPlatform };
+  return { name };
 }
 
 /**
@@ -203,10 +201,7 @@ export function expectContextOnlyForTarget(
   }
 
   const metadata = parseTargetMetadata(request);
-  const expectedMetadata: QaTargetMetadata = {
-    name: dataset.target.name,
-    reviewPlatform: REVIEW_PLATFORM_LABELS[dataset.target.platform],
-  };
+  const expectedMetadata: QaTargetMetadata = { name: dataset.target.name };
   if (JSON.stringify(metadata) !== JSON.stringify(expectedMetadata)) {
     fail(
       `Target metadata ${JSON.stringify(metadata)} is not ${JSON.stringify(expectedMetadata)} ` +

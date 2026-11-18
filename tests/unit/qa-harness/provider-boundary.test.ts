@@ -7,7 +7,7 @@ jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn(
 
 import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
 import { QA_REPLY_JSON_SCHEMA } from "@/services/qa/qa-response";
-import { buildSystemPrompt } from "@/services/qa/system-prompt";
+import { buildSystemPrompt, REVIEW_PLATFORM_LABELS } from "@/services/qa/system-prompt";
 
 import { allQaDatasets, getQaDataset, type QaFixtureDataset } from "../../fixtures/qa/datasets";
 import {
@@ -140,7 +140,7 @@ describe("outgoing request body", () => {
     const instructions = String(generation.body.instructions);
     const input = String(generation.body.input);
 
-    expect(instructions).toBe(buildSystemPrompt());
+    expect(instructions).toBe(buildSystemPrompt(REVIEW_PLATFORM_LABELS[targetA.target.platform]));
     for (const review of targetA.reviews) {
       expect(instructions).not.toContain(review.text);
       expect(input).toContain(JSON.stringify(review.text));

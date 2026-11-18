@@ -53,7 +53,7 @@ describe("configured-model evaluation runner", () => {
       mode: "offline",
       status: "completed",
       modelId: APPROVED_QA_MODEL,
-      promptVersion: "s2-013.v5",
+      promptVersion: "s2-013.v6",
       plannedLogicalCalls: 36,
       externalRequestLimit: 72,
       completedAttempts: 36,

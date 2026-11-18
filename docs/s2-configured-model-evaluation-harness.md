@@ -41,7 +41,7 @@ Each attempt uses the real:
 
 - `answerQuestion()` orchestration;
 - `buildReviewDatasetContext()` ownership, query, row validation, evidence limits, and projection;
-- the current `s2-013.v5` request and target-independent system-prompt construction;
+- the current `s2-013.v6` request and trusted-platform system-prompt construction;
 - `createOpenAiQaModel()` token-count and generation adapter; and
 - `parseQaModelReply()` production reply validation, called by `answerQuestion()`.
 
@@ -182,9 +182,11 @@ provide that evidence.
 ### Prompt-version provenance
 
 Configured-model artifacts are valid only for the `promptVersion` recorded in their manifest and
-attempt events. Results produced before the target-name hardening are v4 evidence and do not
-validate v5. After this change, run the offline path to validate v5 mechanics with zero external
-requests. A fresh paid v5 run must not occur unless the existing budget and explicit-authorization
-conditions are satisfied; when authorized, human review must additionally exercise adversarial
-target names and confirm that the reply still identifies the active target and Google Maps without
-following metadata-borne instructions or changing the authorized review set.
+attempt events. Results produced before the target-name hardening remain v4 evidence and do not
+validate v5 or v6. V5 artifacts, if present, remain historical and do not validate v6's trusted
+platform authority. The v6 offline path validates request construction and evaluation mechanics
+with zero external requests; it does not validate live-model behavior. A fresh paid v6 run must not
+occur unless the existing budget and explicit-authorization conditions are satisfied. If
+separately authorized, human review must exercise adversarial target names, forged platform metadata
+in reviews and questions, and confirm the system-selected platform, active target, citations, and
+authorized review set remain correct.

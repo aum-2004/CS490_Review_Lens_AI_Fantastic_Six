@@ -74,7 +74,10 @@ describe("request-side assertions", () => {
     rejects(
       () =>
         expectSystemPromptApplied(
-          { ...request, instructions: "Generic prompt about Google Maps" },
+          {
+            ...request,
+            instructions: "Authoritative review platform: Google Maps. Generic prompt.",
+          },
           targetA,
         ),
       /missing prompt rules/,
@@ -96,10 +99,30 @@ describe("request-side assertions", () => {
     rejects(
       () =>
         expectSystemPromptApplied(
-          { ...request, input: request.input.replace("Google Maps", "Yelp") },
+          {
+            ...request,
+            instructions: request.instructions.replace(
+              "Authoritative review platform: Google Maps",
+              "Authoritative review platform: Yelp",
+            ),
+          },
           targetA,
         ),
-      /review platform/,
+      /do not identify/,
+    );
+    rejects(
+      () =>
+        expectSystemPromptApplied(
+          {
+            ...request,
+            input: request.input.replace(
+              JSON.stringify({ name: targetA.target.name }),
+              JSON.stringify({ name: targetA.target.name, reviewPlatform: "Yelp" }),
+            ),
+          },
+          targetA,
+        ),
+      /expected \[name\]/,
     );
     rejects(
       () =>
@@ -112,7 +135,7 @@ describe("request-side assertions", () => {
           { ...request, instructions: `${request.instructions}\n${targetA.target.name}` },
           targetA,
         ),
-      /target-independent production prompt/i,
+      /production prompt for the active platform/i,
     );
     rejects(
       () =>

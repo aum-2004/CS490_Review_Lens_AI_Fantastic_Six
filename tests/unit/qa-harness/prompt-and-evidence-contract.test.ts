@@ -5,7 +5,11 @@
 jest.mock("server-only", () => ({}));
 jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
 
-import { buildSystemPrompt, SYSTEM_PROMPT_VERSION } from "@/services/qa/system-prompt";
+import {
+  buildSystemPrompt,
+  REVIEW_PLATFORM_LABELS,
+  SYSTEM_PROMPT_VERSION,
+} from "@/services/qa/system-prompt";
 
 import { allQaDatasets, getQaDataset } from "../../fixtures/qa/datasets";
 import {
@@ -210,7 +214,9 @@ describe("expectSystemPromptApplied: semantic prompt contract", () => {
 
   it("the request carries exactly the real S2-013 system prompt, which states every rule", async () => {
     const request = await validRequest();
-    expect(request.instructions).toBe(buildSystemPrompt());
+    expect(request.instructions).toBe(
+      buildSystemPrompt(REVIEW_PLATFORM_LABELS[targetA.target.platform]),
+    );
     expect(request.promptVersion).toBe(SYSTEM_PROMPT_VERSION);
     expect(missingPromptInvariants(request.instructions)).toEqual([]);
     expect(() =>
@@ -222,7 +228,9 @@ describe("expectSystemPromptApplied: semantic prompt contract", () => {
     for (const dataset of allQaDatasets()) {
       expect({
         key: dataset.key,
-        missing: missingPromptInvariants(buildSystemPrompt()),
+        missing: missingPromptInvariants(
+          buildSystemPrompt(REVIEW_PLATFORM_LABELS[dataset.target.platform]),
+        ),
       }).toEqual({ key: dataset.key, missing: [] });
     }
   });
@@ -238,7 +246,7 @@ describe("expectSystemPromptApplied: semantic prompt contract", () => {
     const instructions = strip(request.instructions, removed);
 
     expect(instructions).toContain("TARGET METADATA.name");
-    expect(instructions).toContain("TARGET METADATA.reviewPlatform");
+    expect(instructions).toContain("Authoritative review platform: Google Maps.");
     expect(missingPromptInvariants(instructions)).toEqual(removed);
     rejects(
       () => expectSystemPromptApplied({ ...request, instructions }, targetA),
