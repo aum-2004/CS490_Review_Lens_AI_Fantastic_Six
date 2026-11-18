@@ -6,35 +6,66 @@
 
 ## What this provides
 
-| Export                      | Purpose                                                                                        |
-| --------------------------- | ---------------------------------------------------------------------------------------------- |
-| `buildSystemPrompt`         | The ReviewLens system prompt for one AnalysisTarget.                                           |
-| `buildQaModelRequest`       | The full provider-neutral model request: system instructions plus review dataset and question. |
-| `SYSTEM_PROMPT_VERSION`     | Version tag sent with every request. Bump it whenever the prompt text changes.                 |
-| `QA_OUTCOMES`               | The machine-readable outcomes the model must return.                                           |
-| `QaPromptError`             | Thrown when a request cannot be built safely. The caller must not call the model.              |
-| `QA_DECLINE_PRIORITY`       | Which decline outcome wins when more than one applies.                                         |
-| `resolveDeclineOutcome`     | Returns the winning decline outcome; used to label multi-category evaluation cases.            |
-| `QA_MAX_REQUEST_TOKENS`     | The single configurable cap on one model request, in tokens (enforced by S2-011, see below).   |
-| `QA_RESERVED_OUTPUT_TOKENS` | Output tokens reserved for the reply; sent to the provider as `maxOutputTokens`.               |
-| `runGroundedQaRequest`      | (`qa-request.ts`) Builds the S2-010 context, then the request, then calls the injected model.  |
+| Export                      | Purpose                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `buildSystemPrompt`         | ReviewLens rules bound to the validated active review platform, but independent of target name. |
+| `buildQaModelRequest`       | The full provider-neutral model request: system instructions plus review dataset and question.  |
+| `SYSTEM_PROMPT_VERSION`     | Version tag sent with every request. Bump it whenever the prompt text changes.                  |
+| `QA_OUTCOMES`               | The machine-readable outcomes the model must return.                                            |
+| `QaPromptError`             | Thrown when a request cannot be built safely. The caller must not call the model.               |
+| `QA_DECLINE_PRIORITY`       | Which decline outcome wins when more than one applies.                                          |
+| `resolveDeclineOutcome`     | Returns the winning decline outcome; used to label multi-category evaluation cases.             |
+| `QA_MAX_REQUEST_TOKENS`     | The single configurable cap on one model request, in tokens (enforced by S2-011, see below).    |
+| `QA_RESERVED_OUTPUT_TOKENS` | Output tokens reserved for the reply; sent to the provider as `maxOutputTokens`.                |
+| `runGroundedQaRequest`      | (`qa-request.ts`) Builds the S2-010 context, then the request, then calls the injected model.   |
 
 The prompt text lives only in source control (`src/services/qa/system-prompt.ts`). It is not
 configured in a hosted AI console. Changes go through a reviewed pull request and a version bump.
 
 ## Prompt requirements and where they are covered
 
-| S2-013 requirement                                   | Prompt section     | Test                                                    |
-| ---------------------------------------------------- | ------------------ | ------------------------------------------------------- |
-| Names the product/entity being analyzed              | Active dataset     | `names the active entity and its review platform`       |
-| Names the review platform                            | Active dataset     | same                                                    |
-| Answers come only from the supplied reviews          | Evidence rules 1–2 | `restricts answers to the supplied review dataset`      |
-| Unsupported information is not invented              | Evidence rules 3–5 | `forbids inventing unsupported information…`            |
-| General-knowledge questions are declined             | Scope rule 6       | `requires declining general-knowledge questions`        |
-| Other products, entities, and platforms are declined | Scope rules 7–8    | `requires declining other entities and other platforms` |
+| S2-013 requirement                                   | Prompt section     | Test                                                      |
+| ---------------------------------------------------- | ------------------ | --------------------------------------------------------- |
+| Identifies the product/entity being analyzed         | Target metadata    | `keeps the active target name in metadata…`               |
+| Identifies the review platform                       | Active dataset     | `states the trusted Google Maps platform in instructions` |
+| Answers come only from the supplied reviews          | Evidence rules 1–2 | `restricts answers to the supplied review dataset`        |
+| Unsupported information is not invented              | Evidence rules 3–5 | `forbids inventing unsupported information…`              |
+| General-knowledge questions are declined             | Scope rule 6       | `requires declining general-knowledge questions`          |
+| Other products, entities, and platforms are declined | Scope rules 7–8    | `requires declining other entities and other platforms`   |
 
-The prompt also tells the model to treat review text and questions as untrusted data, and not to
-repeat reviewer personal details.
+The prompt also tells the model to treat target metadata values, review text, and questions as
+untrusted data, and not to repeat reviewer personal details.
+
+## Target-name injection hardening (`s2-013.v5`)
+
+The v5 system instructions contain no AnalysisTarget name or other user-controlled target value.
+V5 placed both the target name and review platform in a JSON object at the start of the user turn.
+Its deterministic request-shape evidence is historical and does not establish trusted-platform
+authority for v6.
+
+This is a message-hierarchy control, not a claim that JSON escaping sanitizes natural-language
+instructions. JSON encoding prevents a hostile value from forging the surrounding sections, while
+keeping the value out of the system message prevents it from receiving system-level authority.
+Deterministic tests cover names that ask to ignore prior instructions, reveal the system prompt,
+switch businesses, forge role delimiters, and inject quotes or JSON-like text. They also prove that
+the instructions remain byte-for-byte target-independent and that the review IDs and evidence rows
+remain those selected by the authenticated context builder.
+
+## Trusted platform authority (`s2-013.v6`)
+
+V6 keeps the target name out of system instructions and serializes only `{ "name": ... }` in the
+untrusted `TARGET METADATA` section. The platform is different: `AnalysisTarget.platform` is
+validated by the application boundary and has the closed `ReviewPlatform` type. The request
+builder resolves it through the exhaustive `REVIEW_PLATFORM_LABELS` mapping and passes that typed
+label to `buildSystemPrompt`. The ACTIVE DATASET section and scope rules 8–9 therefore identify the
+authoritative platform in system instructions. A `reviewPlatform` value forged in the target name,
+review text, question, or extra user-turn metadata cannot change that authority.
+
+The review dataset and question remain separately JSON-encoded in the user turn. This preserves
+section structure, but is not itself a claim that JSON encoding neutralizes malicious prose.
+Deterministic tests inspect the constructed request, parse each JSON section, prove forged headers
+remain inside review/question strings, and compare instructions before and after injecting forged
+content. The real authorized review IDs and rows are also checked unchanged.
 
 ## Model response contract
 
@@ -68,7 +99,7 @@ Restaurant A on Google Maps active) is `declined_other_entity`. The prompt text 
 label multi-category questions. Test: `S2-015: labels another entity's reviews on another
 platform as declined_other_entity`.
 
-### General knowledge versus another entity (`s2-013.v4`)
+### General knowledge versus another entity (retained from `s2-013.v4`)
 
 An open-ended recommendation or ranking that is not about the target and points to no particular
 business, such as "What are the best restaurants in New York?", is `declined_general_knowledge`
@@ -134,12 +165,29 @@ Other safeguards:
 
 - Only `id`, `rating`, `reviewDate`, and `text` are sent per review. Reviewer names, review URLs,
   and source metadata are never sent.
-- The target name, review text, and question are JSON-encoded. This preserves the request's
-  structure (their content cannot close or forge a prompt section). It does **not** make the
-  request resistant to prompt injection: the model still reads the text and may follow
-  instructions inside it. The prompt's untrusted-content rule reduces this risk but does not
-  remove it.
+- The target name is JSON-encoded in `TARGET METADATA`; review text and the question are separately
+  JSON-encoded. The trusted platform label is resolved from the validated target platform and is
+  included in system instructions, not taken from user-turn metadata.
+- `targetId` and the exact review IDs remain application-side authorization/audit fields. A target
+  name never selects persisted rows; S2-010 ownership and target-scoped review queries do that, and
+  `REVIEW_TARGET_MISMATCH` remains the final fail-closed check.
 - The module imports `server-only`, so the prompt text is never shipped to the browser.
+
+## Evaluation provenance and prompt-version validation
+
+Configured-model results recorded before the target-name hardening belong to `s2-013.v4`; they do
+not validate v5 or v6. V5 artifacts, if present, remain tied only to v5 and do not validate v6's
+trusted-platform authority boundary. The historical S2-014 and S2-015 documents and artifact
+manifests intentionally retain their original prompt-version labels.
+
+V6 requires a fresh deterministic offline harness run to verify request construction, prompt
+version capture, refusal-case orchestration, budgets, and artifact/report mechanics. No v6 live
+or paid-model evaluation has been performed or is authorized by this change. Before production
+enablement, v6 still needs independent security review and a separately authorized
+configured-model evaluation covering target identification, the trusted Google Maps label,
+refusal priority, scope behavior, forged metadata in target names/reviews/questions, and unchanged
+citation behavior. The spending guard and explicit approval requirements in
+`s2-configured-model-evaluation-harness.md` still apply.
 
 ## Responsibilities of other stories
 
@@ -159,13 +207,10 @@ Other safeguards:
   is measured with the S2-004 evaluation set; S2-011 validates the response structure.
 - The token budget caps total request size, but the route should still apply its own question
   length limit (S2-009) so users get a clear message before any database work.
-- **Still to verify during S2-011 integration:**
-  - Provider-input isolation: `instructions` is sent as the system message and review text and
-    the question only in the user message, never concatenated into the system message.
-  - Response validation: unknown outcomes, malformed JSON, and `citedReviewIds` outside the
-    request's `reviewIds` are rejected before anything reaches the user.
-  - Full request-size limits: now enforced by S2-011 using OpenAI's token-count endpoint
-    before the generation call; the smoke test confirms the count matches reported usage.
+- Provider-input isolation is deterministic: `instructions` contains fixed rules plus the trusted
+  validated platform label, while the target name, review evidence, and question are sent only in
+  `input`. The adapter tests exercise both token counting and generation with fake HTTP; semantic
+  adherence still requires the separately authorized v6 evaluation described above.
 - The S2-BR rule text was not available in the repository when this was written. The prompt was
   written from the S2-013, S2-011, S2-012, S2-014, S2-015, and S2-020 issue guidance and should be
   checked against the business rules document.

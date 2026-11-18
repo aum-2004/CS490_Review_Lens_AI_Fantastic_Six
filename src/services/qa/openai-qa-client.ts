@@ -94,7 +94,7 @@ export function buildOpenAiRequestBody(request: QaModelRequest, model: string) {
   return {
     model,
     // Provider-input isolation: trusted rules go only in `instructions` (system/developer
-    // message); untrusted review text and the question go only in `input` (user message).
+    // message); untrusted target metadata, review text, and the question go only in `input`.
     instructions: request.instructions,
     input: request.input,
     max_output_tokens: request.maxOutputTokens,

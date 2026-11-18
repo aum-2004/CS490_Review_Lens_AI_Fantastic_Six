@@ -111,7 +111,9 @@ export const openAi = {
 /** Default generation: cite the first review of the S2-013 dataset in `input`. */
 function answerFromInput(body: Record<string, unknown>): FakeOpenAiResponse {
   const input = String(body.input);
-  const rows = JSON.parse(input.split("\n")[1]) as { id: string }[];
+  const lines = input.split("\n");
+  const header = lines.findIndex((line) => line.startsWith("REVIEW DATASET ("));
+  const rows = JSON.parse(lines[header + 1]) as { id: string }[];
   return openAi.completed({
     outcome: "answered",
     answer: "Fake provider answer.",
