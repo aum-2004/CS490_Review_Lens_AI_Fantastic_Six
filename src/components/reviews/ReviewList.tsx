@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { formatReviewText } from "@/lib/reviews/format-review-text";
 import type { Review } from "@/services/reviews/review-service";
 
 export function ReviewList({ reviews }: { reviews: Review[] }) {
@@ -27,7 +28,9 @@ export function ReviewList({ reviews }: { reviews: Review[] }) {
             className="space-y-2 border-b border-border pb-4 last:border-0 last:pb-0"
           >
             <p className="font-medium">{review.rating} out of 5</p>
-            <p className="max-w-prose whitespace-pre-wrap break-words">{review.text}</p>
+            <p className="max-w-prose whitespace-pre-wrap break-words">
+              {formatReviewText(review.text)}
+            </p>
             {review.reviewerName && (
               <p className="max-w-prose break-words text-sm text-muted-foreground">
                 {review.reviewerName}

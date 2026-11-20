@@ -1,5 +1,6 @@
 import { useId } from "react";
 import type { Citation } from "@/lib/qa/citations";
+import { formatReviewText } from "@/lib/reviews/format-review-text";
 
 /** Numbered evidence for a grounded answer. Review text is plain text; IDs are never shown. */
 export function SupportingReviews({ citations }: { citations: readonly Citation[] }) {
@@ -19,7 +20,7 @@ export function SupportingReviews({ citations }: { citations: readonly Citation[
             </p>
             {review && (
               <>
-                <p className="whitespace-pre-wrap break-words">{review.text}</p>
+                <p className="whitespace-pre-wrap break-words">{formatReviewText(review.text)}</p>
                 {review.reviewDate && (
                   <p className="text-muted-foreground">
                     <time dateTime={review.reviewDate}>{review.reviewDate.slice(0, 10)}</time>
