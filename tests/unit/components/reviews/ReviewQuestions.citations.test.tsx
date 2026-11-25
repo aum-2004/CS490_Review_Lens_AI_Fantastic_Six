@@ -149,11 +149,12 @@ it.each([
   expect(screen.queryByText("Supporting Reviews")).not.toBeInTheDocument();
 });
 
-it("shows no Supporting Reviews for an answer without citations", async () => {
+it("does not render an invalid answered response without supporting evidence", async () => {
   ask.mockResolvedValueOnce({ ...answered, answer: "Answer.", citedReviewIds: [] });
   render(<ReviewQuestions {...props} />);
   submit();
-  await screen.findByText("Answer.");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled());
+  expect(screen.queryByText("Answer.")).not.toBeInTheDocument();
   expect(screen.queryByText("Supporting Reviews")).not.toBeInTheDocument();
 });
 

@@ -40,8 +40,11 @@ describe("parseCitedReviewIds (client)", () => {
     expect(parseCitedReviewIds([A1, A2.toUpperCase()], "answered")).toEqual([A1, A2.toUpperCase()]);
   });
 
-  it("treats a missing field (older server) as no citations", () => {
-    expect(parseCitedReviewIds(undefined, "answered")).toEqual([]);
+  it.each([
+    ["a missing field", undefined],
+    ["an empty list", []],
+  ])("rejects an answered response with %s", (_label, value) => {
+    expect(parseCitedReviewIds(value, "answered")).toBeNull();
   });
 
   it.each([

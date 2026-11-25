@@ -81,7 +81,9 @@ function QuestionForm({
 
   // Never render a response for any target other than the active one.
   const view =
-    answer && answer.targetId === targetId
+    answer &&
+    answer.targetId === targetId &&
+    (answer.outcome !== "answered" || answer.citedReviewIds.length > 0)
       ? buildCitationView(targetId, answer.answer, answer.citedReviewIds, reviews)
       : null;
 
