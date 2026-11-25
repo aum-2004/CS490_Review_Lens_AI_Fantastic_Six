@@ -12,7 +12,11 @@ async function VerifiedWorkspaceShell({
 }) {
   const { targetId } = await params;
   const user = await requirePageUser(`/analysis-targets/${encodeURIComponent(targetId)}`);
-  return <AppShell email={user.email}>{children}</AppShell>;
+  return (
+    <AppShell userId={user.id} email={user.email}>
+      {children}
+    </AppShell>
+  );
 }
 
 /** The page still independently authenticates before any protected reads. */

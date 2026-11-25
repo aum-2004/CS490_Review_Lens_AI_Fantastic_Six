@@ -107,14 +107,16 @@ test("creates two targets without a reload and resets success, draft, and errors
 
   await fillTargetForm(page, firstName, "https://www.google.com/maps/place/First+Fixture+Target");
   await expect(page).toHaveURL(/\/analysis-targets\/cccccccc-[^?]+$/);
-  let confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
+  let confirmation = page
+    .getByRole("main")
+    .getByText("Target created. You can now start ingestion.", { exact: true });
   await expect(confirmation).toContainText("Target created");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(firstName);
   await expect(
     page.locator("#ingestion").getByRole("status").getByText("Not ingested", { exact: true }),
   ).toHaveCount(1);
   await expect(page.getByText(/No saved reviews yet/)).toBeVisible();
-  await expect(page.getByText(/You can now start ingestion|Start ingestion above/)).toHaveCount(0);
+  await expect(confirmation).toContainText("You can now start ingestion.");
   await expect(page).not.toHaveURL(/created=/);
   await page.reload();
   await expect(confirmation).toHaveCount(0);
@@ -136,7 +138,9 @@ test("creates two targets without a reload and resets success, draft, and errors
 
   await fillTargetForm(page, secondName, "https://www.google.com/maps/place/Second+Fixture+Target");
   await expect(page).toHaveURL(/\/analysis-targets\/cccccccc-[^?]+$/);
-  confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
+  confirmation = page
+    .getByRole("main")
+    .getByText("Target created. You can now start ingestion.", { exact: true });
   await expect(confirmation).toContainText("Target created");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(secondName);
   await page.getByRole("link", { name: "My Targets", exact: true }).first().click();
@@ -177,7 +181,9 @@ test("wraps a 120-character success name without mobile document overflow", asyn
   await page.getByRole("link", { name: "Create your first target" }).click();
   await fillTargetForm(page, longName, "https://www.google.com/maps/place/Mobile+Fixture+Target");
 
-  const confirmation = page.getByRole("main").getByText("Target created.", { exact: true });
+  const confirmation = page
+    .getByRole("main")
+    .getByText("Target created. You can now start ingestion.", { exact: true });
   const renderedName = page.getByRole("heading", { level: 1, name: longName });
   await expect(confirmation).toBeVisible();
   await expect(renderedName).toBeVisible();
@@ -213,10 +219,10 @@ test("shows a retryable safe failure rather than an empty or partial list", asyn
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
     "We couldn't load your targets",
   );
-  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText("No targets yet")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText("private fixture database failure");
-  await page.getByRole("button", { name: "Try again" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Try again" }).click();
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
     "We couldn't load your targets",
   );
