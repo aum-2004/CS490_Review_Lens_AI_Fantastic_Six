@@ -58,6 +58,9 @@ it.each(["What stands out?", "What do customers praise?", "What could be improve
 it("submits a trimmed question with the active target and displays the answer", async () => {
   render(<ReviewQuestions {...props} />);
   expect(screen.getByText(/Active target:/)).toHaveTextContent("Bakery · Google Maps");
+  expect(screen.getByText(/Active target:/)).toHaveTextContent(
+    "Each account can make 30 attempts within 24 hours. Failed answer-service attempts also count.",
+  );
   expect(screen.getByLabelText(/Question/)).toHaveAccessibleDescription(/Active target: Bakery/);
   submit();
   expect(await screen.findByText(answer.answer)).toBeInTheDocument();

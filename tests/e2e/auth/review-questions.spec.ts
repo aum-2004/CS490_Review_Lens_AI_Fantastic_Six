@@ -161,7 +161,7 @@ test("explains the account quota and preserves the question", async ({ page }) =
   const card = page.getByRole("region", { name: "Review questions" });
   await card.getByLabel(/Question/).fill("What do reviewers like?");
   await card.getByRole("button", { name: "Ask question" }).click();
-  await expect(card.getByRole("alert")).toContainText("limit of five questions in 24 hours");
+  await expect(card.getByRole("alert")).toContainText("limit of 30 questions in 24 hours");
   await expect(card.getByLabel(/Question/)).toHaveValue("What do reviewers like?");
   await expect(card).not.toContainText("PRIVATE_DIAGNOSTIC");
 });

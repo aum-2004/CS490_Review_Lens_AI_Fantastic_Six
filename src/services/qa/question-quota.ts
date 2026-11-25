@@ -1,13 +1,13 @@
 import "server-only";
 import type { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export const MAX_QUESTIONS_PER_24_HOURS = 5;
+export const MAX_QUESTIONS_PER_24_HOURS = 30;
 
 export class QuestionQuotaError extends Error {
   constructor(readonly code: "QA_DAILY_LIMIT" | "QA_QUOTA_UNAVAILABLE") {
     super(
       code === "QA_DAILY_LIMIT"
-        ? "You've reached the limit of five questions in 24 hours. Please try again later."
+        ? `You've reached the limit of ${MAX_QUESTIONS_PER_24_HOURS} questions in 24 hours. Please try again later.`
         : "Question limits are temporarily unavailable. Please try again later.",
     );
     this.name = "QuestionQuotaError";
