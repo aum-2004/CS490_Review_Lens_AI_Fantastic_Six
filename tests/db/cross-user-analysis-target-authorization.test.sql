@@ -63,9 +63,7 @@ end
 $$;
 \echo 'ok - User A creates and retrieves Target A using its database-generated id'
 
--- User B knows Target A's identifier but cannot read, update, or delete it. UPDATE must fail at
--- the privilege boundary; if it unexpectedly succeeds, even with zero affected rows, the explicit
--- exception below fails the test.
+-- User B cannot read or rename Target A; RLS must affect zero rows.
 set request.jwt.claims to '{"sub":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}';
 
 do $$
@@ -78,14 +76,11 @@ begin
     where id = current_setting('test.s1_012_target_id')::uuid
   ), 'User B retrieved User A''s target by its known id';
 
-  begin
-    update public.analysis_targets
-    set name = 'Changed by User B'
-    where id = current_setting('test.s1_012_target_id')::uuid;
-    raise exception 'User B''s direct UPDATE unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
-  end;
+  update public.analysis_targets
+  set name = 'Changed by User B'
+  where id = current_setting('test.s1_012_target_id')::uuid;
+  get diagnostics affected = row_count;
+  assert affected = 0, 'User B changed User A''s target';
 
   begin
     delete from public.analysis_targets where id = current_setting('test.s1_012_target_id')::uuid;
@@ -126,7 +121,7 @@ $$;
 
 -- An authenticated database role without a verified user identity cannot create, access, or
 -- modify a target. INSERT is rejected by RLS with insufficient_privilege, UPDATE is rejected by
--- the immutable-source privilege boundary. DELETE is now denied to browser users.
+-- RLS with zero affected rows. DELETE is now denied to browser users.
 set request.jwt.claims to '';
 
 do $$
@@ -152,14 +147,11 @@ begin
     when insufficient_privilege then null;
   end;
 
-  begin
-    update public.analysis_targets
-    set name = 'Changed without an identity'
-    where id = current_setting('test.s1_012_target_id')::uuid;
-    raise exception 'a request without a user identity unexpectedly updated Target A';
-  exception
-    when insufficient_privilege then null;
-  end;
+  update public.analysis_targets
+  set name = 'Changed without an identity'
+  where id = current_setting('test.s1_012_target_id')::uuid;
+  get diagnostics affected = row_count;
+  assert affected = 0, 'a request without identity updated Target A';
 
   begin
     delete from public.analysis_targets where id = current_setting('test.s1_012_target_id')::uuid;
@@ -220,8 +212,7 @@ $$;
 \echo 'ok - anonymous select, insert, update, and delete operations are rejected'
 
 -- After every foreign, missing-identity, and anonymous attempt, the owner retrieves the complete
--- unchanged row. Under the immutable-source model, even the owner cannot directly UPDATE the
--- target, while retaining legitimate read and DELETE access.
+-- row except for the owner-authorized name change. Source and identity remain immutable.
 reset role;
 set role authenticated;
 set request.jwt.claims to '{"sub":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}';
@@ -231,14 +222,9 @@ declare
   affected integer;
   target public.analysis_targets;
 begin
-  begin
-    update public.analysis_targets
-    set name = 'Changed by User A'
-    where id = current_setting('test.s1_012_target_id')::uuid;
-    raise exception 'User A''s direct UPDATE unexpectedly succeeded';
-  exception
-    when insufficient_privilege then null;
-  end;
+  update public.analysis_targets
+  set name = 'Changed by User A'
+  where id = current_setting('test.s1_012_target_id')::uuid;
 
   select * into strict target
   from public.analysis_targets
@@ -248,7 +234,7 @@ begin
     'a prohibited operation changed Target A''s id';
   assert target.owner_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     'a prohibited operation changed Target A''s owner';
-  assert target.name = 'Target A', 'a prohibited operation changed Target A''s name';
+  assert target.name = 'Changed by User A', 'owner rename was not saved';
   assert target.platform = 'google_maps',
     'a prohibited operation changed Target A''s platform';
   assert target.source_url = 'https://maps.google.com/?cid=12345',
@@ -269,7 +255,7 @@ begin
   ), 'denied deletion removed target/audit context';
 end
 $$;
-\echo 'ok - User A can read, but cannot directly update or delete, the owned target'
+\echo 'ok - User A can read and rename, but cannot directly delete, the owned target'
 
 reset role;
 rollback;

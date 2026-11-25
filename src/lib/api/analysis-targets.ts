@@ -135,3 +135,66 @@ export const createAnalysisTarget: CreateAnalysisTarget = async ({ name, sourceU
 
   return payload.data;
 };
+
+export class AnalysisRenameError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly issues: readonly AnalysisTargetValidationIssue[] = [],
+  ) {
+    super(message);
+    this.name = "AnalysisRenameError";
+  }
+}
+
+export async function renameAnalysisTarget(
+  targetId: string,
+  name: string,
+  signal?: AbortSignal,
+): Promise<AnalysisTarget> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/analysis-targets/${encodeURIComponent(targetId)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+      signal,
+    });
+  } catch {
+    throw new AnalysisRenameError(
+      "RENAME_UNAVAILABLE",
+      "We couldn't reach ReviewLens. Check your connection and try again.",
+    );
+  }
+  const payload = await readJson(response);
+  if (response.status === 401)
+    throw new AnalysisRenameError(
+      "AUTHENTICATION_REQUIRED",
+      "Your session has expired. Please sign in again.",
+    );
+  if (response.status === 400 && isErrorPayload(payload)) {
+    throw new AnalysisRenameError(
+      "INVALID_ANALYSIS_TARGET_INPUT",
+      "Please fix the highlighted fields.",
+      readValidationIssues(payload.error.issues),
+    );
+  }
+  if (response.status === 404)
+    throw new AnalysisRenameError(
+      "TARGET_NOT_FOUND",
+      "This analysis isn't available to your account. Go back to My Targets.",
+    );
+  if (
+    !response.ok ||
+    !isRecord(payload) ||
+    payload.success !== true ||
+    !isAnalysisTarget(payload.data) ||
+    payload.data.id !== targetId
+  ) {
+    throw new AnalysisRenameError(
+      "RENAME_FAILED",
+      "We couldn't rename this analysis. Please try again.",
+    );
+  }
+  return payload.data;
+}
