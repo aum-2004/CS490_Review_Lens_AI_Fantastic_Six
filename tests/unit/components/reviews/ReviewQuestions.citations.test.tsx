@@ -150,9 +150,16 @@ it.each([
 });
 
 it("does not render an invalid answered response without supporting evidence", async () => {
-  ask.mockResolvedValueOnce({ ...answered, answer: "Answer.", citedReviewIds: [] });
+  let resolveAnswer!: (value: ReviewAnswer) => void;
+  ask.mockReturnValueOnce(new Promise((resolve) => (resolveAnswer = resolve)));
   render(<ReviewQuestions {...props} />);
   submit();
+
+  await waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    resolveAnswer({ ...answered, answer: "Answer.", citedReviewIds: [] });
+  });
+
   await waitFor(() => expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled());
   expect(screen.queryByText("Answer.")).not.toBeInTheDocument();
   expect(screen.queryByText("Supporting Reviews")).not.toBeInTheDocument();
