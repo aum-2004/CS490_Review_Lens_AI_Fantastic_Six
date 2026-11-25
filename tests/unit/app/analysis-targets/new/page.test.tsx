@@ -5,6 +5,12 @@ import {
   ProtectedNewAnalysisTargetPage,
 } from "@/app/analysis-targets/new/page";
 import { requirePageUser } from "@/services/auth/access-control";
+import { AppShell } from "@/components/shared/AppShell";
+
+jest.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: jest.fn() }));
+jest.mock("@/services/analysis-targets/list-analysis-targets", () => ({
+  listAnalysisTargets: jest.fn().mockResolvedValue([]),
+}));
 
 jest.mock("@/services/auth/access-control", () => ({ requirePageUser: jest.fn() }));
 jest.mock("@/app/login/actions", () => ({ signOut: jest.fn() }));
@@ -23,7 +29,9 @@ describe("NewAnalysisTargetPage", () => {
   });
 
   it("requires a verified page user with the safe return destination", async () => {
-    render(await ProtectedNewAnalysisTargetPage());
+    const page = await ProtectedNewAnalysisTargetPage();
+    expect(page.props.userId).toBe("verified-user-a");
+    render(await AppShell(page.props));
 
     expect(requirePageUser).toHaveBeenCalledWith("/analysis-targets/new");
 

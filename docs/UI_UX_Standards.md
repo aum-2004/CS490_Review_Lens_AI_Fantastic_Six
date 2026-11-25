@@ -43,6 +43,8 @@ Rules:
 7. **Sign out:** The "sign out" menu item in the left rail ends the session and redirects the user to /login. After sign-out, browser Back shows /login and no protected data.
 8. **Keyboard actions:** All navigation items are reachable by TAB in visual order, visually represented by a visible focus ring. ENTER or SPACE opens the account menu and closes with escape. "Skip to main content" link is the first focusable element in AppShell.
 
+9. **Saved analyses (S3-001):** Below the main navigation, show an owner-scoped Saved analyses section. Each link displays the saved target name and opens its existing workspace, with the active analysis highlighted. Names wrap within the rail; the list scrolls within its own container and stays available on mobile. An empty list offers Create target; a failed load shows a safe message and Try again. Creating a target saves its chosen name to the account independently of the source URL.
+
 **2\. Page layout**  
 All pages must follow these rules if the page uses components mentioned in this list.  
 **/login does not use AppShell and gets a minimal centered layout and form with no navigation bar. The shared ThemeToggle sits beside the page heading and remains available for sign-in, registration, and authentication-error states. It wraps on narrow screens. Verified signed-in visits to /login redirect to their safe protected destination or My Targets, where the rail theme control is available.**

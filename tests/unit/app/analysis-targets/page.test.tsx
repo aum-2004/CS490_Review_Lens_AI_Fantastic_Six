@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { AppShell } from "@/components/shared/AppShell";
 import { ProtectedAnalysisTargetsPage } from "@/components/analysis-targets/ProtectedAnalysisTargetsPage";
 import { requirePageUser } from "@/services/auth/access-control";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -23,7 +24,9 @@ beforeEach(() => {
 });
 
 it("loads only the guard's owner and renders the shared shell", async () => {
-  render(await ProtectedAnalysisTargetsPage());
+  const page = await ProtectedAnalysisTargetsPage();
+  expect(page.props.userId).toBe("verified-owner");
+  render(await AppShell(page.props));
   expect(requirePageUser).toHaveBeenCalledWith("/analysis-targets");
   expect(listAnalysisTargets).toHaveBeenCalledWith({}, "verified-owner");
   expect(screen.getByRole("heading", { level: 1, name: "My Targets" })).toBeInTheDocument();
@@ -43,9 +46,14 @@ it("propagates the guard's login redirect without loading data", async () => {
 
 it("shows a retryable safe error rather than an empty list or raw database details", async () => {
   jest.mocked(listAnalysisTargets).mockRejectedValue(new Error("private SQL and key"));
-  render(await ProtectedAnalysisTargetsPage());
-  expect(screen.getByRole("alert")).toHaveTextContent("We couldn't load your targets");
-  expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  const page = await ProtectedAnalysisTargetsPage();
+  render(await AppShell(page.props));
+  expect(
+    screen
+      .getAllByRole("alert")
+      .some((alert) => alert.textContent?.includes("We couldn't load your targets")),
+  ).toBe(true);
+  expect(screen.getAllByRole("button", { name: "Try again" })).toHaveLength(2);
   expect(screen.queryByText("No targets yet")).not.toBeInTheDocument();
   expect(document.body.textContent).not.toContain("private SQL");
   expect(JSON.stringify(jest.mocked(console.error).mock.calls)).not.toContain("private SQL");

@@ -25,7 +25,7 @@ export async function ProtectedNewAnalysisTargetPage() {
   const user = await requirePageUser("/analysis-targets/new");
 
   return (
-    <AppShell email={user.email}>
+    <AppShell userId={user.id} email={user.email}>
       <div className="mx-auto w-full max-w-xl">
         <PageHeader
           title="Create a new target"
@@ -42,7 +42,8 @@ export async function ProtectedNewAnalysisTargetPage() {
               <h2>Target information</h2>
             </CardTitle>
             <CardDescription>
-              Give this target a clear name and provide its Google Maps place link.
+              Give this analysis a name you will recognize in the sidebar and provide its Google
+              Maps place link. Creating the target saves your analysis to your account.
             </CardDescription>
           </CardHeader>
           <CardContent>

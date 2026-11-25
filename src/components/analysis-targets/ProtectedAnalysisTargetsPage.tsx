@@ -23,7 +23,7 @@ export async function ProtectedAnalysisTargetsPage() {
   }
 
   return (
-    <AppShell email={user.email}>
+    <AppShell userId={user.id} email={user.email}>
       <PageHeader
         title="My Targets"
         description="Your saved businesses and products, ready to explore."

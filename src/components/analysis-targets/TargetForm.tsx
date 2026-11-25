@@ -182,6 +182,9 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
       creationComplete.current = true;
       setCreatedTarget(target);
       router.replace(`/analysis-targets/${encodeURIComponent(target.id)}?created=1`);
+      // Saving through the API does not invalidate Next's client history cache.
+      // Refresh after navigation so Back cannot restore a sidebar from before the save.
+      router.refresh();
     } catch (error) {
       if (!active.current) return;
       if (error instanceof AnalysisTargetCreationError) {
@@ -251,8 +254,8 @@ function TargetFormState({ createTarget }: Required<TargetFormProps>) {
         />
         <div className="flex items-start justify-between gap-4 text-sm">
           <p id="target-name-help" className="text-muted-foreground">
-            Use a name you will recognize. Leading and trailing whitespace is removed before
-            validation. Maximum 120 characters.
+            This is your saved analysis name in the sidebar. Leading and trailing whitespace is
+            removed before validation. Maximum 120 characters.
           </p>
           <span className="shrink-0 text-muted-foreground" aria-hidden="true">
             {targetNameLength}/120

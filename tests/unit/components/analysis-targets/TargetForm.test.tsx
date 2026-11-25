@@ -6,10 +6,16 @@ import type { CreateAnalysisTarget } from "@/types/analysis-target";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockRefresh = jest.fn();
 let mockBfcacheId = "route-1";
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ bfcacheId: mockBfcacheId, push: mockPush, replace: mockReplace }),
+  useRouter: () => ({
+    bfcacheId: mockBfcacheId,
+    push: mockPush,
+    replace: mockReplace,
+    refresh: mockRefresh,
+  }),
 }));
 
 const validSourceUrl = "https://www.google.com/maps/place/NJIT/@40.742,-74.179,17z";
@@ -31,6 +37,7 @@ describe("TargetForm", () => {
   beforeEach(() => {
     mockPush.mockReset();
     mockReplace.mockReset();
+    mockRefresh.mockReset();
     mockBfcacheId = "route-1";
   });
 
@@ -43,7 +50,7 @@ describe("TargetForm", () => {
     expect(screen.getByLabelText("Google Maps URL *")).toHaveAttribute("aria-required", "true");
     expect(
       screen.getByText(
-        "Use a name you will recognize. Leading and trailing whitespace is removed before validation. Maximum 120 characters.",
+        "This is your saved analysis name in the sidebar. Leading and trailing whitespace is removed before validation. Maximum 120 characters.",
       ),
     ).toHaveAttribute("id", "target-name-help");
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
@@ -391,6 +398,10 @@ describe("TargetForm", () => {
       within(confirmation).getByText(/Opening the workspace for NJIT, Newark/),
     ).toBeInTheDocument();
     expect(mockReplace).toHaveBeenCalledWith("/analysis-targets/target%2Fwith%20spaces?created=1");
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(mockReplace.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRefresh.mock.invocationCallOrder[0],
+    );
     expect(mockPush).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Create target" })).not.toBeInTheDocument();
   });
@@ -468,6 +479,7 @@ describe("TargetForm", () => {
 
     expect(screen.queryByText("stale-target")).not.toBeInTheDocument();
     expect(mockReplace).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/target name/i)).toHaveValue("");
   });
 
@@ -521,6 +533,7 @@ describe("TargetForm", () => {
     expect(screen.getByLabelText(/target name/i)).toHaveValue("  NJIT, Newark  ");
     expect(screen.getByLabelText("Google Maps URL *")).toHaveValue(validSourceUrl);
     expect(mockPush).not.toHaveBeenCalled();
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   it("maps authoritative server validation errors back to the field and focuses it", async () => {
