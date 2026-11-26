@@ -72,22 +72,27 @@ end
 $$;
 \echo 'ok - reviews of one target do not appear under another target of the same user'
 
--- S3-011 intentionally replaced the Sprint 1 rule that stored duplicate source ids as-is.
+-- S3-011 intentionally replaced the Sprint 1 rule that stored duplicate source ids as-is: a
+-- repeated source id refreshes the stored review in place (S3-010).
 do $$
 declare
-  saved_rows bigint;
+  original public.reviews;
+  refreshed public.reviews;
 begin
-  select count(*) into saved_rows from public.insert_reviews(
+  select * into strict original from public.reviews where source_review_id = 'src-1';
+  select * into strict refreshed from public.insert_reviews(
     '77777777-7777-4777-8777-777777777771',
     '[{"review_text":"Same source review again","rating":5,"source_review_id":"src-1"}]'
   );
-  assert saved_rows = 0, 'a repeated source_review_id was stored again';
-  assert (
-    select review_text from public.reviews where source_review_id = 'src-1'
-  ) = 'Great food', 'a repeated source_review_id changed the stored review';
+  assert refreshed.id = original.id and refreshed.created_at = original.created_at,
+    'a repeated source_review_id created a new review';
+  assert refreshed.review_text = 'Same source review again' and refreshed.rating = 5,
+    'a repeated source_review_id did not refresh the stored review';
+  assert refreshed.reviewer_name = 'Sam' and refreshed.review_url = 'https://maps.google.com/review/1',
+    'a repeated source_review_id erased fields it did not provide';
 end
 $$;
-\echo 'ok - a repeated source_review_id is not stored again and the original is unchanged'
+\echo 'ok - a repeated source_review_id refreshes the stored review instead of adding one'
 
 -- ---------------------------------------------------------------------------------------------
 -- Cross-user isolation: User B against User A's target (S1-BR-008)

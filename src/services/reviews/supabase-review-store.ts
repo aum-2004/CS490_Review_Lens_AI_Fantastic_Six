@@ -72,7 +72,7 @@ export function createSupabaseReviewStore(client: SupabaseClient): ReviewStore {
     async insertReviews(targetId, reviews) {
       // The user-scoped RPC derives ownership from auth.uid(), validates the complete batch, and
       // inserts atomically. Authenticated clients have no direct INSERT privilege on reviews.
-      // S3-011: it returns only newly inserted rows; reviews already stored are skipped.
+      // S3-011: matched reviews are refreshed in place; only created or changed rows return.
       const { data, error } = await client.rpc(INSERT_RPC, {
         p_target_id: targetId,
         p_rows: reviews.map(toInsertRow),

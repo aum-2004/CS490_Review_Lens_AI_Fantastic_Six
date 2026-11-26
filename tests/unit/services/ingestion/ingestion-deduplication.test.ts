@@ -1,12 +1,15 @@
 /** @jest-environment node */
 /**
- * S3-011 ingestion re-run behavior, end to end through the real Outscraper client, adapter,
- * normalizer, and application dedupe. Only the network and PostgreSQL are replaced:
+ * S3-011 / S3-010 refresh behavior, end to end through the real Outscraper client, adapter,
+ * normalizer, and in-batch collapse. Only the network and PostgreSQL are replaced:
  * - the provider is a local synthetic payload served by a fake fetch (no live calls);
- * - FakeReviewDatabase models finish_ingestion_attempt: one atomic completion per attempt, a
- *   (target, identity_key) unique index, and ON CONFLICT DO NOTHING. It derives keys with
- *   reviewIdentityKey, which tests/db/review-deduplication.test.sql proves equal to the SQL
- *   generated column through shared golden vectors. The real constraint is tested there.
+ * - FakeReviewDatabase models finish_ingestion_attempt + public.merge_target_reviews: one atomic
+ *   completion per attempt, reconciliation by the shared matchStoredReview/mergeReviewFields
+ *   rules, and no write (no updated_at change) when nothing differs.
+ * tests/db/review-deduplication.test.sql proves the SQL makes the same decisions, enforces them
+ * with partial unique indexes, and computes the same fingerprints (shared golden vectors).
+ * Numbers in brackets refer to the PR review's regression list; [9] concurrency is DB-only
+ * (tests/db/review-deduplication-concurrency.test.sh).
  */
 import { reconcileIngestion } from "@/services/ingestion/ingestion-lifecycle";
 import { getOwnedTargetOrThrow } from "@/services/analysis-targets/target-ownership";
@@ -17,7 +20,12 @@ import {
   type IngestionAttemptRow,
 } from "@/services/ingestion/ingestion-attempt-repository";
 import { getExtractedReviews } from "@/services/ingestion/outscraper-service";
-import { reviewIdentityKey } from "@/services/reviews/review-identity";
+import {
+  matchStoredReview,
+  mergeReviewFields,
+  reviewFingerprint,
+} from "@/services/reviews/review-identity";
+import type { NormalizedReview } from "@/services/reviews/types";
 
 jest.mock("@/services/analysis-targets/target-ownership", () => ({
   getOwnedTargetOrThrow: jest.fn(),
@@ -28,38 +36,37 @@ jest.mock("@/services/ingestion/ingestion-attempt-repository", () => ({
   getBoundAttempt: jest.fn(),
 }));
 
-type Owner = "user-a" | "user-b";
-type Target = { id: string; ownerId: Owner; placeId: string; name: string };
-const TARGET_A: Target = {
-  id: "target-a",
-  ownerId: "user-a",
-  placeId: "ChIJTargetA",
-  name: "Cafe A",
-};
+type Target = { id: string; ownerId: string; placeId: string; name: string };
+const TARGET_A: Target = { id: "target-a", ownerId: "user-a", placeId: "ChIJTargetA", name: "A" };
 const TARGET_A2: Target = {
   id: "target-a2",
   ownerId: "user-a",
   placeId: "ChIJTargetA2",
-  name: "Cafe A2",
+  name: "A2",
 };
-const TARGET_B: Target = {
-  id: "target-b",
-  ownerId: "user-b",
-  placeId: "ChIJTargetB",
-  name: "Cafe B",
-};
+const TARGET_B: Target = { id: "target-b", ownerId: "user-b", placeId: "ChIJTargetB", name: "B" };
 const TARGETS = [TARGET_A, TARGET_A2, TARGET_B];
 
-interface StoredReview {
+interface StoredReview extends NormalizedReview {
   id: string;
   analysisTargetId: string;
   createdAt: number;
-  identityKey: string;
-  text: string;
-  rating: number;
-  sourceReviewId: string | null;
-  reviewerName: string | null;
+  updatedAt: number;
+  /** Incremented on every write, like a new row version in PostgreSQL. */
+  version: number;
 }
+
+const SOURCE_FIELDS = [
+  "text",
+  "rating",
+  "sourceReviewId",
+  "reviewerName",
+  "reviewDate",
+  "reviewUrl",
+  "sourceMetadata",
+] as const;
+const sourceFields = (review: NormalizedReview) =>
+  JSON.stringify(SOURCE_FIELDS.map((field) => review[field] ?? null));
 
 class FakeReviewDatabase {
   readonly reviews: StoredReview[] = [];
@@ -91,15 +98,62 @@ class FakeReviewDatabase {
     return attempt;
   }
 
+  /** Stores a row directly, like data written before S3-011 or by another refresh. */
+  seed(target: Target, review: NormalizedReview): StoredReview {
+    const now = ++this.clock;
+    const row: StoredReview = {
+      ...review,
+      id: `review-${String(++this.nextId).padStart(4, "0")}`,
+      analysisTargetId: target.id,
+      createdAt: now,
+      updatedAt: now,
+      version: 1,
+    };
+    this.reviews.push(row);
+    return row;
+  }
+
   latestFor(targetId: string) {
     return [...this.attempts.values()].filter((a) => a.analysis_target_id === targetId).at(-1)!;
   }
 
-  /** Browser ordering contract: (created_at, id). */
+  /** Review browser contract: every review of the target, ordered by (created_at, id). */
   list(targetId: string) {
     return this.reviews
       .filter((review) => review.analysisTargetId === targetId)
-      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+      .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+      .map((review) => ({ ...review }));
+  }
+
+  /** Mirrors public.merge_target_reviews for one row; returns whether it inserted. */
+  private merge(targetId: string, incoming: NormalizedReview, createdAt: number): boolean {
+    const rows = this.reviews.filter((review) => review.analysisTargetId === targetId);
+    const decision = matchStoredReview(
+      rows.map((row) => ({
+        id: row.id,
+        sourceReviewId: row.sourceReviewId ?? null,
+        fingerprint: reviewFingerprint(row),
+        createdAt: row.createdAt,
+      })),
+      incoming,
+    );
+    if (decision.action === "insert") {
+      this.reviews.push({
+        ...incoming,
+        id: `review-${String(++this.nextId).padStart(4, "0")}`,
+        analysisTargetId: targetId,
+        createdAt,
+        updatedAt: createdAt,
+        version: 1,
+      });
+      return true;
+    }
+    const row = rows.find((candidate) => candidate.id === decision.rowId)!;
+    const merged = mergeReviewFields(row, incoming);
+    if (sourceFields(merged) !== sourceFields(row)) {
+      Object.assign(row, merged, { updatedAt: ++this.clock, version: row.version + 1 });
+    }
+    return false;
   }
 
   finish = jest.fn(
@@ -120,37 +174,23 @@ class FakeReviewDatabase {
       if (failure === "before-commit") throw new IngestionPersistenceError();
 
       const createdAt = ++this.clock;
-      const staged: StoredReview[] = [];
+      let saved = 0;
       for (const row of errorCode ? [] : rows) {
-        const identityKey = reviewIdentityKey({
+        const incoming: NormalizedReview = {
           text: row.text as string,
           rating: row.rating as number,
           sourceReviewId: (row.source_review_id as string | null) ?? undefined,
           reviewerName: (row.reviewer_name as string | null) ?? undefined,
           reviewDate: row.review_date ? new Date(row.review_date as string) : undefined,
-        });
-        const exists = [...this.reviews, ...staged].some(
-          (review) =>
-            review.analysisTargetId === attempt.analysis_target_id &&
-            review.identityKey === identityKey,
-        );
-        if (exists) continue; // ON CONFLICT (analysis_target_id, identity_key) DO NOTHING
-        staged.push({
-          id: `review-${String(++this.nextId).padStart(4, "0")}`,
-          analysisTargetId: attempt.analysis_target_id,
-          createdAt,
-          identityKey,
-          text: row.text as string,
-          rating: row.rating as number,
-          sourceReviewId: (row.source_review_id as string | null) ?? null,
-          reviewerName: (row.reviewer_name as string | null) ?? null,
-        });
+          reviewUrl: (row.review_url as string | null) ?? undefined,
+          sourceMetadata: (row.source_metadata as Record<string, unknown> | null) ?? undefined,
+        };
+        if (this.merge(attempt.analysis_target_id, incoming, createdAt)) saved++;
       }
-      this.reviews.push(...staged);
       Object.assign(attempt, {
         status: errorCode ? "failed" : "succeeded",
         finished_at: new Date().toISOString(),
-        saved_count: staged.length,
+        saved_count: saved,
         skipped_count: skippedCount,
         verified_identity: identity,
         error_code: errorCode,
@@ -169,6 +209,7 @@ type ProviderReview = {
   review_rating?: number | null;
   author_title?: string | null;
   review_timestamp?: number | null;
+  review_link?: string | null;
 };
 
 let db: FakeReviewDatabase;
@@ -185,7 +226,6 @@ function providerFetch(jobId: string) {
           place_id: target.placeId,
           name: target.name,
           google_id: `google-${target.id}`,
-          review_link: null,
           ...review,
         })),
       }),
@@ -234,6 +274,7 @@ const crispy: ProviderReview = {
   review_rating: 5,
   author_title: "Cy",
   review_timestamp: 1_790_000_000,
+  review_link: "https://maps.google.com/review/crispy",
 };
 const coffee: ProviderReview = {
   review_id: "ChZ-coffee",
@@ -249,12 +290,7 @@ const staff: ProviderReview = {
   author_title: "Ed",
   review_timestamp: 1_790_000_200,
 };
-const noId: ProviderReview = {
-  review_text: "Great patio, slow kitchen",
-  review_rating: 3,
-  author_title: "Flo",
-  review_timestamp: 1_790_000_300,
-};
+const withoutId = (review: ProviderReview): ProviderReview => ({ ...review, review_id: null });
 
 const originalKey = process.env.OUTSCRAPER_API_KEY;
 beforeEach(() => {
@@ -288,81 +324,144 @@ afterEach(() => {
   else process.env.OUTSCRAPER_API_KEY = originalKey;
 });
 
-it("(a) re-running the same refresh creates zero new reviews and still succeeds", async () => {
-  const first = await refresh(TARGET_A, [crispy, coffee]);
+it("[1] a review first seen without an id adopts the id when it appears", async () => {
+  await refresh(TARGET_A, [withoutId(crispy)]);
+  const [before] = db.list(TARGET_A.id);
+
+  const result = await refresh(TARGET_A, [crispy]);
+
+  expect(result).toMatchObject({ state: "succeeded", savedCount: 0 });
+  const stored = db.list(TARGET_A.id);
+  expect(stored).toHaveLength(1);
+  expect(stored[0]).toMatchObject({
+    id: before.id,
+    createdAt: before.createdAt,
+    sourceReviewId: "ChZ-crispy",
+  });
+});
+
+it("[2] a review first seen with an id keeps it when a refresh omits the id", async () => {
+  await refresh(TARGET_A, [crispy]);
+  const [before] = db.list(TARGET_A.id);
+
+  await refresh(TARGET_A, [withoutId(crispy)]);
+
+  expect(db.list(TARGET_A.id)).toEqual([before]);
+});
+
+it("[3] identical content with different source ids stays two reviews", async () => {
+  const result = await refresh(TARGET_A, [crispy, { ...crispy, review_id: "ChZ-other" }]);
+
+  expect(result).toMatchObject({ savedCount: 2 });
+  expect(db.list(TARGET_A.id).map((review) => review.sourceReviewId)).toEqual([
+    "ChZ-crispy",
+    "ChZ-other",
+  ]);
+});
+
+it("[4] with several stored id-less copies, the incoming id adopts the oldest one only", async () => {
+  const copy: NormalizedReview = {
+    text: "Crispy fries",
+    rating: 5,
+    reviewerName: "Cy",
+    reviewDate: new Date(1_790_000_000_000),
+  };
+  const oldest = db.seed(TARGET_A, copy);
+  const newer = db.seed(TARGET_A, { ...copy, text: "crispy FRIES" });
+
+  await refresh(TARGET_A, [crispy]);
+
+  const stored = db.list(TARGET_A.id);
+  expect(stored.map((review) => [review.id, review.sourceReviewId ?? null])).toEqual([
+    [oldest.id, "ChZ-crispy"],
+    [newer.id, null],
+  ]);
+});
+
+it("[5] a refresh with changed text and rating updates the review in place", async () => {
+  await refresh(TARGET_A, [crispy, coffee]);
   const before = db.list(TARGET_A.id);
 
-  const second = await refresh(TARGET_A, [crispy, coffee]);
-
-  expect(first).toMatchObject({ state: "succeeded", savedCount: 2, skippedCount: 0 });
-  expect(second).toMatchObject({ state: "succeeded", savedCount: 0, skippedCount: 0 });
-  expect(db.list(TARGET_A.id)).toEqual(before);
-});
-
-it("(b) the same review twice in one provider batch is stored once and is not 'skipped'", async () => {
-  const result = await refresh(TARGET_A, [crispy, coffee, { ...crispy }, staff]);
-
-  expect(result).toMatchObject({ state: "succeeded", savedCount: 3, skippedCount: 0 });
-  expect(db.list(TARGET_A.id).map((review) => review.text)).toEqual([
-    "Crispy fries",
-    "Cold coffee",
-    "Friendly staff",
-  ]);
-  // The application collapses the repeat before the database sees the batch.
-  expect(db.finish.mock.calls[0][2]).toHaveLength(3);
-});
-
-it("(c)/(d) a review repeated in a later refresh is stored once; a new review is inserted", async () => {
-  await refresh(TARGET_A, [crispy, coffee]);
-  const original = db.list(TARGET_A.id);
-
-  // The provider edited crispy's text; its stable review_id still identifies it.
   const result = await refresh(TARGET_A, [
-    { ...crispy, review_text: "Crispy fries (edited)" },
-    staff,
+    { ...crispy, review_text: "Crispy fries, soggy buns", review_rating: 3 },
     coffee,
   ]);
 
-  expect(result).toMatchObject({ state: "succeeded", savedCount: 1 });
-  const stored = db.list(TARGET_A.id);
-  expect(stored.map((review) => review.sourceReviewId)).toEqual([
-    "ChZ-crispy",
-    "ChZ-coffee",
-    "ChZ-staff",
-  ]);
-  // First write wins: existing ids, positions, and text are never changed by a refresh.
-  expect(stored.slice(0, 2)).toEqual(original);
-  expect(stored[0].text).toBe("Crispy fries");
+  expect(result).toMatchObject({ state: "succeeded", savedCount: 0 });
+  const after = db.list(TARGET_A.id);
+  expect(after.map(({ id, createdAt }) => [id, createdAt])).toEqual(
+    before.map(({ id, createdAt }) => [id, createdAt]),
+  );
+  expect(after[0]).toMatchObject({ text: "Crispy fries, soggy buns", rating: 3 });
+  expect(after[0].updatedAt).toBeGreaterThan(before[0].updatedAt);
+  expect(after[1]).toEqual(before[1]);
 });
 
-it("(e) a review without a source id is deduplicated by its normalized fingerprint", async () => {
-  await refresh(TARGET_A, [noId]);
+it("[6] a refresh with identical data writes nothing", async () => {
+  await refresh(TARGET_A, [crispy, coffee]);
+  const before = db.list(TARGET_A.id);
 
-  const result = await refresh(TARGET_A, [
-    { ...noId, review_text: "  GREAT patio,  slow   kitchen\n", author_title: " flo " },
-    { ...noId, review_rating: 2 },
+  const result = await refresh(TARGET_A, [crispy, coffee]);
+
+  expect(result).toMatchObject({ state: "succeeded", savedCount: 0, skippedCount: 0 });
+  expect(db.list(TARGET_A.id)).toEqual(before);
+});
+
+it("[7] a missing field in a refresh never erases the stored value", async () => {
+  await refresh(TARGET_A, [crispy]);
+
+  await refresh(TARGET_A, [{ ...crispy, review_link: null, review_text: "Crispy fries!" }]);
+
+  expect(db.list(TARGET_A.id)[0]).toMatchObject({
+    text: "Crispy fries!",
+    reviewUrl: "https://maps.google.com/review/crispy",
+  });
+});
+
+it("[8] repeats in one batch and across batches are one review; the last value wins", async () => {
+  const first = await refresh(TARGET_A, [
+    crispy,
+    coffee,
+    { ...crispy, review_text: "Crispy fries (2nd copy)", review_rating: 4 },
   ]);
+  expect(first).toMatchObject({ savedCount: 2, skippedCount: 0 });
+  // The application merges the repeat before the database sees the batch.
+  expect(db.finish.mock.calls[0][2]).toHaveLength(2);
+  expect(db.list(TARGET_A.id)[0]).toMatchObject({ text: "Crispy fries (2nd copy)", rating: 4 });
 
-  expect(result).toMatchObject({ state: "succeeded", savedCount: 1 });
+  await refresh(TARGET_A, [{ ...crispy, review_text: "Crispy fries (3rd)" }]);
+
   const stored = db.list(TARGET_A.id);
   expect(stored).toHaveLength(2);
-  expect(stored.every((review) => review.sourceReviewId === null)).toBe(true);
-  expect(stored.map((review) => review.rating)).toEqual([3, 2]);
+  expect(stored[0]).toMatchObject({ text: "Crispy fries (3rd)", rating: 5 });
 });
 
-it("(f) identical reviews of different targets and different accounts are never merged", async () => {
-  await refresh(TARGET_A, [crispy, noId]);
-  const sameUserOtherTarget = await refresh(TARGET_A2, [crispy, noId]);
-  const otherAccount = await refresh(TARGET_B, [crispy, noId]);
+it("[10] identical reviews of different targets and accounts are never matched", async () => {
+  await refresh(TARGET_A, [crispy, withoutId(coffee)]);
+  const sameUserOtherTarget = await refresh(TARGET_A2, [crispy, withoutId(coffee)]);
+  const otherAccount = await refresh(TARGET_B, [crispy, withoutId(coffee)]);
 
   expect(sameUserOtherTarget).toMatchObject({ state: "succeeded", savedCount: 2 });
   expect(otherAccount).toMatchObject({ state: "succeeded", savedCount: 2 });
-  expect(db.list(TARGET_A.id)).toHaveLength(2);
-  expect(db.list(TARGET_A2.id)).toHaveLength(2);
-  expect(db.list(TARGET_B.id)).toHaveLength(2);
+  expect(db.reviews).toHaveLength(6);
 });
 
-it("(g) a storage failure before commit saves nothing, and the retry stores each review once", async () => {
+it("[11] ids cited earlier still resolve, in browser order, after adoption and refresh", async () => {
+  await refresh(TARGET_A, [withoutId(crispy), coffee]);
+  const cited = db.list(TARGET_A.id).map((review) => review.id);
+
+  await refresh(TARGET_A, [{ ...crispy, review_text: "Crispy fries (edited)" }, coffee, staff]);
+
+  const stored = db.list(TARGET_A.id);
+  expect(stored.slice(0, 2).map((review) => review.id)).toEqual(cited);
+  expect(stored.find((review) => review.id === cited[0])).toMatchObject({
+    sourceReviewId: "ChZ-crispy",
+    text: "Crispy fries (edited)",
+  });
+  expect(stored[2].text).toBe("Friendly staff");
+});
+
+it("a storage failure before commit saves nothing, and the retry stores each review once", async () => {
   db.failNextFinish = "before-commit";
   await expect(refresh(TARGET_A, [crispy, coffee, crispy])).rejects.toBeInstanceOf(
     IngestionPersistenceError,
@@ -376,7 +475,7 @@ it("(g) a storage failure before commit saves nothing, and the retry stores each
   expect(db.list(TARGET_A.id)).toHaveLength(2);
 });
 
-it("(g) a lost response after commit is not saved again by the retry or later polls", async () => {
+it("a lost response after commit is not saved again by the retry or later polls", async () => {
   db.failNextFinish = "after-commit";
   await expect(refresh(TARGET_A, [crispy, coffee])).rejects.toBeInstanceOf(
     IngestionPersistenceError,
@@ -390,26 +489,24 @@ it("(g) a lost response after commit is not saved again by the retry or later po
   expect(db.list(TARGET_A.id)).toHaveLength(2);
 });
 
-it("(h) counts and ordering stay correct across several refreshes", async () => {
+it("counts and ordering stay correct across several refreshes", async () => {
   const unusable: ProviderReview = { review_id: "ChZ-empty", review_text: "", review_rating: 4 };
   const runs = [
-    await refresh(TARGET_A, [crispy, coffee, unusable]),
-    await refresh(TARGET_A, [coffee, staff, staff, noId]),
-    await refresh(TARGET_A, [noId, crispy, staff, coffee]),
+    await refresh(TARGET_A, [crispy, withoutId(coffee), unusable]),
+    await refresh(TARGET_A, [coffee, staff, staff]),
+    await refresh(TARGET_A, [staff, crispy, withoutId(coffee)]),
   ];
 
   expect(runs.map(({ savedCount, skippedCount }) => [savedCount, skippedCount])).toEqual([
     [2, 1],
-    [2, 0],
+    [1, 0],
     [0, 0],
   ]);
   const stored = db.list(TARGET_A.id);
-  expect(stored.map((review) => review.text)).toEqual([
-    "Crispy fries",
-    "Cold coffee",
-    "Friendly staff",
-    "Great patio, slow kitchen",
+  expect(stored.map((review) => [review.text, review.sourceReviewId])).toEqual([
+    ["Crispy fries", "ChZ-crispy"],
+    ["Cold coffee", "ChZ-coffee"],
+    ["Friendly staff", "ChZ-staff"],
   ]);
-  expect(new Set(stored.map((review) => review.identityKey)).size).toBe(stored.length);
   expect(runs.reduce((sum, run) => sum + run.savedCount, 0)).toBe(stored.length);
 });

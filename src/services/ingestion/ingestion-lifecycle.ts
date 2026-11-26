@@ -7,7 +7,7 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { normalizeBatch } from "@/services/reviews/normalize";
 import { sanitizeMetadata } from "@/services/reviews/review-service";
-import { dedupeReviews } from "@/services/reviews/review-identity";
+import { collapseReviews } from "@/services/reviews/review-identity";
 import {
   createIngestionAttemptWriter,
   getBoundAttempt,
@@ -239,10 +239,11 @@ export async function reconcileIngestion(
       ),
     );
   }
-  // S3-011: a provider result can repeat a review; keep its first occurrence. Reviews already
-  // stored for this target are skipped by the database's (target, identity_key) unique index.
+  // S3-011: a provider result can repeat a review; repeats merge (last occurrence wins per
+  // provided field). The database then reconciles each review with the target's stored reviews
+  // (source id, adoption, fingerprint) and refreshes matched rows instead of inserting duplicates.
   // Duplicates are not "skipped" records: they are not unusable, they are already represented.
-  const rows = dedupeReviews(normalized.reviews).reviews.map((review) => ({
+  const rows = collapseReviews(normalized.reviews).reviews.map((review) => ({
     text: review.text,
     rating: review.rating,
     source_review_id: review.sourceReviewId ?? null,
@@ -254,6 +255,7 @@ export async function reconcileIngestion(
   assertIngestionResultWithinLimits(rows, extracted.identity);
   // Atomic review insert + result state; duplicate polling cannot save a completed attempt twice.
   // saved_count is the number of NEW reviews; it can be 0 when every review was already stored.
+  // Matched reviews are refreshed in the same transaction (S3-010).
   const completed = await deps.writer.finish(
     bound.id,
     ownerId,

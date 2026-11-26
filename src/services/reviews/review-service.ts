@@ -1,5 +1,5 @@
 import { InvalidReviewError, TargetNotFoundError } from "./errors";
-import { dedupeReviews } from "./review-identity";
+import { collapseReviews } from "./review-identity";
 import { toStorableText } from "./storable-text";
 import { MAX_RATING, MIN_RATING, type NormalizedReview } from "./types";
 
@@ -23,8 +23,9 @@ export interface ReviewStore {
   /** True only if the target exists and belongs to `userId`. */
   isTargetOwnedBy(targetId: string, userId: string): Promise<boolean>;
   /**
-   * Inserts reviews whose identity key (S3-011) is new for the target and returns only those
-   * rows. A review already stored for the target is left unchanged and is not returned.
+   * Reconciles reviews with the target's stored reviews (S3-011, S3-010): new reviews are
+   * inserted; matched reviews keep their id and created_at and have their source fields
+   * refreshed. Returns the rows created or changed; unchanged matches are not returned.
    */
   insertReviews(targetId: string, reviews: NormalizedReview[]): Promise<Review[]>;
   aggregateReviews(targetId: string): Promise<ReviewAggregate>;
@@ -132,8 +133,9 @@ function assertValid(review: NormalizedReview, index: number) {
  *
  * userId MUST come from the verified session (S1-011), never from the request body (S1-BR-010).
  * Persists nothing if any review is invalid, so a bad batch is never partially saved.
- * S3-011: repeated reviews within the batch collapse to their first occurrence, and the database
- * skips reviews already stored for the target. Returns only newly created Reviews.
+ * S3-011: repeated reviews within the batch are merged (last occurrence wins per provided field),
+ * and the database reconciles them with reviews already stored for the target instead of
+ * inserting duplicates. Returns the Reviews created or changed.
  */
 export async function saveReviews(
   store: ReviewStore,
@@ -150,7 +152,7 @@ export async function saveReviews(
 
   return store.insertReviews(
     targetId,
-    dedupeReviews(reviews).reviews.map((review) => ({
+    collapseReviews(reviews).reviews.map((review) => ({
       ...review,
       sourceMetadata: sanitizeMetadata(review.sourceMetadata),
     })),
