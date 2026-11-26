@@ -14,6 +14,7 @@ import { ReviewSummaryCard } from "@/components/reviews/ReviewSummaryCard";
 import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { RetryTargetsButton } from "./RetryTargetsButton";
 import { TargetSwitcher } from "./TargetSwitcher";
+import { DeleteAnalysis } from "./DeleteAnalysis";
 import {
   listAnalysisTargets,
   type AnalysisTargetListItem,
@@ -133,6 +134,11 @@ export async function ProtectedTargetWorkspace({
       </p>
       <PageHeader
         title={target?.name ?? "Target workspace"}
+        action={
+          target ? (
+            <DeleteAnalysis key={target.id} targetId={target.id} targetName={target.name} />
+          ) : undefined
+        }
         breadcrumbs={[
           { label: "My Targets", href: "/analysis-targets" },
           { label: target?.name ?? "Target workspace" },

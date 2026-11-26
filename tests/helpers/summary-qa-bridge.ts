@@ -132,6 +132,8 @@ export function createSummaryQaBridge(fake: FakeSupabase): SummaryQaBridge {
           // The view keeps only the newest attempt per target.
           const newest = new Map<string, IngestionAttemptRow>();
           for (const row of rows) {
+            // Retained S3-005 audit rows have no visible parent and are not current datasets.
+            if (!row.analysis_target_id) continue;
             const seen = newest.get(row.analysis_target_id);
             if (!seen || row.started_at > seen.started_at) newest.set(row.analysis_target_id, row);
           }
@@ -177,9 +179,9 @@ export function createSummaryQaBridge(fake: FakeSupabase): SummaryQaBridge {
       requests.push({
         resource: "rpc:finish_ingestion_attempt",
         actorId: ownerId,
-        targetId: attempt?.analysis_target_id,
+        targetId: attempt?.analysis_target_id ?? undefined,
       });
-      if (!attempt) throw new Error("Target unavailable");
+      if (!attempt?.analysis_target_id) throw new Error("Target unavailable");
       if (attempt.status !== "processing") return structuredClone(attempt);
       if (
         attempt.provider_request_id !== null &&
