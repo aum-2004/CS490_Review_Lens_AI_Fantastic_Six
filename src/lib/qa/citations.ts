@@ -42,10 +42,11 @@ export function responseCitations(outcome: string, citedReviewIds: readonly unkn
 
 /**
  * Client side: returns the citation list if it is well formed, otherwise `null` (fail closed).
- * A missing field (an older server) is treated as no citations. Membership is not checked here.
+ * Grounded answers require at least one citation; non-answers require none. Membership is not
+ * checked here.
  */
 export function parseCitedReviewIds(value: unknown, outcome: string): string[] | null {
-  if (value === undefined) return [];
+  if (value === undefined) value = [];
   if (!Array.isArray(value) || value.length > MAX_CITED_REVIEWS) return null;
   const seen = new Set<string>();
   for (const id of value) {
@@ -54,6 +55,7 @@ export function parseCitedReviewIds(value: unknown, outcome: string): string[] |
     if (seen.has(key)) return null;
     seen.add(key);
   }
+  if (outcome === "answered" && value.length === 0) return null;
   // Declines and insufficient evidence are not grounded answers; citations contradict them.
   if (outcome !== "answered" && value.length > 0) return null;
   return [...value];

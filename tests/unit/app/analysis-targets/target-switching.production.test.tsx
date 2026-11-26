@@ -71,7 +71,10 @@ afterEach(() => {
 });
 
 const A = "target-a",
-  B = "target-b";
+  B = "target-b",
+  A_REVIEW = "a1a1a1a1-0000-4000-8000-000000000001",
+  B_REVIEW = "b1b1b1b1-0000-4000-8000-000000000002";
+const reviewId = (targetId: string) => (targetId === A ? A_REVIEW : B_REVIEW);
 async function tree(id: string) {
   jest.mocked(getOwnedTargetOrThrow).mockResolvedValue({
     id,
@@ -84,7 +87,7 @@ async function tree(id: string) {
   });
   listReviews.mockResolvedValue([
     {
-      id: id + "-review",
+      id: reviewId(id),
       analysisTargetId: id,
       rating: id === A ? 2 : 5,
       text: id === A ? "ALPHA battery life" : "BETA customer service",
@@ -118,7 +121,7 @@ function response(id: string, text: string) {
     status: 200,
     json: async () => ({
       success: true,
-      data: { targetId: id, outcome: "answered", answer: text },
+      data: { targetId: id, outcome: "answered", answer: text, citedReviewIds: [reviewId(id)] },
     }),
   };
 }

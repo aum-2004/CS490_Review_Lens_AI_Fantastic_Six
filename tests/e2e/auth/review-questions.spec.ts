@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const bakery = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+const bakeryReview = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 async function login(page: Page) {
   await page.goto(`/login?next=${encodeURIComponent(`/analysis-targets/${bakery}`)}`);
   await page.getByLabel("Email *").fill("fixture@example.com");
@@ -73,7 +74,12 @@ test("asks from the active workspace, shows processing and resets after switchin
     await route.fulfill({
       json: {
         success: true,
-        data: { targetId: bakery, outcome: "answered", answer: "Reviewers enjoy the bread." },
+        data: {
+          targetId: bakery,
+          outcome: "answered",
+          answer: `Reviewers enjoy the bread [${bakeryReview}].`,
+          citedReviewIds: [bakeryReview],
+        },
       },
     });
   });
@@ -85,7 +91,12 @@ test("asks from the active workspace, shows processing and resets after switchin
   await expect(card.getByRole("button", { name: /Asking/ })).toBeDisabled();
   await expect(card.getByRole("status")).toContainText("processing your question for A bakery");
   release();
-  await expect(card).toContainText("Reviewers enjoy the bread.");
+  await expect(card).toContainText("Reviewers enjoy the bread [1].");
+  const evidence = card.getByRole("list", { name: "Supporting Reviews" });
+  await expect(evidence).toContainText("[1] 4 out of 5");
+  await expect(evidence).toContainText("Saved review for A bakery");
+  await expect(evidence).toContainText("2026-11-01");
+  await expect(evidence).not.toContainText("Fixture reviewer");
   expect(bodies).toEqual([{ question: "What do customers enjoy?" }]);
   await page.screenshot({ path: "test-results/s2-009-desktop.png", fullPage: true });
   await page
@@ -94,7 +105,7 @@ test("asks from the active workspace, shows processing and resets after switchin
     .click();
   await page.getByRole("link", { name: "Open A coffee shop" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
-  await expect(card).not.toContainText("Reviewers enjoy the bread.");
+  await expect(card).not.toContainText("Reviewers enjoy the bread [1].");
   await expect(card.getByLabel(/Question/)).toHaveValue("");
   await expect(card).toContainText("A coffee shop");
 });

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
 const B = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+const fixtureReview = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 async function login(page: Page) {
   await page.goto("/login?next=" + encodeURIComponent("/analysis-targets/" + A));
   await page.getByLabel("Email *").fill("fixture@example.com");
@@ -37,6 +38,7 @@ test("real navigation switches the active label, question URL and visible answer
           targetId: id,
           outcome: "answered",
           answer: id === A ? "ALPHA battery life" : "BETA customer service",
+          citedReviewIds: [fixtureReview],
         },
       },
     });
@@ -96,6 +98,7 @@ test("pending A response cannot populate B after client navigation", async ({ pa
             targetId: id,
             outcome: "answered",
             answer: id === A ? "ALPHA late battery answer" : "BETA current service answer",
+            citedReviewIds: [fixtureReview],
           },
         },
       })

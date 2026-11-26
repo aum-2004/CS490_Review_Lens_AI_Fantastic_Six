@@ -26,7 +26,7 @@ const answer: ReviewAnswer = {
   targetId: "target-a",
   outcome: "answered",
   answer: "Reviewers like the bread.",
-  citedReviewIds: [],
+  citedReviewIds: ["a1a1a1a1-0000-4000-8000-000000000001"],
 };
 
 function submit(question = "  What do reviewers like?  ") {
@@ -200,7 +200,7 @@ it.each([
   ["insufficient_evidence", "Insufficient review evidence"],
   ["out_of_scope", "Outside the active reviews"],
 ] as const)("distinguishes %s from service failure", async (outcome, label) => {
-  ask.mockResolvedValueOnce({ ...answer, outcome });
+  ask.mockResolvedValueOnce({ ...answer, outcome, citedReviewIds: [] });
   render(<ReviewQuestions {...props} />);
   submit();
   expect(await screen.findByRole("heading", { name: label })).toBeInTheDocument();

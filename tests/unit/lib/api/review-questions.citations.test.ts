@@ -28,11 +28,14 @@ it("returns well-formed citations unchanged and drops unknown fields", async () 
   await expect(ask()).resolves.toEqual(data);
 });
 
-it("parses the older response shape without citedReviewIds as having no citations", async () => {
-  const legacy: Partial<typeof data> = { ...data };
-  delete legacy.citedReviewIds;
-  respond({ success: true, data: legacy });
-  await expect(ask()).resolves.toEqual({ ...legacy, citedReviewIds: [] });
+it.each([
+  ["a missing citation field", undefined],
+  ["an empty citation list", []],
+])("fails closed when an answered response has %s", async (_label, citedReviewIds) => {
+  const answered = { ...data, citedReviewIds } as Record<string, unknown>;
+  if (citedReviewIds === undefined) delete answered.citedReviewIds;
+  respond({ success: true, data: answered });
+  await expect(ask()).rejects.toThrow("unexpected response");
 });
 
 it.each([
