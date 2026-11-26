@@ -72,11 +72,22 @@ end
 $$;
 \echo 'ok - reviews of one target do not appear under another target of the same user'
 
-select * from public.insert_reviews(
-  '77777777-7777-4777-8777-777777777771',
-  '[{"review_text":"Same source review again","rating":5,"source_review_id":"src-1"}]'
-);
-\echo 'ok - duplicate source_review_id values are allowed in Sprint 1'
+-- S3-011 intentionally replaced the Sprint 1 rule that stored duplicate source ids as-is.
+do $$
+declare
+  saved_rows bigint;
+begin
+  select count(*) into saved_rows from public.insert_reviews(
+    '77777777-7777-4777-8777-777777777771',
+    '[{"review_text":"Same source review again","rating":5,"source_review_id":"src-1"}]'
+  );
+  assert saved_rows = 0, 'a repeated source_review_id was stored again';
+  assert (
+    select review_text from public.reviews where source_review_id = 'src-1'
+  ) = 'Great food', 'a repeated source_review_id changed the stored review';
+end
+$$;
+\echo 'ok - a repeated source_review_id is not stored again and the original is unchanged'
 
 -- ---------------------------------------------------------------------------------------------
 -- Cross-user isolation: User B against User A's target (S1-BR-008)
@@ -139,7 +150,7 @@ begin
   assert (
     select count(*) from public.reviews
     where analysis_target_id = '77777777-7777-4777-8777-777777777771'
-  ) = 3, 'User A''s reviews changed after User B''s update and delete attempts';
+  ) = 2, 'User A''s reviews changed after User B''s update and delete attempts';
   assert not exists (
     select 1 from public.reviews where review_text = 'Edited by B'
   ), 'User B''s update changed a review';

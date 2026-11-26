@@ -1,4 +1,5 @@
 import { InvalidReviewError, TargetNotFoundError } from "./errors";
+import { dedupeReviews } from "./review-identity";
 import { toStorableText } from "./storable-text";
 import { MAX_RATING, MIN_RATING, type NormalizedReview } from "./types";
 
@@ -21,6 +22,10 @@ export interface Review {
 export interface ReviewStore {
   /** True only if the target exists and belongs to `userId`. */
   isTargetOwnedBy(targetId: string, userId: string): Promise<boolean>;
+  /**
+   * Inserts reviews whose identity key (S3-011) is new for the target and returns only those
+   * rows. A review already stored for the target is left unchanged and is not returned.
+   */
   insertReviews(targetId: string, reviews: NormalizedReview[]): Promise<Review[]>;
   aggregateReviews(targetId: string): Promise<ReviewAggregate>;
   listReviews(targetId: string): Promise<Review[]>;
@@ -127,7 +132,8 @@ function assertValid(review: NormalizedReview, index: number) {
  *
  * userId MUST come from the verified session (S1-011), never from the request body (S1-BR-010).
  * Persists nothing if any review is invalid, so a bad batch is never partially saved.
- * Duplicate sourceReviewIds are stored as-is in Sprint 1 (no re-ingestion or dedupe).
+ * S3-011: repeated reviews within the batch collapse to their first occurrence, and the database
+ * skips reviews already stored for the target. Returns only newly created Reviews.
  */
 export async function saveReviews(
   store: ReviewStore,
@@ -144,7 +150,7 @@ export async function saveReviews(
 
   return store.insertReviews(
     targetId,
-    reviews.map((review) => ({
+    dedupeReviews(reviews).reviews.map((review) => ({
       ...review,
       sourceMetadata: sanitizeMetadata(review.sourceMetadata),
     })),

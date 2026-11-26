@@ -1,0 +1,131 @@
+{
+  "_comment": "S3-011 golden identity vectors shared by tests/unit/services/reviews/review-identity.test.ts and tests/db/review-deduplication.test.sql. Regenerate only with a new key prefix.",
+  "vectors": [
+    {
+      "name": "source id wins",
+      "input": {
+        "sourceReviewId": "ChZDSUhNMG9nS0VJQ0FnSUQ",
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.000Z",
+        "rating": 5,
+        "text": "Great food"
+      },
+      "expectedKey": "sid:ChZDSUhNMG9nS0VJQ0FnSUQ"
+    },
+    {
+      "name": "source id is trimmed but case-sensitive",
+      "input": {
+        "sourceReviewId": " \t ChZdsuhm0OGs \u00a0",
+        "rating": 5,
+        "text": "Great food"
+      },
+      "expectedKey": "sid:ChZdsuhm0OGs"
+    },
+    {
+      "name": "blank source id falls back to fingerprint",
+      "input": {
+        "sourceReviewId": " \u3000 ",
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.000Z",
+        "rating": 5,
+        "text": "Great food"
+      },
+      "expectedKey": "fp1:6bd379fbbe27f34d6ccfdc1d9737478a88c11589a581e08743882a0a0b3367b4"
+    },
+    {
+      "name": "fingerprint with every field",
+      "input": {
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 4.5,
+        "text": "Great food"
+      },
+      "expectedKey": "fp1:206115898f403174d21b6d516a5a23c93cee83f88ff7d11aeff9866bda33c5d2"
+    },
+    {
+      "name": "fingerprint whitespace and ASCII case variant",
+      "input": {
+        "reviewerName": "  SAM ",
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 4.5,
+        "text": "\ufeff GREAT\u00a0\u00a0food\n\t "
+      },
+      "expectedKey": "fp1:206115898f403174d21b6d516a5a23c93cee83f88ff7d11aeff9866bda33c5d2"
+    },
+    {
+      "name": "fingerprint missing optional fields",
+      "input": {
+        "rating": 3,
+        "text": "Fine"
+      },
+      "expectedKey": "fp1:9934ab5c0d642bb9dc4e8fb4796a5a544b4de7559360a03010b3de9cd1ba2466"
+    },
+    {
+      "name": "fingerprint integer rating",
+      "input": {
+        "rating": 4,
+        "text": "Fine"
+      },
+      "expectedKey": "fp1:af68b1242cd98695e80656616c12a80e0d0357d5f858749f04b3fb6dfd9bb566"
+    },
+    {
+      "name": "fingerprint fractional rating",
+      "input": {
+        "rating": 4.25,
+        "text": "Fine"
+      },
+      "expectedKey": "fp1:8b0e41c60e15f6f2aa8f139d6c0c9a2facb023293573a1e4e3ae1fec28db1ee7"
+    },
+    {
+      "name": "fingerprint pre-1970 date",
+      "input": {
+        "reviewDate": "1969-12-31T23:59:59.999Z",
+        "rating": 2,
+        "text": "Old"
+      },
+      "expectedKey": "fp1:06ac89ada5ce988af584b9f79fe1fc686617591d1b7d564ea836d65ba33643eb"
+    },
+    {
+      "name": "fingerprint composed accent",
+      "input": {
+        "rating": 5,
+        "text": "Caf\u00e9"
+      },
+      "expectedKey": "fp1:1daea4b0b43d63ff41f444f6eb0ec79a028b7421f0a6f80dac298c0c3316b308"
+    },
+    {
+      "name": "fingerprint decomposed accent",
+      "input": {
+        "rating": 5,
+        "text": "Cafe\u0301"
+      },
+      "expectedKey": "fp1:1daea4b0b43d63ff41f444f6eb0ec79a028b7421f0a6f80dac298c0c3316b308"
+    },
+    {
+      "name": "fingerprint non-ASCII uppercase is not folded",
+      "input": {
+        "rating": 5,
+        "text": "\u00c9TOILE"
+      },
+      "expectedKey": "fp1:fcf17227e89428955ab96b6447598d25feea30c89fd8c11e8b8539aac684a066"
+    },
+    {
+      "name": "fingerprint emoji and delimiters",
+      "input": {
+        "reviewerName": "a|b",
+        "rating": 1,
+        "text": "1:x|~ \ud83d\ude00"
+      },
+      "expectedKey": "fp1:3104cef8b68a6e661043ed2b62e1f6a0c0f4acb164e248472b32060f89d988ee"
+    },
+    {
+      "name": "fingerprint delimiter shift",
+      "input": {
+        "reviewerName": "a",
+        "rating": 1,
+        "text": "b|1:x|~ \ud83d\ude00"
+      },
+      "expectedKey": "fp1:fc0b6b0d208f0ee7b4ffbba993ec6014064c6d7249482ba03e3f0d8c559ea7ac"
+    }
+  ]
+}

@@ -83,6 +83,10 @@ identity and must not describe URL-query consistency alone as proof of source-UR
   example is explicitly synthetic and demonstrates adapter mapping only; it is not evidence about
   live provider payloads.
 
+- **Superseded by S3-011:** reviews are now deduplicated per target by a source-id or fingerprint
+  identity key with a database unique index. See [docs/s3-011-duplicate-reviews.md](../../docs/s3-011-duplicate-reviews.md).
+  The Sprint 1 decision below is kept for history.
+
 - **S1-022 duplicate handling (Sprint 1 decision):** S1-022 persists reviews as-is, with no
   deduplication, as allowed by [#22](https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/issues/22)
   for Sprint 1:
