@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const bakery = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
 const coffee = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+const fixtureReview = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 
 async function login(page: Page, email = "fixture@example.com") {
   await page.goto(`/login?next=${encodeURIComponent(`/analysis-targets/${bakery}`)}`);
@@ -39,6 +40,7 @@ test("switches owned targets with keyboard navigation and updates all active con
           targetId,
           outcome: "answered",
           answer: targetId === bakery ? "Bakery answer." : "Coffee answer.",
+          citedReviewIds: [fixtureReview],
         },
       },
     });

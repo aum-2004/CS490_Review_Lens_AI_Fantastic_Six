@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const target = "/analysis-targets/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+const fixtureReview = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 
 test("Analyst Studio keeps the selected theme across routes, reloads, and mobile", async ({
   page,
@@ -98,7 +99,12 @@ test("ignores a poisoned stored theme and renders answer markup as text", async 
     route.fulfill({
       json: {
         success: true,
-        data: { targetId: target.split("/").pop(), outcome: "answered", answer: payload },
+        data: {
+          targetId: target.split("/").pop(),
+          outcome: "answered",
+          answer: payload,
+          citedReviewIds: [fixtureReview],
+        },
       },
     }),
   );

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const a = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
 const b = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1";
+const fixtureReview = "cccccccc-cccc-4ccc-8ccc-ccccccccccc1";
 const card = (page: Page) => page.getByRole("region", { name: "Review questions" });
 async function login(page: Page, email = "fixture@example.com", target = a) {
   await page.goto("/login?next=" + encodeURIComponent("/analysis-targets/" + target));
@@ -37,7 +38,12 @@ test("history and refresh never restore another visit's answers or question draf
     await route.fulfill({
       json: {
         success: true,
-        data: { targetId, outcome: "answered", answer: "ANSWER_" + targetId },
+        data: {
+          targetId,
+          outcome: "answered",
+          answer: "ANSWER_" + targetId,
+          citedReviewIds: [fixtureReview],
+        },
       },
     });
   });
@@ -83,7 +89,12 @@ for (const lateStatus of [200, 401]) {
           status: old ? lateStatus : 200,
           json: {
             success: true,
-            data: { targetId, outcome: "answered", answer: old ? "STALE_A" : "CURRENT_ANSWER" },
+            data: {
+              targetId,
+              outcome: "answered",
+              answer: old ? "STALE_A" : "CURRENT_ANSWER",
+              citedReviewIds: [fixtureReview],
+            },
           },
         })
         .catch(() => {
@@ -127,6 +138,7 @@ test("logout while pending clears Q&A before another account uses the browser", 
             targetId,
             outcome: "answered",
             answer: targetId === a ? "PRIVATE_OLD_ACCOUNT" : "CURRENT_ACCOUNT_ANSWER",
+            citedReviewIds: [fixtureReview],
           },
         },
       })
