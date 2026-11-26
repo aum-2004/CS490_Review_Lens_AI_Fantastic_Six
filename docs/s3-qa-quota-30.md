@@ -7,8 +7,8 @@ maximum permitted usage sixfold from the previous five-attempt limit while
 retaining the existing rolling window so reservations expire independently and
 users do not wait for a fixed daily reset.
 
-The quota is a per-account abuse and cost-control safeguard, not a global spending
-cap. Actual OpenAI cost depends on attempts actually made and their token usage;
+The quota is a per-account abuse and cost-control safeguard, not an application-wide
+spending cap. Actual OpenAI cost depends on attempts actually made and their token usage;
 raising the permitted maximum does not itself create provider calls. The OpenAI
 provider, configured model, per-question token budget, review-context bounds,
 system prompt, scope guards, citation checks, authentication and ownership rules
@@ -32,8 +32,9 @@ The releases must be coordinated:
 
 Use this safe hosted deployment sequence:
 
-1. Set `QA_ENABLED=false` in the application deployment and confirm Q&A is
-   unavailable before changing the database.
+1. Set `QA_ENABLED=false` in the hosting provider's environment settings, deploy or
+   redeploy the application with that environment, and confirm Q&A is unavailable
+   before applying the database migration.
 2. Deploy the updated application while Q&A remains disabled.
 3. From the reviewed, linked repository checkout, run `npm run check:migrations`,
    `supabase migration list`, and `supabase db push --dry-run`. Confirm the dry run
@@ -43,12 +44,35 @@ Use this safe hosted deployment sequence:
 5. Confirm migration version `20261125000000` is present remotely and run the
    approved authenticated hosted quota/RLS smoke checks without making a live
    OpenAI request.
-6. Set `QA_ENABLED=true` and deploy/restart the compatible application. Verify the
-   30-attempt copy and safe quota errors.
+6. Set `QA_ENABLED=true` in the hosting provider's environment settings and redeploy
+   the compatible application with that environment. Verify the 30-attempt copy and
+   safe quota errors.
 
 If any migration or smoke check fails, leave Q&A disabled until the application and
 database versions are reconciled. Hosted migration execution and production data
 changes require separate explicit approval.
+
+If an automatic deployment pipeline exists or is being implemented, coordinate the
+rollout with Shawn so it cannot activate an application version that is incompatible
+with the hosted quota function.
+
+## Operational spending controls
+
+The per-account quota does not cap total application spending: the maximum exposure
+scales with the number of accounts. Before public deployment, Deep or the authorized
+OpenAI project owner should own a separate operational follow-up titled **Configure
+OpenAI project spending limits and alerts before public deployment**. That follow-up
+should cover:
+
+- a team-approved monthly budget;
+- provider-level hard spending enforcement, where available;
+- spending alerts;
+- verification that the deployed API key belongs to the intended OpenAI project;
+- monitoring and emergency `QA_ENABLED=false` procedures; and
+- the possibility of delayed enforcement or spending overrun.
+
+This quota enhancement does not add an application-wide quota system or change
+OpenAI billing credentials, settings, projects or API keys.
 
 ## Verification expectations
 

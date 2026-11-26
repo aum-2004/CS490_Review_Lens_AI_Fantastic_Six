@@ -24,7 +24,7 @@ it("maps only the exact database limit error to a user-safe quota error", async 
   );
 });
 
-it.each([null, undefined, "29", -1, 30, 30.5, {}, false])(
+it.each([null, undefined, "29", -1, 1.5, 30, 30.5, {}, false])(
   "fails closed on invalid reservation result (%#. case)",
   async (data) => {
     rpc.mockResolvedValue({ data, error: null });

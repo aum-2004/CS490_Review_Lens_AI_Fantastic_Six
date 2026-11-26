@@ -19,6 +19,7 @@ begin
     where owner_id = caller and reserved_at <= checked_at - interval '24 hours';
   select count(*) into active_count from public.review_question_reservations
     where owner_id = caller;
+  -- Must match MAX_QUESTIONS_PER_24_HOURS in src/services/qa/question-quota.ts.
   if active_count >= 30 then
     raise exception 'QA_DAILY_LIMIT' using errcode = 'P0001';
   end if;
