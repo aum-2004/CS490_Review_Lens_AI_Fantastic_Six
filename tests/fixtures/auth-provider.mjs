@@ -21,6 +21,7 @@ const users = [
   { ...user, id: "00000000-0000-4000-8000-000000000012", email: "unavailable-fixture@example.com" },
   { ...user, id: "00000000-0000-4000-8000-000000000013", email: "creation-fixture@example.com" },
   { ...user, id: "00000000-0000-4000-8000-000000000014", email: "mobile-fixture@example.com" },
+  { ...user, id: "00000000-0000-4000-8000-000000000015", email: "supporting-fixture@example.com" },
 ];
 // Dedicated deletion owner: other browser scenarios retain their seeded datasets/counts.
 users.push({
@@ -28,6 +29,7 @@ users.push({
   id: "00000000-0000-4000-8000-000000000016",
   email: "deletion-fixture@example.com",
 });
+const supportingTargetId = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
 const targetRows = [
   {
     id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
@@ -61,6 +63,14 @@ const targetRows = [
     source_url: "https://www.google.com/maps/place/B+Restaurant",
     created_at: "2026-11-02T12:00:00Z",
   },
+  {
+    id: supportingTargetId,
+    owner_id: users[6].id,
+    name: "Evidence studio",
+    platform: "google_maps",
+    source_url: "https://www.google.com/maps/place/Evidence+Studio",
+    created_at: "2026-11-03T12:00:00Z",
+  },
 ];
 targetRows.push({
   id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
@@ -70,6 +80,19 @@ targetRows.push({
   source_url: "https://www.google.com/maps/place/DeletionFixture",
   created_at: "2026-11-01T12:00:00Z",
 });
+// Dedicated owner/dataset so S3-014 never changes the existing accounts' review counts.
+const supportingReviewRows = Array.from({ length: 7 }, (_, index) => ({
+  id: `d1000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+  analysis_target_id: supportingTargetId,
+  review_text: `Evidence studio saved review ${index + 1}.`,
+  rating: 4,
+  reviewer_name: "Fixture reviewer",
+  review_date: "2026-11-01T12:00:00Z",
+  source_review_id: null,
+  review_url: null,
+  source_metadata: null,
+  created_at: `2026-11-01T12:00:0${index}Z`,
+}));
 let refreshed = 0;
 let sequence = 0;
 let createdTargetSequence = 0;
@@ -87,19 +110,27 @@ const ingestionRows = targetRows
     expected_place_id: "ChIJSynthetic",
     provider_request_id: "synthetic-job-" + target.id,
     status:
-      target.name === "A bakery"
+      target.name === "A bakery" || target.id === supportingTargetId
         ? "succeeded"
         : target.name === "A bookstore"
           ? "failed"
           : "processing",
     started_at: "2026-11-06T12:00:00Z",
     finished_at: target.name === "B restaurant" ? null : "2026-11-06T12:01:00Z",
-    saved_count: target.name === "A bakery" ? 1 : 0,
+    saved_count:
+      target.id === supportingTargetId
+        ? supportingReviewRows.length
+        : target.name === "A bakery"
+          ? 1
+          : 0,
     skipped_count: 0,
     error_code: target.name === "A bookstore" ? "PROVIDER_QUOTA" : null,
-    identity_basis: target.name === "A bakery" ? "expected_place_id" : null,
+    identity_basis:
+      target.name === "A bakery" || target.id === supportingTargetId ? "expected_place_id" : null,
     verified_identity:
-      target.name === "A bakery" ? { placeId: "ChIJSynthetic", businessName: target.name } : null,
+      target.name === "A bakery" || target.id === supportingTargetId
+        ? { placeId: "ChIJSynthetic", businessName: target.name }
+        : null,
   }));
 
 function session(lifetime = 3600, sessionUser = user) {
@@ -200,6 +231,8 @@ createServer(async (request, response) => {
     if (!target) return send(404, { code: "P0002", message: "Target unavailable" });
     // Match the single persisted rating-4 review returned below; new targets have no rows.
     const empty = target.id.startsWith("cccccccc-");
+    if (target.id === supportingTargetId)
+      return send(200, [{ review_count: supportingReviewRows.length, average_rating: 4 }]);
     return send(200, [{ review_count: empty ? 0 : 1, average_rating: empty ? null : 4 }]);
   }
   if (
@@ -332,6 +365,12 @@ createServer(async (request, response) => {
         row.owner_id === identity.user.id,
     );
     const exactCount = request.headers.prefer?.includes("count=exact");
+    if (target?.id === supportingTargetId) {
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      const limit = Number(url.searchParams.get("limit") ?? supportingReviewRows.length);
+      if (exactCount) response.setHeader("Content-Range", `0-6/${supportingReviewRows.length}`);
+      return send(200, supportingReviewRows.slice(offset, offset + limit));
+    }
     if (exactCount)
       response.setHeader(
         "Content-Range",

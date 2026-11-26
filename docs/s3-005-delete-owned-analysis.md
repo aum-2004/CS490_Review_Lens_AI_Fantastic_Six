@@ -125,3 +125,28 @@ in a temporary tools directory with install scripts disabled; it is not a projec
 
 AI assistance: OpenAI Codex. The complete available task dialogue/tool records are retained in
 `ai-transcripts/2026-11-26_shawn_S3-005_codex.md`, with privacy redactions and a stated cutoff.
+
+## Main reconciliation after S3-014 merged
+
+Merged main `afa7e1bd` (S3-014 / #133) into S3-005 locally. The only merge conflict was in
+`tests/fixtures/auth-provider.mjs`: both stories added dedicated fixture declarations in the
+same locations. The resolution retains both accounts, both target datasets, all seven
+supporting-review rows and the deletion RPC fixture. The supporting account remains at index 6;
+the deletion account is appended afterward and its target uses an explicit owner UUID.
+Existing accounts' records and counts are unchanged. No deletion API/service, migration,
+authorization or spending-limit logic was changed by this resolution.
+
+Post-resolution checks:
+
+- Full Jest: 114 suites / 2,097 tests passed; no skips.
+- Production build (including TypeScript), ESLint and migration version checks passed.
+- Ten production browser tests passed together: S3-005 deletion, S3-014 supporting-review
+  expansion, and the existing target-workspace security/status cases.
+- Both stories' source and tests were loaded together; neither side was discarded to resolve
+  the conflict. The full auth browser suite was not repeated for this fixture-only resolution;
+  the two previously documented creation-banner failures remain tracked.
+- The original coverage results above describe the original S3-005 implementation. This
+  reconciliation does not claim a fresh coverage run; new-head GitHub CI must run after push.
+
+The resolution is local pending authorization to push the updated branch. Normal/security
+reviews, authorized migration deployment and human acceptance remain required.
