@@ -534,6 +534,8 @@ it("denies unavailable targets before accessing reviews or rendering ingestion",
   );
   expect(listReviews).not.toHaveBeenCalled();
   expect(listAnalysisTargets).not.toHaveBeenCalled();
+  expect(screen.queryByRole("region", { name: "Review browser" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Review filters")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Start ingestion" })).not.toBeInTheDocument();
   expect(document.body.textContent).not.toContain("Bakery");
 });
