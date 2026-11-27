@@ -51,6 +51,7 @@ function patch(body: unknown, targetId = id) {
   return PATCH(
     new Request("http://localhost/api/analysis-targets/" + targetId, {
       method: "PATCH",
+      headers: { "content-type": "application/json" },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
     { params: Promise.resolve({ targetId }) },
@@ -158,4 +159,131 @@ test("database failures leave the record intact and omit diagnostics", async () 
   expect(response.status).toBe(500);
   expect(await response.text()).not.toContain("private-database-details");
   expect(db.row).toEqual(stored);
+});
+
+function sendRequest(request: Request) {
+  return PATCH(request, { params: Promise.resolve({ targetId: id }) });
+}
+
+test.each([undefined, "text/plain", "application/x-www-form-urlencoded", "application/jsonp"])(
+  "rejects content type %p before reading input or persisting",
+  async (contentType) => {
+    database();
+    const request = new Request("http://localhost/api/analysis-targets/" + id, {
+      method: "PATCH",
+      body: '{"name":"New"}',
+    });
+    if (contentType) request.headers.set("content-type", contentType);
+    else request.headers.delete("content-type");
+    const read = jest.spyOn(request.body!, "getReader");
+    const response = await sendRequest(request);
+    expect(response.status).toBe(415);
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expect(read).not.toHaveBeenCalled();
+    expect(createSupabaseServerClient).not.toHaveBeenCalled();
+  },
+);
+
+test("accepts JSON with a charset and trims Unicode boundary whitespace", async () => {
+  const db = database();
+  const response = await sendRequest(
+    new Request("http://localhost/api/analysis-targets/" + id, {
+      method: "PATCH",
+      headers: { "content-type": "Application/JSON; charset=utf-8" },
+      body: JSON.stringify({ name: "\u00a0Café\u3000" }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(db.row.name).toBe("Café");
+});
+
+test("rejects an oversized declared body without reading the stream", async () => {
+  database();
+  const request = new Request("http://localhost/api/analysis-targets/" + id, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", "content-length": "4097" },
+    body: '{"name":"New"}',
+  });
+  const read = jest.spyOn(request.body!, "getReader");
+  const response = await sendRequest(request);
+  expect(response.status).toBe(413);
+  expect(read).not.toHaveBeenCalled();
+  expect(createSupabaseServerClient).not.toHaveBeenCalled();
+});
+
+test.each([undefined, "1"])(
+  "cancels an oversized actual stream even with content-length %p",
+  async (declaredLength) => {
+    const db = database();
+    const cancel = jest.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4097));
+      },
+      cancel,
+    });
+    const headers = new Headers({ "content-type": "application/json" });
+    if (declaredLength) headers.set("content-length", declaredLength);
+    const request = new Request("http://localhost/api/analysis-targets/" + id, {
+      method: "PATCH",
+      headers,
+      body,
+      duplex: "half",
+    } as RequestInit);
+    const response = await sendRequest(request);
+    expect(response.status).toBe(413);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(db.row).toEqual(stored);
+    expect(createSupabaseServerClient).not.toHaveBeenCalled();
+  },
+);
+
+test("accepts exactly 4096 bytes of valid JSON", async () => {
+  const db = database();
+  const json = '{"name":"New"}';
+  const response = await sendRequest(
+    new Request("http://localhost/api/analysis-targets/" + id, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: json.padEnd(4096, " "),
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(db.row.name).toBe("New");
+});
+
+test("enforces bytes rather than character count for multibyte JSON", async () => {
+  database();
+  const body = JSON.stringify({ name: "New", ignored: "é".repeat(2050) });
+  expect(body.length).toBeLessThan(4096);
+  expect(new TextEncoder().encode(body).byteLength).toBeGreaterThan(4096);
+  const response = await sendRequest(
+    new Request("http://localhost/api/analysis-targets/" + id, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body,
+    }),
+  );
+  expect(response.status).toBe(413);
+  expect(createSupabaseServerClient).not.toHaveBeenCalled();
+});
+
+test("returns a safe failure for a broken input stream without database access", async () => {
+  database();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.error(new Error("private-stream-diagnostics"));
+    },
+  });
+  const response = await sendRequest(
+    new Request("http://localhost/api/analysis-targets/" + id, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body,
+      duplex: "half",
+    } as RequestInit),
+  );
+  expect(response.status).toBe(500);
+  expect(await response.text()).not.toContain("private-stream-diagnostics");
+  expect(createSupabaseServerClient).not.toHaveBeenCalled();
 });

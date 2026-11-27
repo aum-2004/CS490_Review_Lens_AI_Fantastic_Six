@@ -35,22 +35,38 @@ reviews, and current Q&A state (S3-BR-001 through S3-BR-004).
 
 ## Database handoff
 
-Apply both migrations in order through the team's normal migration process:
+Melissa confirmed that these three rename migrations are already applied to shared
+Supabase:
 
-1. `supabase/migrations/20261125000100_allow_owned_analysis_rename.sql` grants
-   name-only updates with owner RLS. The user reports already applying this one.
-2. `supabase/migrations/20261125010000_validate_owned_analysis_rename.sql` tightens
-   that policy to prevent direct-write name-validation bypasses found in review.
-   **This follow-up still needs to be applied to shared Supabase.**
+1. `20261125000100_allow_owned_analysis_rename.sql`
+2. `20261125010000_validate_owned_analysis_rename.sql`
+3. `20261127000000_reject_invisible_only_analysis_names.sql`
 
-Neither migration rewrites stored data. Do not rerun the initial create-policy
-migration if it is already applied; run the follow-up policy alteration only.
-Earlier policy SQL remains unchanged. The initial grant's filename was moved
-from version `20261125000000` to `20261125000100` to avoid main's quota migration
-collision while keeping it before the policy alterations. Do not rerun an already
-applied initial grant just because its filename changed. Do not apply the test
-auth shim to Supabase.
-This task applied migrations only to disposable local test databases.
+Her read-only query of `supabase_migrations.schema_migrations`, filtering those
+versions and the former `20261125000000` version, returned **Success. No Rows
+returned**. The applied rename work therefore needs history reconciliation, not
+new timestamps or replay. This is user-confirmed shared state; the agent has not
+connected to the shared database or repaired its history.
+
+The database owner should inspect the complete migration list for the intended
+project, mark the three verified-applied rename versions as applied using the
+CLI's history-repair workflow, and check the migration list/dry run again before
+`db push`. Do not treat version `20261125000000` as the renamed grant: that version
+now belongs to main's quota migration, whose history needs separate verification.
+Do not force replay of already-applied SQL just to bypass out-of-order checks.
+See [Supabase migration repair](https://supabase.com/docs/reference/cli/supabase-migration-repair).
+
+`20261127212801_enforce_trimmed_analysis_names.sql` is a **new, pending forward
+migration**, later than `20261127120000`. It adds canonical trimming, including
+Unicode boundary whitespace, while retaining ownership and existing safety rules.
+Apply it normally after the existing history has been reconciled; it was not part
+of Melissa's earlier confirmation. It rewrites no names or history rows.
+
+The initial grant now drops its policy if it exists before creating it, allowing
+chronological replay of the rename chain. Do not replay that initial owner-only
+policy alone over the hardened shared policy; the later hardening files must
+follow it. Tests replay the initial grant twice and then the complete hardening
+chain. The agent applied migrations only in disposable local test databases.
 
 ## Verification
 
@@ -148,3 +164,31 @@ changed-code coverage gate passed without altering thresholds. Shared Supabase
 was untouched; hosted CI requires publishing the resulting local merge commit.
 
 CI investigation transcript: [melissa / Codex](../ai-transcripts/2026-11-27_melissa_S3-002_ci_codex.md).
+
+## Security/DB reviewer follow-up — 2026-11-27
+
+Added the requested `DROP POLICY IF EXISTS` before initial policy creation, with
+regressions replaying the initial grant twice and the subsequent hardening chain.
+The shared history query and applied status are recorded in Database handoff
+above; no shared history repair or timestamp changes were performed.
+
+The rename endpoint requires `application/json` and bounds the raw body at 4,096
+bytes using the existing questions-route streaming helper. Wrong media types
+return 415; oversized declared or actual bodies return 413 before persistence.
+Tests cover missing/understated Content-Length, cancellation, UTF-8 bytes, the
+exact boundary, malformed JSON, and safe stream errors. The existing owner filter,
+404 shape, name validation, and client late-response guard remain intact.
+
+The pending forward trimming migration preserves all prior RLS checks and tests
+both ASCII and Unicode boundary whitespace. It is after `20261127120000` and does
+not rename the already-applied migrations or rewrite stored names.
+
+Final local validation: **117 suites / 2,198 unit tests**, **9 production browser
+tests**, full PostgreSQL **16.16** security/concurrency/migration tests, lint,
+typecheck, formatting, production build, and unique migration versions passed.
+Changed-line coverage passed at **100% (431/431)** against local `origin/main`
+and **100% (21/21)** for this review update against starting HEAD `2b84ed2`.
+No push, shared SQL/history write, hosted CI run, or remote PR merge was performed.
+The requested merge priority is #132 before #134 and #137.
+
+Review transcript: [melissa / Codex](../ai-transcripts/2026-11-27_melissa_S3-002_db_review_codex.md).

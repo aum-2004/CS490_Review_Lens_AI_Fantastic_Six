@@ -1,6 +1,13 @@
 -- S3-002: real grants/RLS, literal SQL-looking names, and dataset preservation.
 \set ON_ERROR_STOP on
 begin;
+-- Manual application may already have created the policy. Replay the initial
+-- grant twice and then the hardening chain, as a fresh migration run would.
+\ir ../../supabase/migrations/20261125000100_allow_owned_analysis_rename.sql
+\ir ../../supabase/migrations/20261125000100_allow_owned_analysis_rename.sql
+\ir ../../supabase/migrations/20261125010000_validate_owned_analysis_rename.sql
+\ir ../../supabase/migrations/20261127000000_reject_invisible_only_analysis_names.sql
+\ir ../../supabase/migrations/20261127212801_enforce_trimmed_analysis_names.sql
 insert into auth.users (id) values ('a3000000-0000-4000-8000-000000000001'), ('a3000000-0000-4000-8000-000000000002');
 insert into public.analysis_targets (id, owner_id, name, platform, source_url, google_place_id) values
  ('a3000000-0000-4000-8000-000000000003', 'a3000000-0000-4000-8000-000000000001', 'Original', 'google_maps', 'https://maps.google.com/?cid=123', 'saved-place');
@@ -35,6 +42,12 @@ begin
     raise exception 'overlong name accepted';
   exception when check_violation then null; end;
   -- Direct Supabase Data API writes must not bypass the application's name rules.
+  foreach invalid_name in array array[' Name', 'Name ', ' Name ', chr(160) || 'Name', 'Name' || chr(12288)] loop
+    begin
+      update public.analysis_targets set name = invalid_name where id = 'a3000000-0000-4000-8000-000000000003';
+      raise exception 'direct owner update accepted boundary whitespace';
+    exception when insufficient_privilege or check_violation then null; end;
+  end loop;
   foreach invalid_name in array array[E'line\nbreak', chr(133), chr(8203), chr(8204) || chr(8205), chr(160), chr(65279), 'visible' || chr(8238), chr(917505), chr(113824), chr(847), chr(65039), ' ' || chr(847) || chr(65039) || chr(8205), chr(917760), chr(4447) || chr(4448), chr(12644) || chr(65440), chr(6155)] loop
     begin
       update public.analysis_targets set name = invalid_name where id = 'a3000000-0000-4000-8000-000000000003';
