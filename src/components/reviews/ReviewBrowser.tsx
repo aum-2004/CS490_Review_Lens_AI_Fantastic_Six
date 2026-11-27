@@ -11,7 +11,7 @@ import {
   validateReviewFilters,
   type ReviewFilters,
 } from "@/lib/reviews/filter-reviews";
-import type { Review } from "@/services/reviews/review-service";
+import type { ReviewDisplay } from "./ReviewList";
 import { ReviewList } from "./ReviewList";
 
 function displayFilters(filters: ReviewFilters): string[] {
@@ -27,7 +27,7 @@ function numericValue(value: string): number | null {
   return value === "" ? null : Number(value);
 }
 
-export function ReviewBrowser({ reviews }: { reviews: Review[] }) {
+export function ReviewBrowser({ reviews }: { reviews: ReviewDisplay[] }) {
   const [applied, setApplied] = useState<ReviewFilters>(EMPTY_REVIEW_FILTERS);
   const [draft, setDraft] = useState<ReviewFilters>(EMPTY_REVIEW_FILTERS);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -57,6 +57,7 @@ export function ReviewBrowser({ reviews }: { reviews: Review[] }) {
   }
 
   const filterLabels = displayFilters(applied);
+  const previewReviews = matchingReviews.slice(0, 3);
 
   return (
     <section aria-label="Review browser" className="space-y-4">
@@ -152,6 +153,26 @@ export function ReviewBrowser({ reviews }: { reviews: Review[] }) {
                 {label}
               </span>
             ))}
+          </div>
+        )}
+        {previewReviews.length > 0 && (
+          <div className="space-y-3 border-t border-border pt-4">
+            <ul aria-label="Review preview entries" className="space-y-3">
+              {previewReviews.map((review) => (
+                <li key={review.id} className="rounded-md bg-muted/40 p-3">
+                  <p className="font-medium">{review.rating} out of 5</p>
+                  <p className="max-w-prose whitespace-pre-wrap break-words">{review.text}</p>
+                  {review.reviewerName && (
+                    <p className="text-sm text-muted-foreground">{review.reviewerName}</p>
+                  )}
+                  {review.reviewDate && (
+                    <time className="text-sm text-muted-foreground" dateTime={review.reviewDate}>
+                      {review.reviewDate.slice(0, 10)}
+                    </time>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </Card>

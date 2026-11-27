@@ -36,7 +36,7 @@ describe("ReviewBrowser", () => {
     expect(screen.getByText("3 matching reviews")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(screen.getByText("1 matching review")).toBeInTheDocument();
-    expect(screen.getByText("Review a-high")).toBeInTheDocument();
+    expect(screen.getAllByText("Review a-high")).toHaveLength(2);
     expect(screen.queryByText("Review a-low")).not.toBeInTheDocument();
     expect(screen.queryByText("Review a-undated")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Active filters")).toHaveTextContent("Min rating: 5");
@@ -50,7 +50,7 @@ describe("ReviewBrowser", () => {
     fireEvent.change(screen.getByLabelText("Minimum rating"), { target: { value: "5" } });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("spinbutton", { name: "Minimum rating" })).toHaveAttribute("value", "");
-    expect(screen.getByText("Review a-low")).toBeInTheDocument();
+    expect(screen.getAllByText("Review a-low")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
     expect(screen.getByText("3 matching reviews")).toBeInTheDocument();
     expect(screen.queryByLabelText("Active filters")).not.toBeInTheDocument();
@@ -67,7 +67,7 @@ describe("ReviewBrowser", () => {
       <ReviewBrowser key="target-b" reviews={[makeReview("b-review", 3, null, "target-b")]} />,
     );
     expect(screen.getByText("1 matching review")).toBeInTheDocument();
-    expect(screen.getByText("Review b-review")).toBeInTheDocument();
+    expect(screen.getAllByText("Review b-review")).toHaveLength(2);
     expect(screen.queryByLabelText("Active filters")).not.toBeInTheDocument();
 
     rerender(<ReviewBrowser key="target-c" reviews={[]} />);
@@ -90,8 +90,20 @@ describe("ReviewBrowser", () => {
     fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-06-02" } });
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(screen.getByText("2 matching reviews")).toBeInTheDocument();
-    expect(screen.getByText("Review a-low")).toBeInTheDocument();
-    expect(screen.getByText("Review a-high")).toBeInTheDocument();
+    expect(screen.getAllByText("Review a-low")).toHaveLength(2);
+    expect(screen.getAllByText("Review a-high")).toHaveLength(2);
     expect(screen.queryByText("Review a-undated")).not.toBeInTheDocument();
+  });
+
+  test("filters a dataset larger than the 1,000-review page size without truncating it", () => {
+    const reviews = Array.from({ length: 1_205 }, (_, index) =>
+      makeReview(`large-${index}`, index === 1_204 ? 5 : 3, "2026-06-01T12:00:00Z"),
+    );
+    render(<ReviewBrowser reviews={reviews} />);
+    expect(screen.getByText("1205 matching reviews")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Minimum rating"), { target: { value: "5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    expect(screen.getByText("1 matching review")).toBeInTheDocument();
+    expect(screen.getAllByText("Review large-1204")).toHaveLength(2);
   });
 });

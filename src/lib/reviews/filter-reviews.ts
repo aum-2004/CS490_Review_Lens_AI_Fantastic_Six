@@ -1,4 +1,7 @@
-import type { Review } from "@/services/reviews/review-service";
+interface ReviewFilterable {
+  rating: number;
+  reviewDate: string | null;
+}
 
 export interface ReviewFilters {
   minRating: number | null;
@@ -20,7 +23,10 @@ export const EMPTY_REVIEW_FILTERS: ReviewFilters = {
 };
 
 /** Applies every active criterion to the already-authorized target dataset without mutation. */
-export function filterReviews(reviews: readonly Review[], filters: ReviewFilters): Review[] {
+export function filterReviews<T extends ReviewFilterable>(
+  reviews: readonly T[],
+  filters: ReviewFilters,
+): T[] {
   return reviews.filter((review) => {
     if (filters.minRating !== null && review.rating < filters.minRating) return false;
     if (filters.maxRating !== null && review.rating > filters.maxRating) return false;

@@ -40,3 +40,27 @@ date-order validation, with tests for both validation categories and inclusive e
 **AI assistance:** OpenAI Codex assisted with implementation and tests. Human review remains
 required, including a separate security-focused review under the repository's AI-assisted
 development standards. No commit, push, or PR creation is authorized by this task.
+
+## PR #136 changes-requested follow-up (2026-11-27)
+
+**Review feedback:** Neel requested visible matching review entries in Review Preview, workspace
+target-switch coverage beyond a component key test, browser coverage for combined filters and
+Apply/Cancel/Clear all/zero matches, and suggested checking datasets over 1,000 reviews and reducing
+the client payload.
+
+**Follow-up changes:** Review Preview now renders up to three entries from the same filtered array
+as the complete browser and matching count. The workspace maps only ID, text, rating, reviewer name,
+and review date into the browser; authentication, ownership verification, full server-side review
+loading, and the independent Q&A evidence mapping remain intact. Added authenticated Playwright
+coverage for filter controls and navigation from filtered bakery reviews to coffee-shop reviews, plus
+a 1,205-review component regression test. Updated S3-016 documentation accordingly.
+
+**Validation:** `npm run format:check` passed; `npm run lint` passed; `npm run typecheck` passed;
+focused Jest coverage passed (2 suites, 43 tests); focused authenticated Playwright coverage passed
+(2 tests); and `npm run build` passed. An intermediate typecheck overlapped with Next.js build/dev
+type generation and failed to find transient `.next/dev/types` files; rerunning after the browser
+server stopped passed. The first Playwright run exposed a test assertion matching a hidden prior
+Next.js navigation tree; the assertion was scoped to visible active content and both browser tests
+then passed. No commit or push was made. The checked-out branch was confirmed from `.git/HEAD` as
+`feature/S3-016-review-filters`; Git status/diff commands could not run because this machine's Git
+launcher reports that Xcode Command Line Tools are unavailable.

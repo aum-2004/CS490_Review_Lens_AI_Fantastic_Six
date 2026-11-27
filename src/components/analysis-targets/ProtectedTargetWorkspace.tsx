@@ -215,7 +215,16 @@ export async function ProtectedTargetWorkspace({
                 <RetryTargetsButton />
               </Card>
             ) : (
-              <ReviewBrowser key={`${user.id}:${target.id}`} reviews={reviews} />
+              <ReviewBrowser
+                key={`${user.id}:${target.id}`}
+                reviews={reviews.map(({ id, text, rating, reviewerName, reviewDate }) => ({
+                  id,
+                  text,
+                  rating,
+                  reviewerName,
+                  reviewDate,
+                }))}
+              />
             )}
           </div>
         </div>

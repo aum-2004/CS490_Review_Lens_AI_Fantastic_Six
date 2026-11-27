@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { formatReviewText } from "@/lib/reviews/format-review-text";
 import type { Review } from "@/services/reviews/review-service";
+export type ReviewDisplay = Pick<Review, "id" | "text" | "rating" | "reviewerName" | "reviewDate">;
 
-export function ReviewList({ reviews }: { reviews: Review[] }) {
+export function ReviewList({ reviews }: { reviews: ReviewDisplay[] }) {
   if (reviews.length === 0) {
     return (
       <EmptyState

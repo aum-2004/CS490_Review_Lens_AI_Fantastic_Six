@@ -258,7 +258,7 @@ it.each(["failed", null] as const)(
       },
     ]);
     render(await ProtectedTargetWorkspace({ params }));
-    expect(screen.getByText("Previously saved bakery review")).toBeInTheDocument();
+    expect(screen.getAllByText("Previously saved bakery review")).toHaveLength(2);
     expect(screen.getAllByText(status ? "Failed" : "Not ingested")).toHaveLength(2);
     expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
