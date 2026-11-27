@@ -142,3 +142,54 @@ export async function loadReingestBaseline(
     return undefined;
   }
 }
+
+export type AttemptKind = "initial" | "reingest";
+
+/**
+ * The recorded attempt_kind of a FAILED latest attempt, so "Try again" can retry a failed refresh
+ * as a refresh (the create path would only return the earlier success). Reads the table through
+ * the RLS session client in the same order as latest_ingestion_attempts, whose `select *` columns
+ * predate attempt_kind. null = not failed, unknown, or unreadable: the existing retry path stays.
+ */
+export async function loadLatestAttemptKind(
+  client: SupabaseClient,
+  ownerId: string,
+  targetId: string,
+  latest: IngestionSummary | null,
+): Promise<AttemptKind | null> {
+  if (latest?.state !== "failed") return null;
+  try {
+    const { data, error } = await client
+      .from("ingestion_attempts")
+      .select("analysis_target_id, owner_id, status, attempt_kind")
+      .eq("owner_id", ownerId)
+      .eq("analysis_target_id", targetId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle<{
+        analysis_target_id: string | null;
+        owner_id: string;
+        status: string;
+        attempt_kind: unknown;
+      }>();
+    if (error) throw new IngestionPersistenceError();
+    // The row must be the same failed attempt the status came from; anything else is unknown.
+    if (
+      !data ||
+      data.owner_id !== ownerId ||
+      data.analysis_target_id !== targetId ||
+      data.status !== "failed"
+    )
+      return null;
+    return data.attempt_kind === "reingest" || data.attempt_kind === "initial"
+      ? data.attempt_kind
+      : null;
+  } catch {
+    console.error("Workspace operation failed", {
+      operation: "latest-attempt-kind",
+      category: "LOAD_FAILED",
+    });
+    return null;
+  }
+}

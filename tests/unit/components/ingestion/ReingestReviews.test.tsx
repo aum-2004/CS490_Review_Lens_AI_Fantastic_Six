@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Activity, useEffect } from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { ReingestReviews } from "@/components/ingestion/ReingestReviews";
 import {
@@ -71,6 +71,7 @@ function renderControl(
     <WorkspaceIngestionProvider initialSummary={summary}>
       <SummaryHandle />
       <ReingestReviews
+        userId="user-a"
         targetId={TARGET_ID}
         targetName={targetName}
         reviewCount={reviewCount}
@@ -132,6 +133,7 @@ it("starts one refresh, shows processing, and keeps describing existing reviews 
     method: "POST",
     credentials: "same-origin",
     cache: "no-store",
+    signal: expect.any(AbortSignal),
   });
   expect(within(card()).getByRole("button", { name: "Starting refresh…" })).toBeDisabled();
 
@@ -318,4 +320,176 @@ it("omits the count when the reviews could not be loaded", () => {
   renderControl({ reviewCount: null });
   expect(card()).not.toHaveTextContent("Current dataset:");
   expect(card()).toHaveTextContent("It is the deduplicated union");
+});
+
+// ---------------------------------------------------------------------------------------------
+// PR #137 review: late responses must never act on a workspace the user has left
+// ---------------------------------------------------------------------------------------------
+const OTHER_TARGET_ID = "44444444-4444-4444-8444-444444444444";
+
+function SharedState() {
+  const { summary, pending } = useWorkspaceIngestion();
+  return <output aria-label="Shared ingestion state">{`${summary?.state}|${pending}`}</output>;
+}
+
+function workspace({
+  mode = "visible" as "visible" | "hidden",
+  userId = "user-a",
+  targetId = TARGET_ID,
+} = {}) {
+  return (
+    <WorkspaceIngestionProvider initialSummary={succeeded}>
+      <SharedState />
+      <Activity mode={mode}>
+        <ReingestReviews
+          userId={userId}
+          targetId={targetId}
+          targetName="Bakery"
+          reviewCount={3}
+          baseline={baseline}
+          unavailableReason={null}
+        />
+      </Activity>
+    </WorkspaceIngestionProvider>
+  );
+}
+
+type PendingFetch = { url: string; resolve: (response: Response) => void; signal: AbortSignal };
+/** Each call stays pending until the test resolves it; optionally rejects like a browser abort. */
+function deferredFetch({ rejectOnAbort = false } = {}) {
+  const calls: PendingFetch[] = [];
+  fetchMock.mockImplementation(
+    (url: string, init: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const signal = init.signal as AbortSignal;
+        calls.push({ url, resolve, signal });
+        if (rejectOnAbort)
+          signal.addEventListener("abort", () =>
+            reject(new DOMException("The operation was aborted.", "AbortError")),
+          );
+      }),
+  );
+  return calls;
+}
+
+function sharedState() {
+  return screen.getByRole("status", { name: "Shared ingestion state" });
+}
+
+const leaves = {
+  unmount: (view: ReturnType<typeof render>) => view.unmount(),
+  "Activity hide": (view: ReturnType<typeof render>) =>
+    view.rerender(workspace({ mode: "hidden" })),
+  "target change": (view: ReturnType<typeof render>) =>
+    view.rerender(workspace({ targetId: OTHER_TARGET_ID })),
+  "account change": (view: ReturnType<typeof render>) =>
+    view.rerender(workspace({ userId: "user-b" })),
+};
+const lateResponses = {
+  "401": () => jsonResponse(401, {}),
+  "404": () => jsonResponse(404, {}),
+  "terminal failure": () =>
+    jsonResponse(200, {
+      success: true,
+      data: { ...processing, state: "failed", errorCode: "PROVIDER_REJECTED" },
+    }),
+  "accepted refresh": () => jsonResponse(202, { success: true, data: processing }),
+  "in-progress conflict": () =>
+    jsonResponse(409, {
+      success: false,
+      error: { code: "REINGEST_IN_PROGRESS", message: "x" },
+    }),
+};
+
+describe.each(Object.entries(leaves))("after %s", (leave, leaveWorkspace) => {
+  it.each(Object.keys(lateResponses) as Array<keyof typeof lateResponses>)(
+    "a late %s response does not navigate, refresh, or update shared state",
+    async (kind) => {
+      const calls = deferredFetch();
+      const view = render(workspace());
+      fireEvent.click(within(card()).getByRole("button", { name: "Refresh reviews" }));
+      expect(sharedState()).toHaveTextContent("succeeded|true");
+
+      act(() => leaveWorkspace(view));
+      // Cleanup aborts only the browser request and sends nothing else to the server.
+      expect(calls[0].signal.aborted).toBe(true);
+      await act(async () => calls[0].resolve(lateResponses[kind]()));
+
+      expect(mockRouter.replace).not.toHaveBeenCalled();
+      expect(mockRouter.refresh).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      if (leave !== "unmount") {
+        // The provider stays mounted: the stale response left the shared state alone, and the
+        // cleanup released the pending flag that request had set.
+        expect(sharedState()).toHaveTextContent("succeeded|false");
+      }
+      if (leave === "target change" || leave === "account change") {
+        expect(within(card()).queryByRole("alert")).not.toBeInTheDocument();
+        expect(within(card()).getByRole("button", { name: "Refresh reviews" })).toBeEnabled();
+      }
+    },
+  );
+});
+
+it("swallows the browser AbortError and resyncs from the server after Activity restore", async () => {
+  deferredFetch({ rejectOnAbort: true });
+  const view = render(workspace());
+  fireEvent.click(within(card()).getByRole("button", { name: "Refresh reviews" }));
+  await act(async () => view.rerender(workspace({ mode: "hidden" })));
+  expect(mockRouter.refresh).not.toHaveBeenCalled();
+
+  await act(async () => view.rerender(workspace({ mode: "visible" })));
+  // The server may have started the run: reload the persisted status instead of guessing.
+  expect(mockRouter.refresh).toHaveBeenCalledTimes(1);
+  expect(within(card()).queryByRole("alert")).not.toBeInTheDocument();
+  expect(within(card()).getByRole("button", { name: "Refresh reviews" })).toBeEnabled();
+  expect(sharedState()).toHaveTextContent("succeeded|false");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+it("does not resync a restored workspace that had no request in flight", async () => {
+  const view = render(workspace());
+  await act(async () => view.rerender(workspace({ mode: "hidden" })));
+  await act(async () => view.rerender(workspace({ mode: "visible" })));
+  expect(mockRouter.refresh).not.toHaveBeenCalled();
+});
+
+it("keeps the newer request working when a stale one resolves late", async () => {
+  const calls = deferredFetch();
+  const view = render(workspace());
+  fireEvent.click(within(card()).getByRole("button", { name: "Refresh reviews" }));
+  await act(async () => view.rerender(workspace({ mode: "hidden" })));
+  await act(async () => view.rerender(workspace({ mode: "visible" })));
+
+  fireEvent.click(within(card()).getByRole("button", { name: "Refresh reviews" }));
+  expect(calls).toHaveLength(2);
+  expect(calls[1].signal.aborted).toBe(false);
+
+  // The stale request's late response and its finally block must not touch the newer one.
+  await act(async () => calls[0].resolve(jsonResponse(401, {})));
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+  expect(within(card()).getByRole("button", { name: "Starting refresh…" })).toBeDisabled();
+  expect(sharedState()).toHaveTextContent("succeeded|true");
+
+  await act(async () => calls[1].resolve(jsonResponse(202, { success: true, data: processing })));
+  expect(within(card()).getByRole("button", { name: "Refreshing…" })).toBeDisabled();
+  expect(sharedState()).toHaveTextContent("processing|false");
+});
+
+it("still redirects a 401 for the current target, including after a stale request", async () => {
+  const calls = deferredFetch();
+  const view = render(workspace());
+  fireEvent.click(within(card()).getByRole("button", { name: "Refresh reviews" }));
+  view.rerender(workspace({ targetId: OTHER_TARGET_ID }));
+
+  fireEvent.click(within(card()).getByRole("button", { name: "Refresh reviews" }));
+  expect(calls[1].url).toBe(`/api/analysis-targets/${OTHER_TARGET_ID}/ingestion/reingest`);
+  await act(async () => calls[0].resolve(jsonResponse(401, {})));
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+
+  await act(async () => calls[1].resolve(jsonResponse(401, {})));
+  expect(mockRouter.replace).toHaveBeenCalledTimes(1);
+  expect(mockRouter.replace).toHaveBeenCalledWith(
+    `/login?next=${encodeURIComponent(`/analysis-targets/${OTHER_TARGET_ID}`)}`,
+  );
 });

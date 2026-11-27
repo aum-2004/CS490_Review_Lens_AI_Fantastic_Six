@@ -11,12 +11,15 @@ export function WorkspaceIngestion({
   sourceUrl,
   unavailableReason,
   created = false,
+  retryAsReingest = false,
 }: {
   targetId: string;
   targetName: string;
   sourceUrl: string;
   unavailableReason: string | null;
   created?: boolean;
+  /** S3-009: the failed latest attempt is a refresh, so "Try again" refreshes. */
+  retryAsReingest?: boolean;
 }) {
   const { summary, setSummary, pending, setPending } = useWorkspaceIngestion();
   const canStart =
@@ -58,6 +61,7 @@ export function WorkspaceIngestion({
         onSummary={setSummary}
         onPendingChange={setPending}
         unavailableReason={unavailableReason}
+        retryAsReingest={retryAsReingest}
       />
     </>
   );

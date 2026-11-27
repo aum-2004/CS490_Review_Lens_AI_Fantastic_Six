@@ -776,9 +776,6 @@
           y default. It returns HTTP `503`
       32  with error code `INGESTION_DISABLED` unless the server-side `IN
           GESTION_ENABLED` environment
-  ⎿  (files that changed while this command ran, by the command or by
-     another process; a convenience view, not a review or audit of the
-     command)
 
 ⏺ Prettier re-padded the whole table over a one-character-wider path cell, so
   I'm restoring that file from HEAD and recording the route in the S3-009 doc
@@ -1560,3 +1557,1276 @@
   Nothing was committed, staged, stashed, pushed, or opened as a PR. HEAD is
   still bfb7287. I didn't contact any hosted Supabase, OpenAI, or Outscraper
   service.
+
+❯ deepshah@mac CS490_Review_Lens_AI_Fantastic_Six % git status
+  On branch feature/S3-009-reingest-existing-analysis
+  Changes not staged for commit:
+    (use "git add <file>..." to update what will be committed)
+    (use "git restore <file>..." to discard changes in working directory)
+          modified:
+  src/components/analysis-targets/ProtectedTargetWorkspace.tsx
+          modified:   src/services/ingestion/ingestion-lifecycle.ts
+          modified:   tests/db/run.sh
+
+  Untracked files:
+    (use "git add <file>..." to include in what will be committed)
+          ai-transcripts/S3-009-transcript.md
+          docs/s3-009-reingest-existing-analysis.md
+          src/app/api/analysis-targets/[targetId]/ingestion/reingest/
+          src/components/ingestion/ReingestReviews.tsx
+          src/services/ingestion/ingestion-reingest-state.ts
+          src/services/ingestion/ingestion-reingest.ts
+          supabase/migrations/20261127120000_reingest_existing_analysis.sql
+          tests/db/reingest-concurrency.test.sh
+          tests/db/reingest-existing-analysis.test.sql
+          tests/unit/app/analysis-targets/workspace-reingest.test.tsx
+          tests/unit/app/api/analysis-targets/[targetId]/ingestion/reingest-rou
+  te.test.ts
+          tests/unit/components/ingestion/ReingestReviews.test.tsx
+          tests/unit/services/ingestion/ingestion-reingest.test.ts
+
+  no changes added to commit (use "git add" and/or "git commit -a")
+  deepshah@mac CS490_Review_Lens_AI_Fantastic_Six %
+  commands to commit and push
+
+⏺ These commands commit everything from your git status and push the branch. I
+  haven't run them.
+
+  The new ai-transcripts/S3-009-transcript.md is the one file I haven't seen.
+  Skim it before committing for local paths, emails, or keys, since it goes to
+  the shared team repo.
+
+  # 1. Stage the S3-009 changes (explicit paths, so nothing else slips in)
+  git add \
+    src/components/analysis-targets/ProtectedTargetWorkspace.tsx \
+    src/services/ingestion/ingestion-lifecycle.ts \
+    tests/db/run.sh \
+    ai-transcripts/S3-009-transcript.md \
+    docs/s3-009-reingest-existing-analysis.md \
+    "src/app/api/analysis-targets/[targetId]/ingestion/reingest/" \
+    src/components/ingestion/ReingestReviews.tsx \
+    src/services/ingestion/ingestion-reingest-state.ts \
+    src/services/ingestion/ingestion-reingest.ts \
+    supabase/migrations/20261127120000_reingest_existing_analysis.sql \
+    tests/db/reingest-concurrency.test.sh \
+    tests/db/reingest-existing-analysis.test.sql \
+    tests/unit/app/analysis-targets/workspace-reingest.test.tsx \
+    "tests/unit/app/api/analysis-targets/[targetId]/ingestion/reingest-route.tes
+  t.ts" \
+    tests/unit/components/ingestion/ReingestReviews.test.tsx \
+    tests/unit/services/ingestion/ingestion-reingest.test.ts
+
+  # 2. Check what's staged: 16 files; .env.local must not appear
+  git status --short
+  git diff --cached --stat
+
+  # 3. Commit
+  git commit -m "S3-009: Re-ingest an existing analysis" \
+    -m "Adds an explicit refresh path for owned analyses:
+  reserve_reingestion_attempt creates a new attempt (attempt_kind = 'reingest')
+  under the same target lock, one-active-run rule, and 5-per-24h paid-start
+  budget. Completion merges through the existing S3-011 path only, with no
+  removal path because the provider exposes no completeness signal. Adds POST
+  .../ingestion/reingest, a Refresh reviews workspace card, DB/unit tests, and
+  docs/s3-009-reingest-existing-analysis.md."
+
+  # 4. Push and set upstream (first push of this branch)
+  git push -u origin feature/S3-009-reingest-existing-analysis
+
+  The paths with [targetId] are quoted because zsh otherwise treats the brackets
+  as a glob pattern and fails with "no matches found".
+
+  When you open the PR, these points from my report are worth putting in the
+  description:
+  - Migration clash: #131 and #132 both use migration version 20261125000000.
+  - Rerun DB tests: run test:db again after #134 merges, since it changes the
+    foreign key on ingestion_attempts.
+  - Known limitations: the two left out of scope (the IngestionPanel copy and
+    the latest-attempt status badge).
+
+❯ deepshah@mac CS490_Review_Lens_AI_Fantastic_Six % git add \
+    src/components/analysis-targets/ProtectedTargetWorkspace.tsx \
+    src/services/ingestion/ingestion-lifecycle.ts \
+    tests/db/run.sh \
+    ai-transcripts/S3-009-transcript.md \
+    docs/s3-009-reingest-existing-analysis.md \
+    "src/app/api/analysis-targets/[targetId]/ingestion/reingest/" \
+    src/components/ingestion/ReingestReviews.tsx \
+    src/services/ingestion/ingestion-reingest-state.ts \
+    src/services/ingestion/ingestion-reingest.ts \
+    supabase/migrations/20261127120000_reingest_existing_analysis.sql \
+    tests/db/reingest-concurrency.test.sh \
+    tests/db/reingest-existing-analysis.test.sql \
+    tests/unit/app/analysis-targets/workspace-reingest.test.tsx \
+    "tests/unit/app/api/analysis-targets/[targetId]/ingestion/reingest-route.te
+  st.ts" \
+    tests/unit/components/ingestion/ReingestReviews.test.tsx \
+    tests/unit/services/ingestion/ingestion-reingest.test.ts
+
+  deepshah@mac CS490_Review_Lens_AI_Fantastic_Six % git status --short
+  A  ai-transcripts/S3-009-transcript.md
+  A  docs/s3-009-reingest-existing-analysis.md
+  A  src/app/api/analysis-targets/[targetId]/ingestion/reingest/route.ts
+  M  src/components/analysis-targets/ProtectedTargetWorkspace.tsx
+  A  src/components/ingestion/ReingestReviews.tsx
+  M  src/services/ingestion/ingestion-lifecycle.ts
+  A  src/services/ingestion/ingestion-reingest-state.ts
+  A  src/services/ingestion/ingestion-reingest.ts
+  A  supabase/migrations/20261127120000_reingest_existing_analysis.sql
+  A  tests/db/reingest-concurrency.test.sh
+  A  tests/db/reingest-existing-analysis.test.sql
+  M  tests/db/run.sh
+  A  tests/unit/app/analysis-targets/workspace-reingest.test.tsx
+  A  tests/unit/app/api/analysis-targets/[targetId]/ingestion/reingest-route.te
+  st.ts
+  A  tests/unit/components/ingestion/ReingestReviews.test.tsx
+  A  tests/unit/services/ingestion/ingestion-reingest.test.ts
+  deepshah@mac CS490_Review_Lens_AI_Fantastic_Six % git diff --cached --stat
+   ai-transcripts/S3-009-transcript.md                              | 1562
+  ++++++++++++++++++++++++++++
+   docs/s3-009-reingest-existing-analysis.md                        |  176 ++++
+   .../api/analysis-targets/[targetId]/ingestion/reingest/route.ts  |  105 ++
+   src/components/analysis-targets/ProtectedTargetWorkspace.tsx     |   13 +
+   src/components/ingestion/ReingestReviews.tsx                     |  202 ++++
+   src/services/ingestion/ingestion-lifecycle.ts                    |    4 +-
+   src/services/ingestion/ingestion-reingest-state.ts               |   35 +
+   src/services/ingestion/ingestion-reingest.ts                     |  144 +++
+   .../migrations/20261127120000_reingest_existing_analysis.sql     |   97 ++
+   tests/db/reingest-concurrency.test.sh                            |   95 ++
+   tests/db/reingest-existing-analysis.test.sql                     |  397
+  +++++++
+   tests/db/run.sh                                                  |    3 +
+   tests/unit/app/analysis-targets/workspace-reingest.test.tsx      |  222 ++++
+   .../analysis-targets/[targetId]/ingestion/reingest-route.test.ts |  341
+  ++++++
+   tests/unit/components/ingestion/ReingestReviews.test.tsx         |  321
+  ++++++
+   tests/unit/services/ingestion/ingestion-reingest.test.ts         |  289
+  +++++
+   16 files changed, 4005 insertions(+), 1 deletion(-)
+  deepshah@mac CS490_Review_Lens_AI_Fantastic_Six % git commit -m "S3-009:
+  Re-ingest an existing analysis"
+  [feature/S3-009-reingest-existing-analysis 888123a] S3-009: Re-ingest an
+  existing analysis
+   16 files changed, 4005 insertions(+), 1 deletion(-)
+   create mode 100644 ai-transcripts/S3-009-transcript.md
+   create mode 100644 docs/s3-009-reingest-existing-analysis.md
+   create mode 100644
+  src/app/api/analysis-targets/[targetId]/ingestion/reingest/route.ts
+   create mode 100644 src/components/ingestion/ReingestReviews.tsx
+   create mode 100644 src/services/ingestion/ingestion-reingest-state.ts
+   create mode 100644 src/services/ingestion/ingestion-reingest.ts
+   create mode 100644
+  supabase/migrations/20261127120000_reingest_existing_analysis.sql
+   create mode 100644 tests/db/reingest-concurrency.test.sh
+   create mode 100644 tests/db/reingest-existing-analysis.test.sql
+   create mode 100644
+  tests/unit/app/analysis-targets/workspace-reingest.test.tsx
+   create mode 100644 tests/unit/app/api/analysis-targets/[targetId]/ingestion/
+  reingest-route.test.ts
+   create mode 100644 tests/unit/components/ingestion/ReingestReviews.test.tsx
+   create mode 100644 tests/unit/services/ingestion/ingestion-reingest.test.ts
+  deepshah@mac CS490_Review_Lens_AI_Fantastic_Six % git push -u origin
+  feature/S3-009-reingest-existing-analysis
+
+  Enumerating objects: 117, done.
+  Counting objects: 100% (117/117), done.
+  Delta compression using up to 12 threads
+  Compressing objects: 100% (80/80), done.
+  Writing objects: 100% (83/83), 185.87 KiB | 11.62 MiB/s, done.
+  Total 83 (delta 42), reused 0 (delta 0), pack-reused 0 (from 0)
+  remote: Resolving deltas: 100% (42/42), completed with 29 local objects.
+  remote:
+  remote: Create a pull request for 'feature/S3-009-reingest-existing-analysis'
+  on GitHub by visiting:
+  remote:      https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/p
+  ull/new/feature/S3-009-reingest-existing-analysis
+  remote:
+  To https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six.git
+   * [new branch]      feature/S3-009-reingest-existing-analysis ->
+  feature/S3-009-reingest-existing-analysis
+  branch 'feature/S3-009-reingest-existing-analysis' set up to track
+  'origin/feature/S3-009-reingest-existing-analysis'.
+  deepshah@mac CS490_Review_Lens_AI_Fantastic_Six %
+
+⏺ The push worked. Commit 888123a ("S3-009: Re-ingest an existing analysis") is
+  on origin/feature/S3-009-reingest-existing-analysis, with all 16 files
+  (+4005/−1), and the branch tracks the remote.
+
+  The commit has only the title line, without the longer description I
+  suggested. That's fine if the team squash-merges, since the PR description
+  becomes the record.
+
+  To open the PR, use the link GitHub printed, or:
+
+  gh pr create --base main --head feature/S3-009-reingest-existing-analysis \
+    --title "S3-009: Re-ingest an existing analysis" --body-file <your-notes.md>
+
+  Points worth putting in the PR description:
+  - New refresh path. reserve_reingestion_attempt creates a new attempt row;
+    reserve_ingestion_attempt and its duplicate-start protection are unchanged.
+  - Merge-only. Refreshed reviews merge into the existing set through the S3-011
+    path. Nothing is ever removed, because the provider gives no signal that a
+    response is the complete dataset.
+  - Ownership. The ingestion RPCs are service_role-only, with the owner id taken
+    from the verified session rather than auth.uid(); the doc explains why.
+  - Migration clash. #131 and #132 both use migration version 20261125000000.
+  - After #134 merges, rerun test:db, since #134 changes the foreign key on
+    ingestion_attempts.
+  - Known limitations. The Ingestion panel still says "Further collection is
+    unavailable", and after a failed refresh the header badge says "Failed" even
+    though the reviews are intact.
+
+  If you want, I can write the full PR description to a file in the scratchpad
+  for you to pass to --body-file. I won't create the PR myself.
+
+❯ now give a PR title and description
+
+⏺ Written for: your teammates reviewing the PR on GitHub.
+
+  Title: S3-009: Re-ingest an existing analysis
+
+  Description:
+
+  ## Summary
+
+  Owners can refresh the reviews of an analysis they already collected without
+  creating a second AnalysisTarget (S3-BR-014). Each refresh is a new ingestion
+  attempt, and its reviews are merged into the existing dataset. Reviews already
+  collected stay even when a later partial or throttled response leaves them
+  out (S3-BR-015).
+
+  Design and rationale: `docs/s3-009-reingest-existing-analysis.md`.
+
+  ## What changed
+
+  - **Migration `20261127120000_reingest_existing_analysis.sql`**
+    - Adds `ingestion_attempts.attempt_kind` (`initial` | `reingest`, default
+  `initial`). Owners can read it; only RPCs can write it.
+    - Adds `reserve_reingestion_attempt(p_target_id, p_owner_id)`: SECURITY
+  DEFINER, empty search_path, service_role-only, like the other ingestion
+  lifecycle RPCs. It creates a new attempt for an owned target that already has
+  a successful one. It returns `REINGEST_IN_PROGRESS` if a run is active,
+  `REINGEST_BLOCKED` on a billing hold, and `REINGEST_UNAVAILABLE` if there is
+  no dataset yet.
+    - Adds a partial index for the "last successful attempt" lookup.
+    - No existing migration or function is changed. `reserve_ingestion_attempt`
+  still answers a create request with the active or previously successful
+  attempt, so its duplicate-charge protection is intact.
+  - **API: `POST /api/analysis-targets/[targetId]/ingestion/reingest`** (new
+  route file)
+    - Never reads the body or query; the owner comes from the session and the
+  target from the path.
+    - Rejects cross-site browser requests with a same-host Origin check that
+  also accepts the forwarded host.
+    - Missing, foreign, and malformed target ids get the same 404.
+    - Fixed error messages with `private, no-store` headers: 409 for the three
+  reingest codes, 429 for the existing daily limit, and the same 503 gates as
+  the first collection.
+    - Note: `ingestion/refresh` already exists and means "check the status of a
+  running job", so this route is named `reingest`.
+  - **Service**
+    - `ingestion-reingest.ts`: the reservation, the last-successful-attempt
+  read, and the workspace baseline loader.
+    - `beginIngestion` gains an optional `reserve` override (2 lines). After the
+  reservation, a refresh follows exactly the same path as the first collection:
+  the same gates, one paid submission, binding retries, and recovery callback.
+  - **UI**
+    - New "Refresh reviews" card under the Ingestion panel. It shows the review
+  count, describes the dataset as the deduplicated union of every review
+  collected so far, and shows the last successful collection time and how many
+  new reviews it added.
+    - It covers the processing, success, failed-with-retry, billing-hold, and
+  unavailable states, and blocks duplicate submits.
+    - A started refresh is polled by the existing Ingestion panel. The review
+  list and Q&A keep working with the saved reviews while it runs and after it
+  fails.
+
+  ## Guarantees
+
+  - **One active run per target.** The RPC takes the same target row lock as a
+  first collection, backed by the existing `ingestion_one_processing_per_target`
+  unique index. A two-session test confirms the second caller waits for the
+  lock and is then rejected.
+  - **Same quota.** A refresh counts toward the same 5-per-owner rolling 24-hour
+  budget as any start. It uses the same lock and count, failed attempts count,
+  and nothing is refunded.
+  - **Merge-only.** Completion goes through the unchanged S3-011
+  `finish_ingestion_attempt` → `merge_target_reviews`. There is no removal or
+  deactivation path. The Outscraper request is capped at 30 reviews sorted by
+  relevance, and its response has no completeness signal.
+  - **Failures change nothing.** A failed refresh saves nothing, and the
+  previous successful attempt stays the workspace baseline.
+  - **Old attempts can't overwrite new ones.** A late completion or binding of
+  an older attempt is a no-op; existing lifecycle protections are unchanged.
+  - **Why the owner id comes from the server, not `auth.uid()`:** if browsers
+  could call a paid reservation directly, they could create an attempt with no
+  provider job. After 60 seconds that becomes a `SUBMISSION_UNCERTAIN` billing
+  hold that needs an operator to clear. Ownership is still checked twice:
+  through RLS, then inside the RPC under the lock.
+
+  ## Tests
+
+  - `tests/db/reingest-existing-analysis.test.sql` covers:
+    - privileges, and refresh creating a new attempt row while old rows stay
+    - last-success lookup; foreign, missing, and no-dataset denials create
+  nothing
+    - active-run rejection, with create-request idempotency kept
+    - partial-batch merge: absent reviews remain, repeats don't multiply
+    - a failed refresh leaving the dataset unchanged, billing holds, late and
+  replayed completions
+    - the shared daily budget, including failed refreshes and the 24-hour window
+  - `tests/db/reingest-concurrency.test.sh`: two real sessions; added to
+  `tests/db/run.sh`.
+  - Unit tests: route (22), service (28), card (23), workspace (7).
+  - Mutation-checked: removing the active-run check, removing the ownership
+  predicates, or making completion drop absent reviews each fails the DB tests.
+
+  Results (local, Node 24): format, lint, typecheck, `check:migrations`, full
+  `test:db`, `npm test` (118 suites / 2201 tests), and `npm run build` all pass.
+  I added no new e2e scenario, because a real start calls the provider client
+  and the fixture server doesn't stub it. The existing auth e2e specs that cover
+  the workspace pass.
+
+  ## Integration notes
+
+  - **#134 (Delete):**
+    - Both PRs edit `ProtectedTargetWorkspace.tsx` in different spots; this PR
+  doesn't touch the attempt repository.
+    - Detached attempts (`analysis_target_id` null) never match the refresh RPC
+  or the baseline read. They still count toward the daily quota, consistent with
+  "no refund".
+    - Please rerun `test:db` after #134 merges, since it changes the foreign key
+  on this table.
+  - **#132 (Rename) and #136 (Filter):** small edits to
+  `ProtectedTargetWorkspace.tsx` in separate hunks; no overlap expected.
+  `ReviewBrowser` still wraps `ReviewList`, so the test selectors hold.
+  - **Heads-up:** #131 and #132 both add a migration with version
+  `20261125000000`, which `check:migrations` will reject once both land.
+
+  ## Known limitations
+
+  - The header badge and the Ingestion panel describe the *latest* attempt, so
+  after a failed refresh they show "Failed" even though the dataset is intact.
+  The refresh card explains this.
+  - The Ingestion panel still says "Further collection is unavailable" after a
+  success. Existing unit and e2e tests assert that text, so I left it as a
+  follow-up.
+  - The new route isn't added to `src/app/api/README.md`, because one more row
+  makes Prettier re-pad the whole table. It is documented in the S3-009 doc.
+
+  ## Manual checks for reviewers
+
+  - Apply the migration to a local Supabase only, not `db push`, and run `npm
+  run test:db`.
+  - With a stubbed provider, smoke-test refresh, the 409 for an already-running
+  refresh, the 429 limit, a failed refresh, and the card at 375px.
+
+❯ give trasncript link
+
+⏺ Here's the transcript on the pushed branch:
+
+  https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/feature/S3
+  -009-reingest-existing-analysis/ai-transcripts/S3-009-transcript.md
+
+  That link always shows the branch's latest version. This one is pinned to
+  commit 888123a, so it won't change if you push again:
+
+  https://github.com/aum-2004/CS490_Review_Lens_AI_Fantastic_Six/blob/888123a/ai
+  -transcripts/S3-009-transcript.md
+
+  If the repo is private, only collaborators can open these links.
+
+❯ no like in PR description
+
+⏺ Add this section to the PR description, for example right after Summary:
+
+  ## AI transcript
+
+  AI-assisted development transcript for this story:
+  [`ai-transcripts/S3-009-transcript.md`](https://github.com/aum-2004/CS490_Revi
+  ew_Lens_AI_Fantastic_Six/blob/feature/S3-009-reingest-existing-analysis/ai-tra
+  nscripts/S3-009-transcript.md)
+
+  A relative path like ai-transcripts/S3-009-transcript.md doesn't become a link
+  in a PR description, so it needs the full URL. This one follows the branch,
+  so it keeps working if you push changes to the transcript.
+
+❯ best reviewer for this task
+
+⏺ I'll check who wrote the code this PR builds on.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ The best primary reviewer is ms-00star.
+
+  - They wrote the code this PR extends. In PR #48 (S1-018/S1-023) they created
+    ingestion_attempts, reserve_ingestion_attempt and the 5-per-day paid-start
+    limit. They also wrote most of IngestionPanel and ingestion-lifecycle.ts,
+    and are the main author of ProtectedTargetWorkspace.tsx. That makes them the
+    person best placed to judge the key decision here: leaving
+    reserve_ingestion_attempt's duplicate-start protection alone and adding a
+    separate refresh RPC.
+  - They reviewed S3-011 (#135). This PR relies on that merge-only completion
+    path.
+  - They also author #132 (Rename), which touches the same workspace component,
+    so they can spot any merge friction.
+
+  Two optional second reviewers:
+
+  - shawnd121, the author of #134 (Delete). They can check how a refresh
+    interacts with attempts that #134 detaches on delete, and the rule that
+    detached attempts still count toward the daily quota.
+  - aum-2004, who reviewed #48 and owns the repo. They're a good choice for a
+    final security pass on the paid-ingestion boundary, the quota and ownership
+    checks.
+
+  For a single reviewer, choose ms-00star.
+
+❯ what type of reviw does it need code/functioanlty or security or both
+
+⏺ It needs both. The PR adds a new paid action that changes stored data, so a
+  functionality bug and a security bug would cost about the same: extra charges,
+  or lost or mixed-up reviews.
+
+  Security review (most important). The code adds a route that starts paid
+  provider jobs and a SECURITY DEFINER RPC. Reviewers should check:
+  - Ownership. The owner id comes only from the session; body and query are
+    never read. Missing, foreign and malformed target ids get the same 404, and
+    the RPC rechecks ownership under its lock.
+  - Paid-start limits. The refresh RPC is service_role-only and is not
+    executable by authenticated (the reason is in the doc). A refresh can't
+    bypass the 5-per-24h limit or the one-active-run rule.
+  - Cross-site requests. The Origin check, including the forwarded-host case.
+  - No leaks. Errors use fixed messages, headers are no-store, and logs record
+    only an operation and a category.
+  - Migration. Grants, the empty search_path, and that attempt_kind can't be
+    written directly.
+
+  Functionality and code review:
+  - Merge-only behavior. A partial batch keeps old reviews, and a failed refresh
+    leaves the dataset untouched.
+  - Retry protection. reserve_ingestion_attempt still answers a duplicate create
+    request with the existing attempt.
+  - UI states. Processing, success, failure with retry, and billing holds.
+    Reviews and Q&A stay usable during a refresh. Check the layout at 375px.
+  - Code shape. The 2-line beginIngestion override and the additive workspace
+    edit.
+  - Merge order with #134, #132 and #136.
+
+  Suggested split:
+  - ms-00star: both. They wrote the ingestion lifecycle and quota code. This is
+    the essential review.
+  - aum-2004: a security-focused pass, as on #48.
+  - shawnd121: functionality, limited to how a refresh interacts with #134's
+    detached attempts.
+
+  If you only get one reviewer, ask ms-00star for both and point them to the
+  "Guarantees" section of the PR description.
+
+❯ who should shoukd whu like should ms-00 do security or code and shawnd should
+  do security or code reveiwes??
+
+⏺ ms-00star should do the security review. They built the ingestion lifecycle,
+  the paid-start limit and the RPC conventions in #48. That makes them the best
+  judge of the risky parts: ownership checks, the service_role-only RPC, the
+  daily limit, and the rule against concurrent runs.
+
+  shawnd121 should do the code/functionality review. Their #134 changes the same
+  attempts table and the same workspace component. They're well placed to check
+  the merge-only behavior, the UI states, and that a refresh never picks up an
+  attempt their delete has detached.
+
+  Request it in that order: ms-00star for security, shawnd121 for code.
+
+❯ Address the review feedback on my PR #137 (S3-009 "Re-Ingest an Existing
+  Analysis", head 888123a) on the current branch. Two reviewers asked for
+  changes.
+
+  HARD RULES
+  - Do NOT run git commit, push, add, stash, reset, checkout, switch, branch,
+  rebase, or merge, and don't create or edit any PR. Read-only git (status,
+  diff, log, show, fetch) is fine. Leave all changes uncommitted. First confirm
+  the working tree is on the S3-009 branch and HEAD is 888123a (or report the
+  difference and continue on what's checked out).
+  - Don't change other people's code (#134 Delete, #132 Rename, #136 Filter,
+  S3-011 merge logic, existing migrations). Keep every change to shared files
+  minimal and additive. If a fix seems to require touching a teammate's area,
+  stop and list it in the report instead.
+  - No hosted Supabase, OpenAI, or Outscraper calls. Mocks and local fixtures
+  only. No dependency changes. Don't weaken, skip, or delete existing tests.
+  Don't ask me questions unless truly blocked.
+
+  FEEDBACK 1 – Shawn (security/functional)
+  "[P2] Late refresh responses can navigate the wrong workspace.
+  ReingestReviews.tsx has no request cleanup or stale-response guard. I
+  reproduced: start refresh → leave target → resolve old 401 → redirects to the
+  old target's login URL; resolve an old terminal response after leaving →
+  still calls router.refresh(). Add cleanup and request-generation guards
+  covering unmount, Activity hide/restore, and target/account changes. Guard
+  navigation, shared-state updates, and finally cleanup. Aborting the browser
+  request must not imply cancelling the paid provider job."
+  He ran 93 focused tests (all passed) plus two new stale-response probes that
+  FAILED against my code. CI #295 passed.
+
+  FEEDBACK 2 – MP (functional)
+  "Before approval, please fix the existing Ingestion panel's 'Try again'
+  action after a failed refresh (it currently returns the earlier success
+  without refreshing) and replace 'Further collection is unavailable.' Please
+  add an integration regression test and document the new endpoint in the API
+  README."
+
+  STEP 1 – READ (focused)
+  - `git diff main...HEAD` for my S3-009 changes. Read ReingestReviews.tsx, the
+  existing Ingestion panel (the component with "Try again"), the workspace
+  component that hosts them, the refresh route, the start/create-ingestion
+  route and client helper, and how status is derived.
+  - Find the exact string "Further collection is unavailable." (grep src,
+  tests, docs) and every place that renders or asserts it.
+  - Find the API README (grep for README files under the API/docs area that
+  list endpoints) and see how existing endpoints are documented.
+  - Determine how Activity is used in this app (React Activity/offscreen hide
+  and restore) and how the workspace behaves on target or account switches
+  (keys, remounts, props), so the guard matches reality.
+
+  STEP 2 – FIX A: stale-response guard in ReingestReviews.tsx
+  - Add a request-generation guard: a ref counter (or equivalent) incremented
+  on each new request and on every invalidation; a response is applied ONLY if
+  its generation is still current AND the component's current targetId/account
+  identity equals the one the request started with.
+  - Add an AbortController per request and cleanup in an effect that runs on
+  unmount, on Activity hide (effect cleanup), and on targetId or account
+  change. Cleanup invalidates the generation and aborts the fetch.
+  - Guard ALL of these behind the same check: router.refresh(),
+  router.push/replace or any login redirect (the 401 handling), shared-state or
+  callback updates passed in from the parent, setState calls, and the
+  `finally` block (don't clear "processing" for a newer request or a different
+  target).
+  - Aborting the browser request must NOT be treated as failure and must NOT
+  cancel the server-side provider job or the ingestion attempt. Don't send any
+  cancel call. An AbortError must be swallowed silently (no error banner).
+  - After Activity restore or after returning to a target while a refresh is
+  still running server-side, the UI must show the truth from the server
+  (existing status sync/polling if present) rather than being stuck on
+  "processing" forever or showing a stale result. Reuse the existing status
+  mechanism; don't invent a new one unless nothing exists, and keep any
+  addition minimal.
+  - A 401 for the CURRENT, still-mounted target must keep working exactly as
+  before (redirect to that target's login URL).
+
+  STEP 3 – FIX B: "Try again" after a failed refresh
+  - Reproduce why it returns the earlier success without refreshing (most
+  likely it calls the original start/create ingestion path, which returns the
+  previously successful attempt with created:false). Make "Try again" after a
+  FAILED REFRESH start a new refresh through the refresh endpoint, while "Try
+  again" after a failed INITIAL ingestion keeps its current behavior. The panel
+  must know which kind of attempt failed (use the attempt kind or state
+  already recorded; don't guess from the UI alone).
+  - Keep duplicate-submit protection, safe errors for "refresh already running"
+  and "daily limit reached", and the rule that a failed refresh leaves the
+  existing dataset intact and visible.
+  - Replace the copy "Further collection is unavailable." with accurate,
+  state-specific copy. Work out from the code which condition that message
+  currently covers (e.g. already running, limit reached, failed state) and
+  write plain, actionable text for each case (what happened, whether retry is
+  possible, and when). Keep wording consistent with the S3-BR-015 dataset
+  language already in the UI. Update every test or doc that referenced the old
+  string.
+
+  STEP 4 – TESTS (deterministic)
+  Add to the existing component test files (don't rewrite existing tests):
+  1. Shawn's probe 1: start refresh → switch to another target (or unmount) →
+  resolve the old request with 401 → NO redirect, no state change, no router
+  call.
+  2. Shawn's probe 2: start refresh → leave → resolve the old terminal
+  (success) response → router.refresh() NOT called.
+  3. Same checks for: Activity hide then restore, account change, and target
+  change while the component stays mounted.
+  4. The fetch is aborted on cleanup, AbortError doesn't show an error, and no
+  cancel request is sent to the server.
+  5. A new request after a stale one works normally (the generation guard
+  doesn't block the latest request), and `finally` of a stale request doesn't
+  clear the newer request's processing state.
+  6. A 401 on the current, mounted target still redirects correctly.
+  7. MP's integration regression: initial ingestion succeeds → refresh fails →
+  click "Try again" → the REFRESH endpoint is called (not the old start path)
+  and a new attempt is created; also the case "retry after failed initial
+  ingestion" is unchanged. Use the repo's integration test style (component
+  plus mocked fetch, or API-level if that's the pattern).
+  8. The new copy appears in each state it was written for, and the old string
+  appears nowhere.
+  Mutation check: temporarily remove the generation guard and the abort
+  cleanup, confirm the new stale-response tests fail; temporarily revert the
+  Try-again routing, confirm test 7 fails; then restore everything exactly.
+
+  STEP 5 – DOCS
+  Document the new refresh endpoint in the API README, matching the existing
+  format: method and path, auth, request (body/params), responses and status
+  codes (including the 404, "already running", and "limit reached" cases),
+  headers (no-store), the Origin/same-host requirement, and a note that
+  refreshes count toward the daily paid-ingestion limit and that merge-only
+  behavior never removes reviews. If other docs list endpoints, update them
+  consistently.
+
+  STEP 6 – VERIFY (report real results)
+  Run: format check, lint, typecheck, the focused tests for the files you
+  touched, then full `npm test`. Run the production build only if you changed
+  anything build-sensitive. Don't claim anything you didn't run. Don't touch
+  the S3-011 migration even if the SQL runner needs a workaround (Shawn
+  mentioned a parser workaround for the previously merged dedup migration);
+  just mention it in the report.
+
+  FINAL REPORT (concise, no step recap)
+  1. For each of the 3 asks (stale-response guard, Try again, copy + README +
+  test), what changed in 2 lines.
+  2. Files changed, with sizes for any shared file.
+  3. Test and check results with counts, and anything you couldn't run and why.
+  4. Residual risks or anything I should manually verify (e.g. a manual
+  Activity hide/restore check, a manual failed-refresh retry in a mocked
+  environment).
+  5. Ready-to-paste replies, each under 90 words, direct, no fluff: one to
+  Shawn (the stale-response guard covers unmount, Activity hide/restore, and
+  target/account changes; navigation, shared state, and finally are all
+  guarded; abort doesn't cancel the provider job; the two probes now pass;
+  ready for re-review; note that the final combined verification after 002/005
+  integration is still pending) and one to MP (Try again now starts a new
+  refresh; the old copy replaced; regression test and API README added; ready
+  for re-review). Don't claim anything you didn't verify.
+  6. Confirm nothing was committed, pushed, or turned into a PR.
+
+⏺ I'll start by confirming the branch and HEAD, then read the code the feedback
+  targets.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Branch is correct, HEAD is 888123a, and the tree is clean. origin/main has
+  moved ahead by #131 (the Q&A quota change), which also edits the API README.
+  Now the actual review comments on #137:
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Shawn's review is there. MP's feedback isn't in the reviews list, so checking
+  the PR's conversation comments:
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ MP's feedback isn't on GitHub, so I'll work from your quoted text. Next: how
+  this app uses React Activity, and how the workspace keys and remounts on
+  target or account switches.
+
+  Searched for 1 pattern, listed 1 directory (ctrl+o to expand)
+
+⏺ ReviewQuestions already handles this same problem with a bfcacheId key,
+  Activity cleanup, and a guard against stale requests, so I'm reading it and
+  the Next.js Activity guide to mirror that pattern. · summary
+
+  Searched for 1 pattern, ran 1 shell command (ctrl+o to expand)
+
+⏺ With cacheComponents on, a hidden target stays mounted inside <Activity>, so
+  ReviewQuestions needs its useLayoutEffect cleanup to abort and clear on hide.
+  I'm now updating my component, the panel tests that assert the old copy, and
+  the e2e assertion. · summary
+
+  Read 1 file, ran 2 shell commands · 1 failed (ctrl+o to expand)
+
+⏺ IngestionPanel is merged code no open PR touches and you asked for the change,
+  so I'm making a minimal fix: per-request abort and scope checks on cleanup,
+  plus a workspace read of the latest failed attempt's kind, since the shared
+  view can't be changed. Fixing the abort handling first. · summary
+
+⏺ Update(src/components/ingestion/ReingestReviews.tsx)
+  ⎿  Added 1 line, removed 1 line
+      1  "use client";
+      2 
+      3 -import { useId, useRef, useState } from "react";                
+      3 +import { useId, useLayoutEffect, useRef, useState } from "react"
+        +;                                                               
+      4  import { useRouter } from "next/navigation";
+      5  import { Card } from "@/components/ui/Card";
+      6  import { Button } from "@/components/ui/Button";
+
+⏺ Update(src/components/ingestion/ReingestReviews.tsx)
+  ⎿  Added 41 lines, removed 1 line
+      39   * baseline: the last successful attempt; null = nothing collec
+          ted yet; undefined = couldn't load.
+      40   */
+      41  export function ReingestReviews({
+      42 +  userId,                                                      
+      43    targetId,
+      44    targetName,
+      45    reviewCount,
+      46    baseline,
+      47    unavailableReason,
+      48  }: {
+      49 +  userId: string;                                              
+      50    targetId: string;
+      51    targetName: string;
+      52    reviewCount: number | null;
+     ...
+       58    const [submitting, setSubmitting] = useState(false);
+       59    const [error, setError] = useState<string | null>(null);
+       60    const [started, setStarted] = useState(false);
+       59 -  const inFlight = useRef(false);                             
+       61    const headingId = useId();
+       62    const helpId = useId();
+       63 +                                                              
+       64 +  // A response can arrive after the user left this workspace 
+          +(unmount or Activity hide) or after                           
+       65 +  // the target or account changed. Only the newest request of
+          + the current, visible scope may                               
+       66 +  // navigate, update shared state, or clear its own pending s
+          +tate.                                                         
+       67 +  const scope = `${userId}:${targetId}`;                      
+       68 +  const request = useRef<AbortController | null>(null);       
+       69 +  const generation = useRef(0);                               
+       70 +  const activeScope = useRef<string | null>(null);            
+       71 +  const resyncScope = useRef<string | null>(null);            
+       72 +  const routerRef = useRef(router);                           
+       73 +  useLayoutEffect(() => {                                     
+       74 +    routerRef.current = router;                               
+       75 +  });                                                         
+       76 +  useLayoutEffect(() => {                                     
+       77 +    activeScope.current = scope;                              
+       78 +    if (resyncScope.current === scope) {                      
+       79 +      // A request was abandoned while hidden; the server may 
+          +have started the run anyway.                                  
+       80 +      // Reload the persisted status (the Ingestion panel then
+          + polls a running attempt).                                    
+       81 +      resyncScope.current = null;                             
+       82 +      routerRef.current.refresh();                            
+       83 +    }                                                         
+       84 +    return () => {                                            
+       85 +      generation.current += 1;                                
+       86 +      activeScope.current = null;                             
+       87 +      const abandoned = request.current;                      
+       88 +      request.current = null;                                 
+       89 +      if (abandoned) {                                        
+       90 +        // Aborts only this browser request. The ingestion att
+          +empt and any paid provider job keep                           
+       91 +        // running server-side; nothing is cancelled and no ca
+          +ncel request exists.                                          
+       92 +        abandoned.abort();                                    
+       93 +        resyncScope.current = scope;                          
+       94 +        setPending(false);                                    
+       95 +      }                                                       
+       96 +      setSubmitting(false);                                   
+       97 +      setError(null);                                         
+       98 +      setStarted(false);                                      
+       99 +    };                                                        
+      100 +  }, [scope, setPending]);                                    
+      101 +                                                              
+      102    if (baseline === null) return null;
+      103 
+      104    const refreshing = summary?.state === "processing";
+
+⏺ Update(src/components/ingestion/ReingestReviews.tsx)
+  ⎿  Added 11 lines, removed 3 lines
+      116      !summary;
+      117 
+      118    async function refresh() {
+      119 -    if (inFlight.current) return;                             
+      120 -    inFlight.current = true;                                  
+      119 +    if (request.current) return;                              
+      120 +    const controller = new AbortController();                 
+      121 +    const requestGeneration = ++generation.current;           
+      122 +    const requestScope = scope;                               
+      123 +    request.current = controller;                             
+      124 +    const current = () =>                                     
+      125 +      !controller.signal.aborted &&                           
+      126 +      generation.current === requestGeneration &&             
+      127 +      activeScope.current === requestScope;                   
+      128      setSubmitting(true);
+      129      setPending(true);
+      130      setError(null);
+     ...
+      132      try {
+      133        const response = await fetch(
+      134          `/api/analysis-targets/${encodeURIComponent(targetId)}
+           /ingestion/reingest`,
+      128 -        { method: "POST", credentials: "same-origin", cache: "
+          -no-store" },                                                  
+      135 +        { method: "POST", credentials: "same-origin", cache: "
+          +no-store", signal: controller.signal },                       
+      136        );
+      137 +      if (!current()) return;                                 
+      138        if (response.status === 401) {
+      139          router.replace(`/login?next=${encodeURIComponent(`/ana
+           lysis-targets/${targetId}`)}`);
+      140          return;
+
+⏺ Update(src/components/ingestion/ReingestReviews.tsx)
+  ⎿  Added 1 line
+      144          return;
+      145        }
+      146        const result = await response.json().catch(() => null);
+      147 +      if (!current()) return;                                 
+      148        if (!response.ok || result?.success !== true || !isSumma
+           ry(result.data)) {
+      149          const code = typeof result?.error?.code === "string" ?
+            result.error.code : null;
+      150          setError(reingestErrorMessage(code ?? "REINGEST_START_
+           FAILED"));
+
+⏺ Update(src/components/ingestion/ReingestReviews.tsx)
+  ⎿  Added 8 lines, removed 3 lines
+      156        setStarted(true);
+      157        if (result.data.state !== "processing") router.refresh()
+           ;
+      158      } catch {
+      159 +      // An abort after leaving (AbortError) is not a failure:
+          + no banner for a stale request.                               
+      160 +      if (!current()) return;                                 
+      161        setError("We couldn't reach ReviewLens. Please try again
+           .");
+      162      } finally {
+      161 -      inFlight.current = false;                               
+      162 -      setSubmitting(false);                                   
+      163 -      setPending(false);                                      
+      163 +      // Cleanup already reset a stale request; never clear a 
+          +newer request's pending state.                                
+      164 +      if (request.current === controller) {                   
+      165 +        request.current = null;                               
+      166 +        setSubmitting(false);                                 
+      167 +        setPending(false);                                    
+      168 +      }                                                       
+      169      }
+      170    }
+      171 
+
+⏺ Now the service side of Fix B, a read of the latest attempt's recorded kind:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Bash(cat >> src/services/ingestion/ingestion-reingest.ts <<'EOF'…)
+  ⎿  Updated src/services/ingestion/ingestion-reingest.ts +51
+      142      return undefined;
+      143    }
+      144  }
+      145 +                                                              
+      146 +export type AttemptKind = "initial" | "reingest";             
+      147 +                                                              
+      148 +/**                                                           
+      149 + * The recorded attempt_kind of a FAILED latest attempt, so "T
+          +ry again" can retry a failed refresh                          
+      150 + * as a refresh (the create path would only return the earlier
+          + success). Reads the table through                            
+      151 + * the RLS session client in the same order as latest_ingestio
+          +n_attempts, whose `select *` columns                          
+      152 + * predate attempt_kind. null = not failed, unknown, or unread
+          +able: the existing retry path stays.                          
+      153 + */                                                           
+      154 +export async function loadLatestAttemptKind(                  
+      155 +  client: SupabaseClient,                                     
+      156 +  ownerId: string,                                            
+      157 +  targetId: string,                                           
+      158 +  latest: IngestionSummary | null,                            
+      159 +): Promise<AttemptKind | null> {                              
+      160 +  if (latest?.state !== "failed") return null;                
+      161 +  try {                                                       
+      162 +    const { data, error } = await client                      
+      163 +      .from("ingestion_attempts")                             
+      164 +      .select("analysis_target_id, owner_id, status, attempt_k
+          +ind")                                                         
+      165 +      .eq("owner_id", ownerId)                                
+      166 +      .eq("analysis_target_id", targetId)                     
+      167 +      .order("started_at", { ascending: false })              
+      168 +      .order("id", { ascending: false })                      
+      169 +      .limit(1)                                               
+      170 +      .maybeSingle<{                                          
+      171 +        analysis_target_id: string | null;                    
+      172 +        owner_id: string;                                     
+      173 +        status: string;                                       
+      174 +        attempt_kind: unknown;                                
+      175 +      }>();                                                   
+      176 +    if (error) throw new IngestionPersistenceError();         
+      177 +    // The row must be the same failed attempt the status came
+          + from; anything else is unknown.                              
+      178 +    if (                                                      
+      179 +      !data ||                                                
+      180 +      data.owner_id !== ownerId ||                            
+      181 +      data.analysis_target_id !== targetId ||                 
+     … +14 lines (ctrl+o to expand)
+
+⏺ Now the Ingestion panel: a retryAsReingest prop, retry routing, refresh-aware
+  error copy, and the replacement text.
+
+⏺ Update(src/components/ingestion/IngestionPanel.tsx)
+  ⎿  Added 1 line
+       8  import { ErrorAlert } from "@/components/shared/ErrorAlert";
+       9  import { IngestionStatus } from "./IngestionStatus";
+      10  import { ingestionErrorMessage, type IngestionSummary } from "@
+          /services/ingestion/ingestion-state";
+      11 +import { reingestErrorMessage } from "@/services/ingestion/inge
+         +stion-reingest-state";                                         
+      12 
+      13  const POLL_INTERVAL_MS = 5000;
+      14  const MAX_AUTOMATIC_RETRIES = 2;
+
+⏺ Update(src/components/ingestion/IngestionPanel.tsx)
+  ⎿  Added 3 lines
+      20    onSummary,
+      21    onPendingChange,
+      22    unavailableReason,
+      23 +  retryAsReingest = false,                                     
+      24  }: {
+      25    targetId: string;
+      26    targetName: string;
+     ...
+      28    onSummary: (summary: IngestionSummary) => void;
+      29    onPendingChange: (pending: boolean) => void;
+      30    unavailableReason: string | null;
+      31 +  /** S3-009: the failed latest attempt is a refresh (recorded 
+         +attempt_kind = 'reingest'). */                                 
+      32 +  retryAsReingest?: boolean;                                   
+      33  }) {
+      34    const router = useRouter();
+      35    const [pending, setPending] = useState(false);
+
+⏺ Update(src/components/ingestion/IngestionPanel.tsx)
+  ⎿  Added 10 lines, removed 1 line
+       88      onPendingChange(true);
+       89      setError(null);
+       90      const refreshing = !summary || summary.state === "processi
+           ng";
+       91 +    // S3-009: retrying a failed refresh starts a new refresh.
+          + The create path would only return                            
+       92 +    // the earlier successful attempt without collecting anyth
+          +ing.                                                          
+       93 +    const retryRefresh = !refreshing && summary.state === "fai
+          +led" && retryAsReingest;                                      
+       94      try {
+       95        const response = await fetch(
+       93 -        refreshing ? (summary ? `${endpoint}/refresh` : endpoi
+          -nt) : endpoint,                                               
+       96 +        retryRefresh                                          
+       97 +          ? `${endpoint}/reingest`                            
+       98 +          : refreshing                                        
+       99 +            ? summary                                         
+      100 +              ? `${endpoint}/refresh`                         
+      101 +              : endpoint                                      
+      102 +            : endpoint,                                       
+      103          { method: refreshing && !summary ? "GET" : "POST" },
+      104        );
+      105        if (response.status === 401) {
+
+⏺ Update(src/components/ingestion/IngestionPanel.tsx)
+  ⎿  Added 4 lines, removed 1 line
+      112        }
+      113        const result = await response.json();
+      114        if (!response.ok || result.success !== true || !isSummar
+           y(result.data)) {
+      115 -        setError(ingestionErrorMessage(result.error?.code));  
+      115 +        // Same messages as before for every existing code, pl
+          +us the S3-009 refresh codes.                                  
+      116 +        setError(reingestErrorMessage(result.error?.code));   
+      117 +        // A refresh started elsewhere (another tab): load it 
+          +so this panel shows and polls it.                             
+      118 +        if (result.error?.code === "REINGEST_IN_PROGRESS") rou
+          +ter.refresh();                                                
+      119          return;
+      120        }
+      121        onSummary(result.data);
+
+⏺ I'm writing a copy variant for each collection-availability state, plus a note
+  on what "Try again" does after a failed refresh, since the old sentence only
+  renders when summary.state === "succeeded". · summary
+
+⏺ Update(src/components/ingestion/IngestionPanel.tsx)
+  ⎿  Added 9 lines, removed 1 line
+      208        </Button>
+      209        {summary?.state === "succeeded" && (
+      210          <p className="max-w-prose text-sm text-muted-foregroun
+           d">
+      211 -          Reviews have already been ingested for this target. 
+          -Further collection is unavailable.                            
+      211 +          {unavailableReason                                  
+      212 +            ? "Reviews have been collected for this target. Co
+          +llecting newer reviews is unavailable right now; the reason is
+          + shown below."                                                
+      213 +            : "Reviews have been collected for this target. To
+          + collect newer reviews, use Refresh reviews. New reviews are m
+          +erged into this dataset and reviews already collected are kept
+          +."}                                                           
+      214          </p>
+      215        )}
+      216 +      {summary?.state === "failed" && retryAsReingest && !pend
+          +ing && (                                                      
+      217 +        <p className="max-w-prose text-sm text-muted-foregroun
+          +d">                                                           
+      218 +          This was a refresh of reviews already collected for 
+          +this target. They are unchanged and                           
+      219 +          still available. Try again starts a new refresh.    
+      220 +        </p>                                                  
+      221 +      )}                                                      
+      222        {unavailableReason && (
+      223          <p className="max-w-prose text-sm text-muted-foregroun
+           d">{unavailableReason}</p>
+      224        )}
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ One correction: on a billing hold, "Try again" is disabled, so the new line
+  mustn't promise a retry there.
+
+⏺ Update(src/components/ingestion/IngestionPanel.tsx)
+  ⎿  Added 5 lines, removed 1 line
+      216        {summary?.state === "failed" && retryAsReingest && !pend
+           ing && (
+      217          <p className="max-w-prose text-sm text-muted-foregroun
+           d">
+      218            This was a refresh of reviews already collected for
+           this target. They are unchanged and
+      219 -          still available. Try again starts a new refresh.    
+      219 +          still available.                                    
+      220 +          {summary.errorCode === "SUBMISSION_UNCERTAIN" ||    
+      221 +          summary.errorCode === "RESULT_WINDOW_EXPIRED"       
+      222 +            ? ""                                              
+      223 +            : " Try again starts a new refresh."}             
+      224          </p>
+      225        )}
+      226        {unavailableReason && (
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Passing the flag through WorkspaceIngestion, the panel's only user:
+
+⏺ Update(src/components/ingestion/WorkspaceIngestion.tsx)
+  ⎿  Added 3 lines
+      11    sourceUrl,
+      12    unavailableReason,
+      13    created = false,
+      14 +  retryAsReingest = false,                                     
+      15  }: {
+      16    targetId: string;
+      17    targetName: string;
+      18    sourceUrl: string;
+      19    unavailableReason: string | null;
+      20    created?: boolean;
+      21 +  /** S3-009: the failed latest attempt is a refresh, so "Try a
+         +gain" refreshes. */                                            
+      22 +  retryAsReingest?: boolean;                                   
+      23  }) {
+      24    const { summary, setSummary, pending, setPending } = useWorks
+          paceIngestion();
+      25    const canStart =
+
+⏺ Update(src/components/ingestion/WorkspaceIngestion.tsx)
+  ⎿  Added 1 line
+      61          onSummary={setSummary}
+      62          onPendingChange={setPending}
+      63          unavailableReason={unavailableReason}
+      64 +        retryAsReingest={retryAsReingest}                      
+      65        />
+      66      </>
+      67    );
+
+⏺ Now the workspace wiring: load the kind and pass retryAsReingest and userId.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Update(src/components/analysis-targets/ProtectedTargetWorkspace.tsx)
+  ⎿  Added 4 lines, removed 1 line
+      36  import { ingestionRecoveryConfigured } from "@/services/ingesti
+          on/ingestion-recovery";
+      37  import { ingestionErrorMessage, type IngestionSummary } from "@
+          /services/ingestion/ingestion-state";
+      38  import { ReingestReviews } from "@/components/ingestion/Reinges
+          tReviews";
+      39 -import { loadReingestBaseline } from "@/services/ingestion/inge
+         -stion-reingest";                                               
+      39 +import {                                                       
+      40 +  loadLatestAttemptKind,                                       
+      41 +  loadReingestBaseline,                                        
+      42 +} from "@/services/ingestion/ingestion-reingest";              
+      43 
+      44  export async function ProtectedTargetWorkspace({
+      45    params,
+
+⏺ Update(src/components/analysis-targets/ProtectedTargetWorkspace.tsx)
+  ⎿  Added 1 line
+      59    let reviewSummary: ReviewSummary | null = null;
+      60    let reviewSummaryUnavailable = false;
+      61    let reingestBaseline: Awaited<ReturnType<typeof loadReingestB
+          aseline>>;
+      62 +  let latestAttemptKind: Awaited<ReturnType<typeof loadLatestAt
+         +temptKind>> = null;                                            
+      63    try {
+      64      const client = await createSupabaseServerClient();
+      65      target = await getOwnedTargetOrThrow(client, targetId, user
+          .id);
+
+⏺ Update(src/components/analysis-targets/ProtectedTargetWorkspace.tsx)
+  ⎿  Added 1 line
+      81      }
+      82      // S3-009: the last successful dataset, which a running or 
+          failed refresh never replaces.
+      83      reingestBaseline = await loadReingestBaseline(client, user.
+          id, target.id, ingestion);
+      84 +    latestAttemptKind = await loadLatestAttemptKind(client, use
+         +r.id, target.id, ingestion);                                   
+      85      // Child data is never requested before the parent ownershi
+          p check succeeds.
+      86      const reviewStore = createSupabaseReviewStore(client);
+      87      try {
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Update(src/components/analysis-targets/ProtectedTargetWorkspace.tsx)
+  ⎿  Added 2 lines
+      215                targetName={target.name}
+      216                sourceUrl={target.sourceUrl}
+      217                unavailableReason={unavailableReason}
+      218 +              retryAsReingest={latestAttemptKind === "reingest
+          +"}                                                            
+      219              />
+      220              <ReingestReviews
+      221                key={`${target.id}:${ingestion?.state}:${ingesti
+           on?.finishedAt}`}
+      222 +              userId={user.id}                                
+      223                targetId={target.id}
+      224                targetName={target.name}
+      225                reviewCount={reviews?.length ?? null}
+
+⏺ Bash(npx prettier --write src/components/ingestion/IngestionPanel.tsx
+      src/components/ingestion/ReingestReviews.tsx
+      src/components/ingestion/WorkspaceIngestion.tsx sr…)
+  ⎿  Updated src/components/ingestion/ReingestReviews.tsx +6 -1
+      132      try {
+      133        const response = await fetch(
+      134          `/api/analysis-targets/${encodeURIComponent(targetId)}
+           /ingestion/reingest`,
+      135 -        { method: "POST", credentials: "same-origin", cache: "
+          -no-store", signal: controller.signal },                       
+      135 +        {                                                     
+      136 +          method: "POST",                                     
+      137 +          credentials: "same-origin",                         
+      138 +          cache: "no-store",                                  
+      139 +          signal: controller.signal,                          
+      140 +        },                                                    
+      141        );
+      142        if (!current()) return;
+      143        if (response.status === 401) {
+  ⎿  (timeout 5m)
+
+⏺ Source typechecks and lints clean. The one error is my test helper, which
+  needs the new userId prop. Reading the test file to extend it:
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ I'll update the helper to pass userId, include signal in the existing
+  fetch-call assertion (the call contract now carries the abort signal), then
+  append the stale-response suite:
+
+⏺ Bash(python3 - <<'EOF'
+      p = "tests/unit/components/ingestion/ReingestReviews.test.tsx"…)
+  ⎿  Updated tests/unit/components/ingestion/ReingestReviews.test.tsx +3 -1
+      1 -import { useEffect } from "react";                              
+      1 +import { Activity, useEffect } from "react";                    
+      2  import { act, fireEvent, render, screen, within } from "@testing
+         -library/react";
+      3  import { ReingestReviews } from "@/components/ingestion/Reingest
+         Reviews";
+      4  import {
+     ...
+      71      <WorkspaceIngestionProvider initialSummary={summary}>
+      72        <SummaryHandle />
+      73        <ReingestReviews
+      74 +        userId="user-a"                                        
+      75          targetId={TARGET_ID}
+      76          targetName={targetName}
+      77          reviewCount={reviewCount}
+     ...
+      133      method: "POST",
+      134      credentials: "same-origin",
+      135      cache: "no-store",
+      136 +    signal: expect.any(AbortSignal),                          
+      137    });
+      138    expect(within(card()).getByRole("button", { name: "Starting 
+           refresh…" })).toBeDisabled();
+      139 
+
+⏺ Bash(cat >> tests/unit/components/ingestion/ReingestReviews.test.tsx <<'EOF'…)
+  ⎿  Updated tests/unit/components/ingestion/ReingestReviews.test.tsx +172
+      321    expect(card()).not.toHaveTextContent("Current dataset:");
+      322    expect(card()).toHaveTextContent("It is the deduplicated uni
+           on");
+      323  });
+      324 +                                                              
+      325 +// -----------------------------------------------------------
+          +----------------------------------                            
+      326 +// PR #137 review: late responses must never act on a workspac
+          +e the user has left                                           
+      327 +// -----------------------------------------------------------
+          +----------------------------------                            
+      328 +const OTHER_TARGET_ID = "44444444-4444-4444-8444-444444444444"
+          +;                                                             
+      329 +                                                              
+      330 +function SharedState() {                                      
+      331 +  const { summary, pending } = useWorkspaceIngestion();       
+      332 +  return <output aria-label="Shared ingestion state">{`${summa
+          +ry?.state}|${pending}`}</output>;                             
+      333 +}                                                             
+      334 +                                                              
+      335 +function workspace({                                          
+      336 +  mode = "visible" as "visible" | "hidden",                   
+      337 +  userId = "user-a",                                          
+      338 +  targetId = TARGET_ID,                                       
+      339 +} = {}) {                                                     
+      340 +  return (                                                    
+      341 +    <WorkspaceIngestionProvider initialSummary={succeeded}>   
+      342 +      <SharedState />                                         
+      343 +      <Activity mode={mode}>                                  
+      344 +        <ReingestReviews                                      
+      345 +          userId={userId}                                     
+      346 +          targetId={targetId}                                 
+      347 +          targetName="Bakery"                                 
+      348 +          reviewCount={3}                                     
+      349 +          baseline={baseline}                                 
+      350 +          unavailableReason={null}                            
+      351 +        />                                                    
+      352 +      </Activity>                                             
+      353 +    </WorkspaceIngestionProvider>                             
+      354 +  );                                                          
+      355 +}                                                             
+      356 +                                                              
+      357 +type PendingFetch = { url: string; resolve: (response: Respons
+          +e) => void; signal: AbortSignal };                            
+      358 +/** Each call stays pending until the test resolves it; option
+          +ally rejects like a browser abort. */                         
+      359 +function deferredFetch({ rejectOnAbort = false } = {}) {      
+      360 +  const calls: PendingFetch[] = [];                           
+     … +135 lines (ctrl+o to expand)
+
+⏺ 47 pass: the original 23 plus 24 stale-response cases. Now the Ingestion panel
+  tests. First the existing assertion on the old string, line 110:
+
+⏺ Update(tests/unit/components/analysis-targets/IngestionPanel.test.tsx)
+  ⎿  Added 7 lines, removed 1 line
+      107    expect(button).toBeDisabled();
+      108    fireEvent.click(button);
+      109    expect(fetchMock).not.toHaveBeenCalled();
+      110 -  expect(screen.getByText(/Further collection is unavailable/)
+          -).toBeInTheDocument();                                        
+      110 +  // S3-009: collection after a success happens through Refres
+          +h reviews, never this button.                                 
+      111 +  expect(                                                     
+      112 +    screen.getByText(                                         
+      113 +      "Reviews have been collected for this target. To collect
+          + newer reviews, use Refresh reviews. New reviews are merged in
+          +to this dataset and reviews already collected are kept.",     
+      114 +    ),                                                        
+      115 +  ).toBeInTheDocument();                                      
+      116 +  expect(screen.queryByText(/Further collection is unavailable
+          +/)).not.toBeInTheDocument();                                  
+      117  });
+      118  it("distinguishes partial ingestion using persisted skipped co
+           unts without enabling collection", () => {
+      119    render(workspace({ ...succeeded, skippedCount: 2 }));
+
+  Read 1 file (ctrl+o to expand)
+
+⏺ Appending the panel tests for retry routing, its safe errors, and each copy
+  variant:
+
+  No result recorded for 1 call (ctrl+o to expand)
+  ⎿  $ cat >> tests/unit/components/analysis-targets/IngestionPanel.test.tsx <<'EOF'
+     // S3-009 / PR #137 review: retrying a failed refresh must start a new refresh.…
+  ⎿  Interrupted · What should Claude do instead?

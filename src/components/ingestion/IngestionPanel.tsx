@@ -8,6 +8,7 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { IngestionStatus } from "./IngestionStatus";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
+import { reingestErrorMessage } from "@/services/ingestion/ingestion-reingest-state";
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_AUTOMATIC_RETRIES = 2;
@@ -19,6 +20,7 @@ export function IngestionPanel({
   onSummary,
   onPendingChange,
   unavailableReason,
+  retryAsReingest = false,
 }: {
   targetId: string;
   targetName: string;
@@ -26,6 +28,8 @@ export function IngestionPanel({
   onSummary: (summary: IngestionSummary) => void;
   onPendingChange: (pending: boolean) => void;
   unavailableReason: string | null;
+  /** S3-009: the failed latest attempt is a refresh (recorded attempt_kind = 'reingest'). */
+  retryAsReingest?: boolean;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -84,9 +88,18 @@ export function IngestionPanel({
     onPendingChange(true);
     setError(null);
     const refreshing = !summary || summary.state === "processing";
+    // S3-009: retrying a failed refresh starts a new refresh. The create path would only return
+    // the earlier successful attempt without collecting anything.
+    const retryRefresh = !refreshing && summary.state === "failed" && retryAsReingest;
     try {
       const response = await fetch(
-        refreshing ? (summary ? `${endpoint}/refresh` : endpoint) : endpoint,
+        retryRefresh
+          ? `${endpoint}/reingest`
+          : refreshing
+            ? summary
+              ? `${endpoint}/refresh`
+              : endpoint
+            : endpoint,
         { method: refreshing && !summary ? "GET" : "POST" },
       );
       if (response.status === 401) {
@@ -99,7 +112,10 @@ export function IngestionPanel({
       }
       const result = await response.json();
       if (!response.ok || result.success !== true || !isSummary(result.data)) {
-        setError(ingestionErrorMessage(result.error?.code));
+        // Same messages as before for every existing code, plus the S3-009 refresh codes.
+        setError(reingestErrorMessage(result.error?.code));
+        // A refresh started elsewhere (another tab): load it so this panel shows and polls it.
+        if (result.error?.code === "REINGEST_IN_PROGRESS") router.refresh();
         return;
       }
       onSummary(result.data);
@@ -192,7 +208,19 @@ export function IngestionPanel({
       </Button>
       {summary?.state === "succeeded" && (
         <p className="max-w-prose text-sm text-muted-foreground">
-          Reviews have already been ingested for this target. Further collection is unavailable.
+          {unavailableReason
+            ? "Reviews have been collected for this target. Collecting newer reviews is unavailable right now; the reason is shown below."
+            : "Reviews have been collected for this target. To collect newer reviews, use Refresh reviews. New reviews are merged into this dataset and reviews already collected are kept."}
+        </p>
+      )}
+      {summary?.state === "failed" && retryAsReingest && !pending && (
+        <p className="max-w-prose text-sm text-muted-foreground">
+          This was a refresh of reviews already collected for this target. They are unchanged and
+          still available.
+          {summary.errorCode === "SUBMISSION_UNCERTAIN" ||
+          summary.errorCode === "RESULT_WINDOW_EXPIRED"
+            ? ""
+            : " Try again starts a new refresh."}
         </p>
       )}
       {unavailableReason && (

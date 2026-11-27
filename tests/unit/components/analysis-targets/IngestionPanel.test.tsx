@@ -5,6 +5,7 @@ import {
 } from "@/components/ingestion/WorkspaceIngestionState";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { NO_INGESTION, type IngestionSummary } from "@/services/ingestion/ingestion-state";
+import { reingestErrorMessage } from "@/services/ingestion/ingestion-reingest-state";
 const fetchMock = jest.fn();
 const router = { replace: jest.fn(), refresh: jest.fn() };
 jest.mock("next/navigation", () => ({ useRouter: () => router }));
@@ -107,7 +108,13 @@ it("blocks another submission after success and explains why", async () => {
   expect(button).toBeDisabled();
   fireEvent.click(button);
   expect(fetchMock).not.toHaveBeenCalled();
-  expect(screen.getByText(/Further collection is unavailable/)).toBeInTheDocument();
+  // S3-009: collection after a success happens through Refresh reviews, never this button.
+  expect(
+    screen.getByText(
+      "Reviews have been collected for this target. To collect newer reviews, use Refresh reviews. New reviews are merged into this dataset and reviews already collected are kept.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Further collection is unavailable/)).not.toBeInTheDocument();
 });
 it("distinguishes partial ingestion using persisted skipped counts without enabling collection", () => {
   render(workspace({ ...succeeded, skippedCount: 2 }));
@@ -269,3 +276,117 @@ it.each(["PROVIDER_TIMEOUT", "PROVIDER_QUOTA", "PROVIDER_UNAVAILABLE"])(
     expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
   },
 );
+
+// S3-009 / PR #137 review: retrying a failed refresh must start a new refresh.
+const failedRefresh = {
+  ...NO_INGESTION,
+  state: "failed" as const,
+  errorCode: "NO_REVIEWS",
+  startedAt: "2026-11-27T09:00:00Z",
+  finishedAt: "2026-11-27T09:01:00Z",
+};
+function refreshWorkspace(
+  summary: IngestionSummary,
+  retryAsReingest: boolean,
+  reason: string | null = null,
+) {
+  return (
+    <WorkspaceIngestionProvider initialSummary={summary}>
+      <WorkspaceIngestion
+        targetId="target-a"
+        targetName="Bakery"
+        sourceUrl="https://www.google.com/maps/place/Synthetic"
+        unavailableReason={reason}
+        retryAsReingest={retryAsReingest}
+      />
+    </WorkspaceIngestionProvider>
+  );
+}
+function conflict(code: string, status: number) {
+  return {
+    ok: false,
+    status,
+    json: async () => ({ success: false, error: { code, message: "private detail" } }),
+  };
+}
+
+it("retries a failed refresh through the refresh endpoint, once", async () => {
+  let finish!: (value: unknown) => void;
+  fetchMock.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+  render(refreshWorkspace(failedRefresh, true));
+  const button = screen.getByRole("button", { name: "Try again" });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledWith("/api/analysis-targets/target-a/ingestion/reingest", {
+    method: "POST",
+  });
+  finish(response({ ...processing, startedAt: "2026-11-27T10:00:00Z" }, 202));
+  await screen.findByText("Collecting reviews for Bakery from Google Maps…");
+  expect(router.refresh).not.toHaveBeenCalled();
+});
+
+it("keeps retrying a failed first collection through the original start path", async () => {
+  fetchMock.mockResolvedValue(response(processing, 202));
+  render(refreshWorkspace(failedRefresh, false));
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await screen.findByText("Collecting reviews for Bakery from Google Maps…");
+  expect(fetchMock).toHaveBeenCalledWith("/api/analysis-targets/target-a/ingestion", {
+    method: "POST",
+  });
+  expect(fetchMock).not.toHaveBeenCalledWith(
+    "/api/analysis-targets/target-a/ingestion/reingest",
+    expect.anything(),
+  );
+  expect(
+    screen.queryByText(/This was a refresh of reviews already collected/),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  ["REINGEST_IN_PROGRESS", 409, true],
+  ["INGESTION_START_LIMIT", 429, false],
+])("shows safe copy when a refresh retry returns %s", async (code, status, reloads) => {
+  fetchMock.mockResolvedValue(conflict(code, status));
+  render(refreshWorkspace(failedRefresh, true));
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await waitFor(() =>
+    expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toContain(
+      reingestErrorMessage(code),
+    ),
+  );
+  expect(document.body).not.toHaveTextContent("private detail");
+  expect(router.refresh).toHaveBeenCalledTimes(reloads ? 1 : 0);
+});
+
+it("explains that a failed refresh left the collected reviews in place", () => {
+  render(refreshWorkspace(failedRefresh, true));
+  expect(
+    screen.getByText(
+      "This was a refresh of reviews already collected for this target. They are unchanged and still available. Try again starts a new refresh.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+});
+
+it("does not promise a retry for a refresh held for reconciliation", () => {
+  render(refreshWorkspace({ ...failedRefresh, errorCode: "SUBMISSION_UNCERTAIN" }, true));
+  expect(
+    screen.getByText(
+      "This was a refresh of reviews already collected for this target. They are unchanged and still available.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Try again starts a new refresh/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Try again" })).toBeDisabled();
+});
+
+it("says why newer reviews can't be collected while collection is unavailable", () => {
+  render(refreshWorkspace(succeeded, false, "Storage permission is pending."));
+  expect(
+    screen.getByText(
+      "Reviews have been collected for this target. Collecting newer reviews is unavailable right now; the reason is shown below.",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Storage permission is pending.")).toBeInTheDocument();
+  expect(screen.queryByText(/Further collection is unavailable/)).not.toBeInTheDocument();
+});

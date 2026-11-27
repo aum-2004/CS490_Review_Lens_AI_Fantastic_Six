@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -39,12 +39,14 @@ function reviewsLabel(count: number) {
  * baseline: the last successful attempt; null = nothing collected yet; undefined = couldn't load.
  */
 export function ReingestReviews({
+  userId,
   targetId,
   targetName,
   reviewCount,
   baseline,
   unavailableReason,
 }: {
+  userId: string;
   targetId: string;
   targetName: string;
   reviewCount: number | null;
@@ -56,9 +58,47 @@ export function ReingestReviews({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
-  const inFlight = useRef(false);
   const headingId = useId();
   const helpId = useId();
+
+  // A response can arrive after the user left this workspace (unmount or Activity hide) or after
+  // the target or account changed. Only the newest request of the current, visible scope may
+  // navigate, update shared state, or clear its own pending state.
+  const scope = `${userId}:${targetId}`;
+  const request = useRef<AbortController | null>(null);
+  const generation = useRef(0);
+  const activeScope = useRef<string | null>(null);
+  const resyncScope = useRef<string | null>(null);
+  const routerRef = useRef(router);
+  useLayoutEffect(() => {
+    routerRef.current = router;
+  });
+  useLayoutEffect(() => {
+    activeScope.current = scope;
+    if (resyncScope.current === scope) {
+      // A request was abandoned while hidden; the server may have started the run anyway.
+      // Reload the persisted status (the Ingestion panel then polls a running attempt).
+      resyncScope.current = null;
+      routerRef.current.refresh();
+    }
+    return () => {
+      generation.current += 1;
+      activeScope.current = null;
+      const abandoned = request.current;
+      request.current = null;
+      if (abandoned) {
+        // Aborts only this browser request. The ingestion attempt and any paid provider job keep
+        // running server-side; nothing is cancelled and no cancel request exists.
+        abandoned.abort();
+        resyncScope.current = scope;
+        setPending(false);
+      }
+      setSubmitting(false);
+      setError(null);
+      setStarted(false);
+    };
+  }, [scope, setPending]);
+
   if (baseline === null) return null;
 
   const refreshing = summary?.state === "processing";
@@ -76,8 +116,15 @@ export function ReingestReviews({
     !summary;
 
   async function refresh() {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    if (request.current) return;
+    const controller = new AbortController();
+    const requestGeneration = ++generation.current;
+    const requestScope = scope;
+    request.current = controller;
+    const current = () =>
+      !controller.signal.aborted &&
+      generation.current === requestGeneration &&
+      activeScope.current === requestScope;
     setSubmitting(true);
     setPending(true);
     setError(null);
@@ -85,8 +132,14 @@ export function ReingestReviews({
     try {
       const response = await fetch(
         `/api/analysis-targets/${encodeURIComponent(targetId)}/ingestion/reingest`,
-        { method: "POST", credentials: "same-origin", cache: "no-store" },
+        {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+          signal: controller.signal,
+        },
       );
+      if (!current()) return;
       if (response.status === 401) {
         router.replace(`/login?next=${encodeURIComponent(`/analysis-targets/${targetId}`)}`);
         return;
@@ -96,6 +149,7 @@ export function ReingestReviews({
         return;
       }
       const result = await response.json().catch(() => null);
+      if (!current()) return;
       if (!response.ok || result?.success !== true || !isSummary(result.data)) {
         const code = typeof result?.error?.code === "string" ? result.error.code : null;
         setError(reingestErrorMessage(code ?? "REINGEST_START_FAILED"));
@@ -107,11 +161,16 @@ export function ReingestReviews({
       setStarted(true);
       if (result.data.state !== "processing") router.refresh();
     } catch {
+      // An abort after leaving (AbortError) is not a failure: no banner for a stale request.
+      if (!current()) return;
       setError("We couldn't reach ReviewLens. Please try again.");
     } finally {
-      inFlight.current = false;
-      setSubmitting(false);
-      setPending(false);
+      // Cleanup already reset a stale request; never clear a newer request's pending state.
+      if (request.current === controller) {
+        request.current = null;
+        setSubmitting(false);
+        setPending(false);
+      }
     }
   }
 
