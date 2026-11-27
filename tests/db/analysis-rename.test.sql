@@ -35,7 +35,7 @@ begin
     raise exception 'overlong name accepted';
   exception when check_violation then null; end;
   -- Direct Supabase Data API writes must not bypass the application's name rules.
-  foreach invalid_name in array array[E'line\nbreak', chr(133), chr(8203), chr(8204) || chr(8205), chr(160), chr(65279), 'visible' || chr(8238), chr(917505), chr(113824)] loop
+  foreach invalid_name in array array[E'line\nbreak', chr(133), chr(8203), chr(8204) || chr(8205), chr(160), chr(65279), 'visible' || chr(8238), chr(917505), chr(113824), chr(847), chr(65039), ' ' || chr(847) || chr(65039) || chr(8205), chr(917760), chr(4447) || chr(4448), chr(12644) || chr(65440), chr(6155)] loop
     begin
       update public.analysis_targets set name = invalid_name where id = 'a3000000-0000-4000-8000-000000000003';
       raise exception 'direct owner update accepted an unusable name';
@@ -49,7 +49,7 @@ begin
       exception when insufficient_privilege or check_violation then null; end;
     end if;
   end loop;
-  foreach valid_name in array array['Melissa''s café', '東京のカフェ', 'Family ' || chr(128105) || chr(8205) || chr(128103), 'Cafe ' || chr(8204) || ' name', repeat(chr(128512), 120)] loop
+  foreach valid_name in array array['Melissa''s café', '東京のカフェ', 'Family ' || chr(128105) || chr(8205) || chr(128103), 'Cafe ' || chr(8204) || ' name', repeat(chr(128512), 120), 'Cafe' || chr(769), chr(10084) || chr(65039), chr(2325) || chr(2367), chr(19968) || chr(917760)] loop
     update public.analysis_targets set name = valid_name where id = 'a3000000-0000-4000-8000-000000000003';
     assert (select name from public.analysis_targets where id = 'a3000000-0000-4000-8000-000000000003') = valid_name, 'usable Unicode name was rejected';
   end loop;

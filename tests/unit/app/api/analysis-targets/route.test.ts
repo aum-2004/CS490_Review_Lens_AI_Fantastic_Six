@@ -183,6 +183,24 @@ describe("validation", () => {
   });
 });
 
+it.each(["\u034f", "\ufe0f", " \u034f\ufe0f\u200d ", "\u{e0100}"])(
+  "rejects invisible-only creation name %p without persistence",
+  async (name) => {
+    jest.mocked(getAuthenticatedUser).mockResolvedValue(USER_A);
+    const { insert } = useDatabase();
+    const response = await post({ ...validBody, name });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "INVALID_ANALYSIS_TARGET_INPUT",
+        issues: [{ field: "name", code: "TARGET_NAME_REQUIRED" }],
+      },
+    });
+    expect(insert).not.toHaveBeenCalled();
+    expect(createSupabaseServerClient).not.toHaveBeenCalled();
+  },
+);
+
 describe("persistence failures", () => {
   beforeEach(() => {
     jest.mocked(getAuthenticatedUser).mockResolvedValue(USER_A);

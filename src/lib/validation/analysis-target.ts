@@ -85,7 +85,10 @@ function normalizeTargetName(value: string): string {
 }
 
 function hasMeaningfulTargetName(value: string): boolean {
-  return value.replace(/\p{Cf}/gu, "").trim().length > 0;
+  // Some invisible characters (CGJ, variation selectors, Hangul fillers) are
+  // marks or letters, not Cf. Ignore them only for the content check: selectors
+  // and joiners must remain intact within visible multilingual/emoji names.
+  return value.replace(/[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, "").trim().length > 0;
 }
 
 function hasUnsafeControlCharacters(value: string): boolean {

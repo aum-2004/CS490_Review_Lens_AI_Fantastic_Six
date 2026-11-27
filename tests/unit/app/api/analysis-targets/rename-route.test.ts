@@ -97,6 +97,10 @@ test.each([
   { name: "" },
   { name: "  " },
   { name: "\u200B\u200D" },
+  { name: "\u034f" },
+  { name: "\ufe0f" },
+  { name: " \u034f\ufe0f\u200d " },
+  { name: "\u{e0100}" },
   { name: 5 },
   { name: "x".repeat(121) },
   { name: "bad\u0000name" },
@@ -109,6 +113,16 @@ test.each([
   expect((await patch(body)).status).toBe(400);
   expect(createSupabaseServerClient).not.toHaveBeenCalled();
 });
+
+test.each(["Cafe\u0301", "\u2764\ufe0f", "\u0915\u093f", "\u4e00\u{e0100}"])(
+  "preserves usable Unicode name %s",
+  async (name) => {
+    const db = database();
+    const response = await patch({ name });
+    expect(response.status).toBe(200);
+    expect(db.row.name).toBe(name);
+  },
+);
 test("another user cannot rename even with a forged owner in the body", async () => {
   const db = database();
   jest

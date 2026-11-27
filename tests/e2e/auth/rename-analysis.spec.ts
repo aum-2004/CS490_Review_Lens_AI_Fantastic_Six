@@ -54,6 +54,15 @@ test("renames on mobile and desktop, persists after reload, and preserves source
     page.getByRole("form", { name: "Rename analysis" }).getByRole("alert"),
   ).toContainText("Enter a name for this target.");
   await expect(page.getByLabel("Analysis name *")).toBeFocused();
+  for (const invisible of ["\u034f", "\ufe0f", " \u034f\ufe0f\u200d "]) {
+    await page.getByLabel("Analysis name *").fill(invisible);
+    await page.getByRole("button", { name: "Save name" }).click();
+    await expect(
+      page.getByRole("form", { name: "Rename analysis" }).getByRole("alert"),
+    ).toContainText("Enter a name for this target.");
+    await expect(page.getByLabel("Analysis name *")).toBeFocused();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
+  }
   await page.getByLabel("Analysis name *").fill("x".repeat(121));
   await expect(
     page.getByRole("form", { name: "Rename analysis" }).getByRole("alert"),
@@ -66,7 +75,7 @@ test("renames on mobile and desktop, persists after reload, and preserves source
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
   await page.getByRole("button", { name: "Rename analysis" }).click();
-  const newName = "Melissa's cafe'); DROP TABLE reviews;--";
+  const newName = "Melissa's café \u2764\ufe0f'); DROP TABLE reviews;--";
   await page.getByLabel("Analysis name *").fill(`  ${newName}  `);
   await page.getByRole("button", { name: "Save name" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(newName);

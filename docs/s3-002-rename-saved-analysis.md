@@ -89,3 +89,40 @@ passed the expanded ingestion and Q&A quota snapshot assertions.
 No push, shared database migration, deployment, or CI run was performed.
 
 AI session: [melissa / Codex](../ai-transcripts/2026-11-25_melissa_S3-002_codex.md).
+
+## PR #132 reviewer follow-up — 2026-11-27
+
+The reviewer reproduced visually blank names containing U+034F (CGJ) and U+FE0F
+(variation selector). Both are default-ignorable characters outside the `Cf`
+category, so the old validator and database policy accepted them. New regressions
+reproduced HTTP 200 from the rename API and a successful direct owner update.
+
+The shared creation/rename validator now excludes Unicode
+`Default_Ignorable_Code_Point`, `Cf`, and whitespace from its meaningful-content
+test. This does not remove selectors or marks from a valid saved name. Positive
+tests preserve decomposed accents, Devanagari, CJK variation sequences, emoji
+presentation selectors, and existing ZWJ/ZWNJ names.
+
+Apply `supabase/migrations/20261127000000_reject_invisible_only_analysis_names.sql`
+after both preceding rename migrations. It updates only the rename RLS policy,
+keeping ownership and unsafe-character checks while adding the equivalent content
+test through explicit Unicode 17.0 ranges. Earlier applied migrations remain
+unchanged; no existing rows are rewritten. This migration has not been applied
+to shared Supabase by the agent.
+
+Regressions cover the reported characters, whitespace/joiner mixtures,
+supplementary variation selectors, Hangul fillers, and Mongolian selectors in
+validation and direct authenticated database updates. Creation and rename APIs
+reject unusable names before persistence. The browser test also verifies inline
+rejection and saves a visible accented/emoji name without changing its selectors.
+
+CI checks are run locally. Hosted CI for the changed code requires a push; the
+no-push instruction remains in force. No hosted-CI success is claimed.
+
+Review transcript: [melissa / Codex](../ai-transcripts/2026-11-27_melissa_S3-002_review_codex.md).
+
+Final local results: **115 unit suites / 2,119 tests**, **9 production browser
+tests**, and the full PostgreSQL security/concurrency suite passed. Lint,
+typecheck, formatting, production build, and migration-version checks passed.
+Changed-line coverage passed at **100% (416/416)** against local `origin/main`,
+and **100% (4/4)** for the reviewer fix against starting HEAD `de2ecd6`.
