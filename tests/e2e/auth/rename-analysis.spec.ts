@@ -23,6 +23,7 @@ test("renames on mobile and desktop, persists after reload, and preserves source
           targetId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
           outcome: "answered",
           answer: "Saved coffee answer.",
+          citedReviewIds: ["cccccccc-cccc-4ccc-8ccc-ccccccccccc1"],
         },
       },
     }),

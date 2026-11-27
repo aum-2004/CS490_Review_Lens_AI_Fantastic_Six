@@ -9,7 +9,12 @@ beforeEach(() => {
 afterAll(() => {
   global.fetch = originalFetch;
 });
-const data = { targetId: "target-a", outcome: "answered", answer: "Customers praise the service." };
+const data = {
+  targetId: "target-a",
+  outcome: "answered",
+  answer: "Customers praise the service.",
+  citedReviewIds: ["a1a1a1a1-0000-4000-8000-000000000001"],
+};
 const signal = () => new AbortController().signal;
 function respond(status: number, payload: unknown) {
   mockFetch.mockResolvedValue({
@@ -24,7 +29,7 @@ it("posts only the question to the selected target without caching", async () =>
   const abortSignal = signal();
   await expect(
     askReviewQuestion("target-a", "What do customers like?", abortSignal),
-  ).resolves.toEqual({ ...data, citedReviewIds: [] });
+  ).resolves.toEqual(data);
   expect(mockFetch).toHaveBeenCalledWith("/api/analysis-targets/target-a/questions", {
     method: "POST",
     credentials: "same-origin",
@@ -92,7 +97,7 @@ it("gives an actionable timeout message", async () => {
 });
 
 it.each(["insufficient_evidence", "out_of_scope"])("accepts the %s outcome", async (outcome) => {
-  respond(200, { success: true, data: { ...data, outcome } });
+  respond(200, { success: true, data: { ...data, outcome, citedReviewIds: [] } });
   await expect(askReviewQuestion("target-a", "Question", signal())).resolves.toMatchObject({
     outcome,
   });
