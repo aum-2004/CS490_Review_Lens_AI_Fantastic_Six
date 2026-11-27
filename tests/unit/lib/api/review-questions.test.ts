@@ -110,7 +110,7 @@ it.each([
   ["REQUEST_TOO_LARGE", "Try a shorter question"],
   ["QA_REQUEST_TOO_LARGE", "Try a shorter question"],
   ["QA_DISABLED", "temporarily unavailable"],
-  ["QA_DAILY_LIMIT", "limit of five questions in 24 hours"],
+  ["QA_DAILY_LIMIT", "limit of 30 questions in 24 hours"],
   ["QA_QUOTA_UNAVAILABLE", "Question limits are temporarily unavailable"],
   ["MODEL_TIMEOUT", "took too long"],
   ["MODEL_RATE_LIMITED", "Too many questions"],

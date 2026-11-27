@@ -41,6 +41,11 @@ limited in the database to five reservations per owner per rolling 24 hours
 Provider results have a streamed 2 MiB limit and completion accepts at most 30
 reviews with bounded fields/metadata, independently checked by the completion RPC.
 `503 INGESTION_RESULT_LIMIT` retains an accepted job/hold without partial insertion.
+
+Review Q&A uses a separate account-wide rolling quota of 30 durable attempts per
+24 hours across all targets. Failed answer-service attempts remain charged. Deploy
+`20261125000000_increase_review_question_quota.sql` with the compatible application
+release as described in `docs/s3-qa-quota-30.md`.
 Browser users cannot DELETE analysis_targets through the Data API; there is no
 target deletion route. This preserves billing holds and the recovery audit.
 

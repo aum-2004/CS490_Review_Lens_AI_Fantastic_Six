@@ -8,6 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/services/auth/auth-service";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
+import { MAX_QUESTIONS_PER_24_HOURS } from "@/services/qa/question-quota";
 import * as qaRequest from "@/services/qa/qa-request";
 
 import { claimFrom, claimReply } from "../../../helpers/qa-harness/grounded-reply";
@@ -90,12 +91,12 @@ function setup() {
               { status: 404 },
             );
           const used = reservations.get(caller) ?? 0;
-          if (used >= 5)
+          if (used >= MAX_QUESTIONS_PER_24_HOURS)
             return new Response(JSON.stringify({ code: "P0001", message: "QA_DAILY_LIMIT" }), {
               status: 400,
             });
           reservations.set(caller, used + 1);
-          return new Response(JSON.stringify(4 - used));
+          return new Response(JSON.stringify(MAX_QUESTIONS_PER_24_HOURS - 1 - used));
         }
         if (failReviews && url.pathname.endsWith("/reviews"))
           return new Response(JSON.stringify({ message: "PRIVATE_DB_DIAGNOSTIC" }), {
@@ -596,17 +597,18 @@ describe("production questions route with actual context, orchestration and prov
 
   it("caps one account across targets before either provider endpoint can run", async () => {
     const { outgoing, countRequests } = fixture();
-    for (let i = 0; i < 5; i++) expect((await post(i % 2 ? B : A)).status).toBe(200);
+    for (let i = 0; i < MAX_QUESTIONS_PER_24_HOURS; i++)
+      expect((await post(i % 2 ? B : A)).status).toBe(200);
     const denied = await post(B);
     expect(denied.status).toBe(429);
     expect(denied.headers.get("cache-control")).toBe("private, no-store");
     expect(denied.headers.get("retry-after")).toBe("86400");
     expect(await denied.json()).toMatchObject({ error: { code: "QA_DAILY_LIMIT" } });
-    expect(countRequests).toHaveLength(5);
-    expect(outgoing).toHaveLength(5);
+    expect(countRequests).toHaveLength(MAX_QUESTIONS_PER_24_HOURS);
+    expect(outgoing).toHaveLength(MAX_QUESTIONS_PER_24_HOURS);
     jest.mocked(getAuthenticatedUser).mockResolvedValue({ id: OTHER, email: null });
     expect((await post(C)).status).toBe(200);
-    expect(outgoing).toHaveLength(6);
+    expect(outgoing).toHaveLength(MAX_QUESTIONS_PER_24_HOURS + 1);
   });
 
   it("makes no counting or generation request when quota storage is unavailable", async () => {
@@ -626,9 +628,9 @@ describe("production questions route with actual context, orchestration and prov
       const { fetcher, generationFetcher } = fixture();
       const failedStage = stage === "counting" ? fetcher : generationFetcher;
       failedStage.mockRejectedValue(new Error("PRIVATE_PROVIDER_DIAGNOSTIC"));
-      for (let i = 0; i < 5; i++) expect((await post(A)).status).toBe(503);
+      for (let i = 0; i < MAX_QUESTIONS_PER_24_HOURS; i++) expect((await post(A)).status).toBe(503);
       expect((await post(A)).status).toBe(429);
-      expect(failedStage).toHaveBeenCalledTimes(5);
+      expect(failedStage).toHaveBeenCalledTimes(MAX_QUESTIONS_PER_24_HOURS);
     },
   );
 });
