@@ -35,6 +35,8 @@ import {
 import { ingestionEnabled, ingestionStorageApproved } from "@/services/ingestion/ingestion-runtime";
 import { ingestionRecoveryConfigured } from "@/services/ingestion/ingestion-recovery";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
+import { ReingestReviews } from "@/components/ingestion/ReingestReviews";
+import { loadReingestBaseline } from "@/services/ingestion/ingestion-reingest";
 
 export async function ProtectedTargetWorkspace({
   params,
@@ -53,6 +55,7 @@ export async function ProtectedTargetWorkspace({
   let targets: AnalysisTargetListItem[] | null = null;
   let reviewSummary: ReviewSummary | null = null;
   let reviewSummaryUnavailable = false;
+  let reingestBaseline: Awaited<ReturnType<typeof loadReingestBaseline>>;
   try {
     const client = await createSupabaseServerClient();
     target = await getOwnedTargetOrThrow(client, targetId, user.id);
@@ -72,6 +75,8 @@ export async function ProtectedTargetWorkspace({
         category: "LOAD_FAILED",
       });
     }
+    // S3-009: the last successful dataset, which a running or failed refresh never replaces.
+    reingestBaseline = await loadReingestBaseline(client, user.id, target.id, ingestion);
     // Child data is never requested before the parent ownership check succeeds.
     const reviewStore = createSupabaseReviewStore(client);
     try {
@@ -204,6 +209,14 @@ export async function ProtectedTargetWorkspace({
               created={!!created}
               targetName={target.name}
               sourceUrl={target.sourceUrl}
+              unavailableReason={unavailableReason}
+            />
+            <ReingestReviews
+              key={`${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
+              targetId={target.id}
+              targetName={target.name}
+              reviewCount={reviews?.length ?? null}
+              baseline={reingestBaseline}
               unavailableReason={unavailableReason}
             />
           </div>
