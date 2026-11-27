@@ -72,11 +72,27 @@ end
 $$;
 \echo 'ok - reviews of one target do not appear under another target of the same user'
 
-select * from public.insert_reviews(
-  '77777777-7777-4777-8777-777777777771',
-  '[{"review_text":"Same source review again","rating":5,"source_review_id":"src-1"}]'
-);
-\echo 'ok - duplicate source_review_id values are allowed in Sprint 1'
+-- S3-011 intentionally replaced the Sprint 1 rule that stored duplicate source ids as-is: a
+-- repeated source id refreshes the stored review in place (S3-010).
+do $$
+declare
+  original public.reviews;
+  refreshed public.reviews;
+begin
+  select * into strict original from public.reviews where source_review_id = 'src-1';
+  select * into strict refreshed from public.insert_reviews(
+    '77777777-7777-4777-8777-777777777771',
+    '[{"review_text":"Same source review again","rating":5,"source_review_id":"src-1"}]'
+  );
+  assert refreshed.id = original.id and refreshed.created_at = original.created_at,
+    'a repeated source_review_id created a new review';
+  assert refreshed.review_text = 'Same source review again' and refreshed.rating = 5,
+    'a repeated source_review_id did not refresh the stored review';
+  assert refreshed.reviewer_name = 'Sam' and refreshed.review_url = 'https://maps.google.com/review/1',
+    'a repeated source_review_id erased fields it did not provide';
+end
+$$;
+\echo 'ok - a repeated source_review_id refreshes the stored review instead of adding one'
 
 -- ---------------------------------------------------------------------------------------------
 -- Cross-user isolation: User B against User A's target (S1-BR-008)
@@ -139,7 +155,7 @@ begin
   assert (
     select count(*) from public.reviews
     where analysis_target_id = '77777777-7777-4777-8777-777777777771'
-  ) = 3, 'User A''s reviews changed after User B''s update and delete attempts';
+  ) = 2, 'User A''s reviews changed after User B''s update and delete attempts';
   assert not exists (
     select 1 from public.reviews where review_text = 'Edited by B'
   ), 'User B''s update changed a review';

@@ -172,12 +172,25 @@ describe("review persistence (S1-022)", () => {
     expect(inserted).toEqual([]);
   });
 
-  test("duplicate source review ids are stored as-is in Sprint 1", async () => {
+  // S3-011 intentionally replaced the Sprint 1 rule that stored repeated source ids as-is.
+  test("a review repeated within one batch is sent to the store once, last value winning (S3-011)", async () => {
     const duplicate = { text: "Again", rating: 4, sourceReviewId: "src-1" };
+    const edited = { text: "Edited again", rating: 2, sourceReviewId: "src-1" };
+    const noId = { text: "No id", rating: 3 };
 
-    const saved = await saveReviews(store, userA, "target-a", [duplicate, duplicate]);
+    const saved = await saveReviews(store, userA, "target-a", [
+      duplicate,
+      noId,
+      edited,
+      { text: "  NO   ID ", rating: 3 },
+    ]);
 
-    expect(saved.map((r) => r.sourceReviewId)).toEqual(["src-1", "src-1"]);
+    expect(saved.map((r) => [r.sourceReviewId, r.text, r.rating])).toEqual([
+      ["src-1", "Edited again", 2],
+      [null, "  NO   ID ", 3],
+    ]);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toHaveLength(2);
   });
 
   test.each<[string, NormalizedReview]>([
