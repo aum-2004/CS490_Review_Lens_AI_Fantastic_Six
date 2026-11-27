@@ -8,9 +8,11 @@ Rating bounds and source-date bounds are inclusive. Every selected bound is comb
 semantics. A review with no source date is excluded whenever either date bound is active. Draft
 values do not affect results until Apply; Cancel restores the applied selections, and Clear all
 immediately restores the full current dataset. The matching count, a three-entry Review Preview,
-and the complete browser all derive from the same filtered array. The workspace keys the browser
-by verified user and target, so real target navigation resets filter state. A filtered zero-result
-message is distinct from an empty persisted dataset and from the server-side load failure state.
+and the complete browser all derive from the same filtered array. Both views format persisted HTML
+line-break markers through the same safe text helper; review text remains React text content. The
+workspace keys the browser by verified user and target, so real target navigation resets filter
+state. A filtered zero-result message is distinct from an empty persisted dataset and from the
+server-side load failure state.
 
 Only review ID, text, rating, reviewer name, and review date cross into the filter/browser client
 component. The page authenticates and verifies target ownership before loading reviews; Q&A keeps
@@ -22,6 +24,7 @@ the existing results and active-filter indicators unchanged.
 
 The UI filter is not an authorization boundary. Authentication, target ownership checks, the
 session-scoped Supabase client, and RLS remain responsible for data access. Tests cover combined
-filter semantics, draft validation/actions, preview/list dataset consistency, a dataset larger than
-1,000 reviews, empty and zero-match results, and an authenticated browser target switch from
-filtered Target A to Target B.
+filter semantics, draft validation/actions, formatted preview/list dataset consistency, a dataset
+larger than 1,000 reviews, empty and zero-match results, and an authenticated browser target switch
+from filtered Target A to Target B. Target-isolation assertions scope matching evidence to the
+appropriate review list, preview list, or Q&A region to avoid duplicate text matches.

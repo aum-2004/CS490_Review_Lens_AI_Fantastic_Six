@@ -43,7 +43,11 @@ test("real navigation switches the active label, question URL and visible answer
   });
   await login(page);
   await ask(page);
-  await expect(page.getByText("ALPHA battery life", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Review questions" })
+      .getByText("ALPHA battery life", { exact: true }),
+  ).toBeVisible();
   await switchB(page);
   await expect(
     page.locator('[aria-labelledby="review-summary-title"]').filter({ visible: true }),
@@ -51,11 +55,23 @@ test("real navigation switches the active label, question URL and visible answer
   await expect(
     page.getByRole("region", { name: "Review questions" }).getByText(/Active target:/),
   ).toContainText("A coffee shop");
-  await expect(page.getByText("ALPHA battery life", { exact: true })).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Review questions" })
+      .getByText("ALPHA battery life", { exact: true }),
+  ).not.toBeVisible();
   await expect(page.getByRole("textbox", { name: /Question/ })).toHaveValue("");
-  await expect(page.getByText("Saved review for A coffee shop", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Saved reviews" })
+      .getByText("Saved review for A coffee shop", { exact: true }),
+  ).toBeVisible();
   await ask(page);
-  await expect(page.getByText("BETA customer service", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Review questions" })
+      .getByText("BETA customer service", { exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("navigation", { name: "Breadcrumb" })
     .getByRole("link", { name: "My Targets" })
@@ -63,7 +79,11 @@ test("real navigation switches the active label, question URL and visible answer
   await page.getByRole("link", { name: "Open A bakery" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
   await expect(page.getByRole("region", { name: "Review summary" })).toContainText("Ingested");
-  await expect(page.getByText("BETA customer service", { exact: true })).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Review questions" })
+      .getByText("BETA customer service", { exact: true }),
+  ).not.toBeVisible();
   await expect(page.getByRole("textbox", { name: /Question/ })).toHaveValue("");
   await page.reload();
   await expect(page.getByRole("region", { name: "Review summary" })).toContainText("4.0 / 5");
@@ -74,7 +94,11 @@ test("real navigation switches the active label, question URL and visible answer
     { target: A, body: { question: "What do reviewers say?" } },
   ]);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A bakery");
-  await expect(page.getByText("BETA customer service", { exact: true })).not.toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Review questions" })
+      .getByText("BETA customer service", { exact: true }),
+  ).not.toBeVisible();
 });
 test("pending A response cannot populate B after client navigation", async ({ page }) => {
   let release!: () => void;

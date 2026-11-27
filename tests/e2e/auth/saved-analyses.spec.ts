@@ -57,7 +57,11 @@ test("keeps sidebar names owner-scoped and reopens persisted review data on mobi
   await expect(saved.getByRole("link")).toHaveText(["A bakery", "A bookstore", "A coffee shop"]);
   await saved.getByRole("link", { name: "A coffee shop", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("A coffee shop");
-  await expect(page.getByText("Saved review for A coffee shop", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Saved reviews" })
+      .getByText("Saved review for A coffee shop", { exact: true }),
+  ).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

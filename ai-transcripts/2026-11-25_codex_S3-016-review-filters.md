@@ -64,3 +64,28 @@ Next.js navigation tree; the assertion was scoped to visible active content and 
 then passed. No commit or push was made. The checked-out branch was confirmed from `.git/HEAD` as
 `feature/S3-016-review-filters`; Git status/diff commands could not run because this machine's Git
 launcher reports that Xcode Command Line Tools are unavailable.
+
+## PR #136 follow-up for commit 16c6289 (2026-11-27)
+
+**Review feedback:** CI #301 found duplicate `BETA customer service` text in Review Preview and the
+complete list. The reviewer also flagged unscoped duplicate-text selectors in target-switching
+Playwright coverage and requested preview formatting consistent with the complete review list.
+
+**Changes:** Scoped the production target-switch assertion to both accessible review containers and
+preserved the existing target-isolation checks. Scoped the browser target-switch answer to the
+Review questions region and the saved-analysis review assertion to the Saved reviews list. Review
+Preview now calls the same `formatReviewText` helper as the complete list. Added a regression test
+that checks both renderings handle line-break markers. Updated this S3-016 documentation. No
+filtering architecture changes were made.
+
+**Validation:** `npm run format:check`, `npm run lint`, and `npm run typecheck` passed. Focused
+Jest passed (2 suites, 16 tests); full Jest passed (111 suites, 2,057 tests). `npm run build` passed.
+The documented complete authenticated browser command (`npm run test:e2e:auth`) ran all 45 tests:
+43 passed and 2 failed in unrelated target-creation tests (`analysis-targets.spec.ts` lines 99 and
+177) because the expected “Target created. You can now start ingestion.” status was absent. Those
+same two failures reproduced when run alone with the local fixture and app servers, so the suite was
+not reported as passing. The S3-016 review-filter browser tests, saved-analyses selector, and target
+context-switching spec passed in the full run. No commit or push was made. `.git/HEAD` and the named
+branch ref both identify `feature/S3-016-review-filters` at `16c62897eb7eafb668d85c6414f9d3578e444b07`.
+Git status/diff remains unavailable because the machine's Git launcher reports that Xcode Command
+Line Tools are missing; no unrelated files were intentionally edited.

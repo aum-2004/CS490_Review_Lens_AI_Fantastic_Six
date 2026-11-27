@@ -11,6 +11,7 @@ import {
   validateReviewFilters,
   type ReviewFilters,
 } from "@/lib/reviews/filter-reviews";
+import { formatReviewText } from "@/lib/reviews/format-review-text";
 import type { ReviewDisplay } from "./ReviewList";
 import { ReviewList } from "./ReviewList";
 
@@ -161,7 +162,9 @@ export function ReviewBrowser({ reviews }: { reviews: ReviewDisplay[] }) {
               {previewReviews.map((review) => (
                 <li key={review.id} className="rounded-md bg-muted/40 p-3">
                   <p className="font-medium">{review.rating} out of 5</p>
-                  <p className="max-w-prose whitespace-pre-wrap break-words">{review.text}</p>
+                  <p className="max-w-prose whitespace-pre-wrap break-words">
+                    {formatReviewText(review.text)}
+                  </p>
                   {review.reviewerName && (
                     <p className="text-sm text-muted-foreground">{review.reviewerName}</p>
                   )}

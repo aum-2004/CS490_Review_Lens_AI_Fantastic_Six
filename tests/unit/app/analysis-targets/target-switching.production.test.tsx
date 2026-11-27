@@ -249,7 +249,14 @@ it("replaces A summary with a safe B failure rather than stale or zero-valued me
     screen.getByText("We couldn't load the review summary. Please try again."),
   ).toHaveAttribute("role", "alert");
   expect(document.body.textContent).not.toContain("PRIVATE_ALPHA_SUMMARY_FAILURE");
-  expect(screen.getByText("BETA customer service")).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("list", { name: "Review preview entries" })).getByText(
+      "BETA customer service",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("list", { name: "Saved reviews" })).getByText("BETA customer service"),
+  ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
 });
 it("shows empty B summary and disables Q&A after leaving populated A", async () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ReviewBrowser } from "@/components/reviews/ReviewBrowser";
 import type { Review } from "@/services/reviews/review-service";
 
@@ -105,5 +105,21 @@ describe("ReviewBrowser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
     expect(screen.getByText("1 matching review")).toBeInTheDocument();
     expect(screen.getAllByText("Review large-1204")).toHaveLength(2);
+  });
+
+  test("formats line-break markers consistently in the preview and complete review list", () => {
+    const formatted = makeReview("formatted", 4, "2026-06-01T12:00:00Z");
+    formatted.text = "First line<br>Second line";
+    render(<ReviewBrowser reviews={[formatted]} />);
+    expect(
+      within(screen.getByRole("list", { name: "Review preview entries" })).getByText(
+        /First line\s+Second line/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Saved reviews" })).getByText(
+        /First line\s+Second line/,
+      ),
+    ).toBeInTheDocument();
   });
 });
