@@ -66,6 +66,7 @@ const targetRows = [
     created_at: "2026-11-03T12:00:00Z",
   },
 ];
+const originalTargetNames = new Map(targetRows.map((row) => [row.id, row.name]));
 // Dedicated owner/dataset so S3-014 never changes the existing accounts' review counts.
 const supportingReviewRows = Array.from({ length: 7 }, (_, index) => ({
   id: `d1000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
@@ -300,6 +301,26 @@ createServer(async (request, response) => {
     targetRows.push(row);
     return send(201, row);
   }
+  if (url.pathname === "/rest/v1/analysis_targets" && request.method === "PATCH") {
+    const identity = tokens.get(token);
+    if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) {
+      return send(401, { message: "Fixture database requires identity" });
+    }
+    if (
+      url.searchParams.get("owner_id") !== "eq." + identity.user.id ||
+      !body ||
+      Object.keys(body).join(",") !== "name" ||
+      typeof body.name !== "string"
+    ) {
+      return send(400, { message: "Fixture requires owner-scoped name-only update" });
+    }
+    const row = targetRows.find(
+      (row) => row.owner_id === identity.user.id && "eq." + row.id === url.searchParams.get("id"),
+    );
+    if (!row) return send(200, null);
+    row.name = body.name;
+    return send(200, row);
+  }
   if (url.pathname === "/rest/v1/analysis_targets" && request.method === "GET") {
     const identity = tokens.get(token);
     if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) {
@@ -357,7 +378,7 @@ createServer(async (request, response) => {
       {
         id: "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
         analysis_target_id: target.id,
-        review_text: "Saved review for " + target.name,
+        review_text: "Saved review for " + originalTargetNames.get(target.id),
         rating: 4,
         reviewer_name: "Fixture reviewer",
         review_date: "2026-11-01T12:00:00Z",

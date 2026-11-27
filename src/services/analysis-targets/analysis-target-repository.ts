@@ -39,7 +39,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 export class AnalysisTargetPersistenceError extends Error {
   readonly code = "ANALYSIS_TARGET_PERSISTENCE_FAILED";
 
-  constructor(operation: "create" | "get" | "list", options?: { cause?: unknown }) {
+  constructor(operation: "create" | "get" | "list" | "rename", options?: { cause?: unknown }) {
     // The message is safe to show; database details stay on `cause` for server-side logging.
     super(`Could not ${operation} the analysis target.`, options);
     this.name = "AnalysisTargetPersistenceError";
@@ -113,5 +113,24 @@ export async function getAnalysisTargetById(
     throw new AnalysisTargetPersistenceError("get", { cause: error });
   }
 
+  return data ? toAnalysisTarget(data) : null;
+}
+
+/** Rename only; the session-scoped client and owner predicate both enforce isolation. */
+export async function renameAnalysisTarget(
+  client: SupabaseClient,
+  ownerId: string,
+  targetId: string,
+  name: string,
+): Promise<AnalysisTarget | null> {
+  if (!UUID_PATTERN.test(targetId)) return null;
+  const { data, error } = await client
+    .from(TABLE)
+    .update({ name })
+    .eq("id", targetId)
+    .eq("owner_id", ownerId)
+    .select(COLUMNS)
+    .maybeSingle<AnalysisTargetRow>();
+  if (error) throw new AnalysisTargetPersistenceError("rename", { cause: error });
   return data ? toAnalysisTarget(data) : null;
 }

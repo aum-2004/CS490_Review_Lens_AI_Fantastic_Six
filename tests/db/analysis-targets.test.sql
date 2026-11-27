@@ -110,14 +110,11 @@ do $$
 declare
   affected integer;
 begin
-  begin
-    update public.analysis_targets
-    set name = 'Renamed by B'
-    where id = current_setting('test.target_a')::uuid;
-    raise exception 'User B updated User A''s target';
-  exception
-    when insufficient_privilege then null;
-  end;
+  update public.analysis_targets
+  set name = 'Renamed by B'
+  where id = current_setting('test.target_a')::uuid;
+  get diagnostics affected = row_count;
+  assert affected = 0, 'User B updated User A''s target';
 
   begin
     delete from public.analysis_targets where id = current_setting('test.target_a')::uuid;
@@ -262,9 +259,6 @@ select pg_temp.expect_denied('changing source_url', format(
 select pg_temp.expect_denied('changing google_place_id', format(
   $sql$update public.analysis_targets set google_place_id = 'chosen-by-client' where id = %L$sql$,
   current_setting('test.target_a')));
-select pg_temp.expect_denied('changing name', format(
-  $sql$update public.analysis_targets set name = 'Renamed' where id = %L$sql$,
-  current_setting('test.target_a')));
 select pg_temp.expect_denied('changing platform', format(
   $sql$update public.analysis_targets set platform = 'google_maps' where id = %L$sql$,
   current_setting('test.target_a')));
@@ -296,7 +290,7 @@ begin
   assert target.google_place_id is null, 'a denied write changed google_place_id';
 end
 $$;
-\echo 'ok - an owner cannot update a target or choose its id, creation time, or place ID directly'
+\echo 'ok - an owner cannot change source fields or choose its id, creation time, or place ID directly'
 
 -- ---------------------------------------------------------------------------------------------
 -- The write createAnalysisTarget sends (S1-011) still works under the restricted grants

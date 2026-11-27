@@ -85,7 +85,10 @@ function normalizeTargetName(value: string): string {
 }
 
 function hasMeaningfulTargetName(value: string): boolean {
-  return value.replace(/\p{Cf}/gu, "").trim().length > 0;
+  // Some invisible characters (CGJ, variation selectors, Hangul fillers) are
+  // marks or letters, not Cf. Ignore them only for the content check: selectors
+  // and joiners must remain intact within visible multilingual/emoji names.
+  return value.replace(/[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu, "").trim().length > 0;
 }
 
 function hasUnsafeControlCharacters(value: string): boolean {
@@ -177,7 +180,9 @@ function unsupportedGoogleMapsMessage(url: URL): string {
   return SOURCE_URL_UNSUPPORTED_PLATFORM_MESSAGE;
 }
 
-function failure(issues: AnalysisTargetValidationIssue[]): AnalysisTargetValidationResult {
+function failure(
+  issues: AnalysisTargetValidationIssue[],
+): Extract<AnalysisTargetValidationResult, { success: false }> {
   return {
     success: false,
     error: {
@@ -216,41 +221,9 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
   let normalizedName: string | undefined;
   let normalizedSourceUrl: string | undefined;
 
-  if (rawName === undefined || rawName === null) {
-    issues.push({
-      field: "name",
-      code: "TARGET_NAME_REQUIRED",
-      message: TARGET_NAME_REQUIRED_MESSAGE,
-    });
-  } else if (typeof rawName !== "string") {
-    issues.push({
-      field: "name",
-      code: "TARGET_NAME_INVALID_TYPE",
-      message: TARGET_NAME_REQUIRED_MESSAGE,
-    });
-  } else {
-    normalizedName = normalizeTargetName(rawName);
-
-    if (!hasMeaningfulTargetName(normalizedName)) {
-      issues.push({
-        field: "name",
-        code: "TARGET_NAME_REQUIRED",
-        message: TARGET_NAME_REQUIRED_MESSAGE,
-      });
-    } else if (!normalizedName.isWellFormed() || hasUnsafeControlCharacters(normalizedName)) {
-      issues.push({
-        field: "name",
-        code: "TARGET_NAME_INVALID_CHARACTERS",
-        message: TARGET_NAME_INVALID_CHARACTERS_MESSAGE,
-      });
-    } else if (characterCount(normalizedName) > MAX_TARGET_NAME_LENGTH) {
-      issues.push({
-        field: "name",
-        code: "TARGET_NAME_TOO_LONG",
-        message: TARGET_NAME_TOO_LONG_MESSAGE,
-      });
-    }
-  }
+  const nameResult = validateAnalysisNameInput({ name: rawName });
+  if (nameResult.success) normalizedName = nameResult.data.name;
+  else issues.push(...nameResult.error.issues);
 
   if (rawSourceUrl === undefined || rawSourceUrl === null) {
     issues.push({
@@ -348,4 +321,58 @@ export function validateAnalysisTargetInput(input: unknown): AnalysisTargetValid
       platform: SUPPORTED_REVIEW_PLATFORM,
     },
   };
+}
+
+/** Shared creation/rename rules; only the display name is returned. */
+export function validateAnalysisNameInput(
+  input: unknown,
+):
+  | { success: true; data: { name: string } }
+  | Extract<AnalysisTargetValidationResult, { success: false }> {
+  if (!isRecord(input)) {
+    return failure([
+      { code: "INVALID_INPUT_TYPE", message: "Target information must be an object." },
+    ]);
+  }
+  const rawName = hasOwnProperty(input, "name") ? input.name : undefined;
+  const issues: AnalysisTargetValidationIssue[] = [];
+  let normalizedName: string | undefined;
+  if (rawName === undefined || rawName === null) {
+    issues.push({
+      field: "name",
+      code: "TARGET_NAME_REQUIRED",
+      message: TARGET_NAME_REQUIRED_MESSAGE,
+    });
+  } else if (typeof rawName !== "string") {
+    issues.push({
+      field: "name",
+      code: "TARGET_NAME_INVALID_TYPE",
+      message: TARGET_NAME_REQUIRED_MESSAGE,
+    });
+  } else {
+    normalizedName = normalizeTargetName(rawName);
+
+    if (!hasMeaningfulTargetName(normalizedName)) {
+      issues.push({
+        field: "name",
+        code: "TARGET_NAME_REQUIRED",
+        message: TARGET_NAME_REQUIRED_MESSAGE,
+      });
+    } else if (!normalizedName.isWellFormed() || hasUnsafeControlCharacters(normalizedName)) {
+      issues.push({
+        field: "name",
+        code: "TARGET_NAME_INVALID_CHARACTERS",
+        message: TARGET_NAME_INVALID_CHARACTERS_MESSAGE,
+      });
+    } else if (characterCount(normalizedName) > MAX_TARGET_NAME_LENGTH) {
+      issues.push({
+        field: "name",
+        code: "TARGET_NAME_TOO_LONG",
+        message: TARGET_NAME_TOO_LONG_MESSAGE,
+      });
+    }
+  }
+
+  if (issues.length || normalizedName === undefined) return failure(issues);
+  return { success: true, data: { name: normalizedName } };
 }
