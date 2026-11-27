@@ -13,7 +13,11 @@ import {
 } from "@/services/analysis-targets/target-ownership";
 import { buildReviewDatasetContext } from "@/services/qa/review-context";
 import { createOpenAiQaModel } from "@/services/qa/openai-qa-client";
-import { reserveQuestionQuota, QuestionQuotaError } from "@/services/qa/question-quota";
+import {
+  MAX_QUESTIONS_PER_24_HOURS,
+  reserveQuestionQuota,
+  QuestionQuotaError,
+} from "@/services/qa/question-quota";
 import { MAX_CITED_REVIEWS } from "@/lib/qa/citations";
 import { MAX_EVIDENCE_PER_CLAIM, nonAnswerText } from "@/services/qa/qa-response";
 
@@ -123,7 +127,7 @@ beforeEach(() => {
   model.mockImplementation(async () => ({ text: JSON.stringify(reply) }));
   jest.mocked(createOpenAiQaModel).mockReturnValue(model);
   jest.mocked(reserveQuestionQuota).mockImplementation(async () => {
-    if (quotaUsed >= 5) throw new QuestionQuotaError("QA_DAILY_LIMIT");
+    if (quotaUsed >= MAX_QUESTIONS_PER_24_HOURS) throw new QuestionQuotaError("QA_DAILY_LIMIT");
     quotaUsed += 1;
   });
 });
@@ -272,8 +276,8 @@ it("fails closed with UNSUPPORTED_CLAIM when a valid citation's quote is not in 
   expect(JSON.stringify(body)).not.toContain(A1);
 });
 
-it("keeps the five-attempt quota and returns no citations once it is exceeded", async () => {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+it("permits 30 attempts and returns no citations on attempt 31", async () => {
+  for (let attempt = 0; attempt < MAX_QUESTIONS_PER_24_HOURS; attempt += 1) {
     expect((await post()).status).toBe(200);
   }
   const denied = await post();
@@ -282,7 +286,7 @@ it("keeps the five-attempt quota and returns no citations once it is exceeded", 
   const body = await denied.json();
   expect(body).toMatchObject({ success: false, error: { code: "QA_DAILY_LIMIT" } });
   expect(body.data).toBeUndefined();
-  expect(model).toHaveBeenCalledTimes(5);
+  expect(model).toHaveBeenCalledTimes(MAX_QUESTIONS_PER_24_HOURS);
 });
 
 it("caps citations at the supported maximum", async () => {

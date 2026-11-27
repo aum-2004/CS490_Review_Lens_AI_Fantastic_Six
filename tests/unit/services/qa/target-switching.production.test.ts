@@ -68,7 +68,7 @@ function setup() {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: {
       fetch: async (input, init) => {
-        if (String(input).includes("/rpc/reserve_review_question")) return new Response("4");
+        if (String(input).includes("/rpc/reserve_review_question")) return new Response("29");
         const url = new URL(String(input));
         if (url.pathname.endsWith("/rpc/get_review_summary")) {
           const targetId = JSON.parse(String(init?.body)).p_target_id;

@@ -156,7 +156,7 @@ function QuestionForm({
       </p>
       <p id={questionHelpId} className="max-w-prose break-words text-sm text-muted-foreground">
         Active target: <span className="font-medium text-foreground">{targetName}</span> · Google
-        Maps. Ask questions about this target&apos;s saved reviews. Each account can make five
+        Maps. Ask questions about this target&apos;s saved reviews. Each account can make 30
         attempts within 24 hours. Failed answer-service attempts also count.
       </p>
       {!reviewsAvailable && (

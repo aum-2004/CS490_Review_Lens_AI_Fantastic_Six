@@ -37,7 +37,7 @@ reviews, and current Q&A state (S3-BR-001 through S3-BR-004).
 
 Apply both migrations in order through the team's normal migration process:
 
-1. `supabase/migrations/20261125000000_allow_owned_analysis_rename.sql` grants
+1. `supabase/migrations/20261125000100_allow_owned_analysis_rename.sql` grants
    name-only updates with owner RLS. The user reports already applying this one.
 2. `supabase/migrations/20261125010000_validate_owned_analysis_rename.sql` tightens
    that policy to prevent direct-write name-validation bypasses found in review.
@@ -45,7 +45,11 @@ Apply both migrations in order through the team's normal migration process:
 
 Neither migration rewrites stored data. Do not rerun the initial create-policy
 migration if it is already applied; run the follow-up policy alteration only.
-Existing migrations remain unchanged. Do not apply the test auth shim to Supabase.
+Earlier policy SQL remains unchanged. The initial grant's filename was moved
+from version `20261125000000` to `20261125000100` to avoid main's quota migration
+collision while keeping it before the policy alterations. Do not rerun an already
+applied initial grant just because its filename changed. Do not apply the test
+auth shim to Supabase.
 This task applied migrations only to disposable local test databases.
 
 ## Verification
@@ -126,3 +130,21 @@ tests**, and the full PostgreSQL security/concurrency suite passed. Lint,
 typecheck, formatting, production build, and migration-version checks passed.
 Changed-line coverage passed at **100% (416/416)** against local `origin/main`,
 and **100% (4/4)** for the reviewer fix against starting HEAD `de2ecd6`.
+
+## CI migration collision — 2026-11-27
+
+PR #132's application and database checks both stopped at migration-version
+validation after main added `20261125000000_increase_review_question_quota.sql`.
+That version collided with the initial rename grant. Renamed the grant to
+`20261125000100_allow_owned_analysis_rename.sql`, keeping its SQL byte-for-byte
+equivalent after newline normalization and preserving policy creation order.
+The already-applied rename SQL does not need to be rerun because of this rename.
+
+Merged main through `a507ba1` locally and verified the combined tree: migration
+validation, lint, typecheck, formatting, production build, **117 unit suites /
+2,187 tests**, and the full PostgreSQL **16.16** database suite passed, including
+quota, deduplication, migration cleanup, and rename/Unicode regressions. The
+changed-code coverage gate passed without altering thresholds. Shared Supabase
+was untouched; hosted CI requires publishing the resulting local merge commit.
+
+CI investigation transcript: [melissa / Codex](../ai-transcripts/2026-11-27_melissa_S3-002_ci_codex.md).
