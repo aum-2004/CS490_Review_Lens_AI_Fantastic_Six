@@ -19,6 +19,7 @@ import {
   QuestionQuotaError,
 } from "@/services/qa/question-quota";
 import { MAX_CITED_REVIEWS } from "@/lib/qa/citations";
+import { recordQaExchange } from "@/services/qa/qa-history";
 import { MAX_EVIDENCE_PER_CLAIM, nonAnswerText } from "@/services/qa/qa-response";
 
 import { claimReply, evidenceFrom } from "../../../../../../helpers/qa-harness/grounded-reply";
@@ -38,6 +39,10 @@ jest.mock("@/services/qa/openai-qa-client", () => ({
   ...jest.requireActual("@/services/qa/openai-qa-client"),
   createOpenAiQaModel: jest.fn(),
   readOpenAiQaConfig: jest.fn(),
+}));
+jest.mock("@/services/qa/qa-history", () => ({
+  ...jest.requireActual("@/services/qa/qa-history"),
+  recordQaExchange: jest.fn(),
 }));
 jest.mock("@/services/qa/question-quota", () => ({
   ...jest.requireActual("@/services/qa/question-quota"),
@@ -126,6 +131,10 @@ beforeEach(() => {
     .mockImplementation(async (targetId) => contextFor(String(targetId)) as never);
   model.mockImplementation(async () => ({ text: JSON.stringify(reply) }));
   jest.mocked(createOpenAiQaModel).mockReturnValue(model);
+  jest.mocked(recordQaExchange).mockResolvedValue({
+    id: "e0000000-0000-4000-8000-000000000001",
+    createdAt: "2026-11-26T00:00:00Z",
+  });
   jest.mocked(reserveQuestionQuota).mockImplementation(async () => {
     if (quotaUsed >= MAX_QUESTIONS_PER_24_HOURS) throw new QuestionQuotaError("QA_DAILY_LIMIT");
     quotaUsed += 1;
@@ -151,6 +160,11 @@ it("returns the validated citations of an answer, deduplicated in first-appearan
         `  "${textOf(A2)}" [${A2}]`,
       ].join("\n"),
       citedReviewIds: [A2, A1],
+      history: {
+        saved: true,
+        id: "e0000000-0000-4000-8000-000000000001",
+        createdAt: "2026-11-26T00:00:00Z",
+      },
     },
   });
 });

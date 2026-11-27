@@ -14,18 +14,20 @@ Route Handlers stay thin (see `docs/engineering-standards.md`, sections 3 and 7)
 
 Current endpoints:
 
-| Method | Path                                                 | Purpose                                                                                                   | Added by   |
-| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ---------- |
-| GET    | `/api/health`                                        | Confirms the server is running. No auth, no database.                                                     | S1-005     |
-| GET    | `/api/auth/session`                                  | Returns verified identity; rejects missing/invalid sessions.                                              | S1-009/010 |
-| POST   | `/api/analysis-targets`                              | Creates a target owned by the verified session user.                                                      | S1-011     |
-| GET    | `/api/analysis-targets`                              | Lists up to 200 owned targets with authoritative ingestion status.                                        | S1-017/023 |
-| GET    | `/api/analysis-targets/[targetId]/reviews`           | Lists the reviews of a target the user owns.                                                              | S1-013     |
-| POST   | `/api/analysis-targets/[targetId]/reviews`           | Saves 1–100 reviews under a target the user owns.                                                         | S1-013     |
-| POST   | `/api/analysis-targets/[targetId]/ingestion`         | Starts asynchronous ingestion for an owned target using its stored Place ID or validated Google Maps URL. | S1-019     |
-| GET    | `/api/analysis-targets/[targetId]/ingestion`         | Reads the owned target's durable ingestion status without provider calls.                                 | S1-023     |
-| POST   | `/api/analysis-targets/[targetId]/ingestion/refresh` | Reconciles the stored owner/target/job binding and atomically saves verified results.                     | S1-023     |
-| POST   | `/api/ingestion/provider-callback/[attemptId]`       | Recovers a binding after verifying provider-body and per-attempt signatures; no review persistence.       | S1-023     |
+| Method | Path                                                 | Purpose                                                                                                   | Added by       |
+| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | -------------- |
+| GET    | `/api/health`                                        | Confirms the server is running. No auth, no database.                                                     | S1-005         |
+| GET    | `/api/auth/session`                                  | Returns verified identity; rejects missing/invalid sessions.                                              | S1-009/010     |
+| POST   | `/api/analysis-targets`                              | Creates a target owned by the verified session user.                                                      | S1-011         |
+| GET    | `/api/analysis-targets`                              | Lists up to 200 owned targets with authoritative ingestion status.                                        | S1-017/023     |
+| GET    | `/api/analysis-targets/[targetId]/reviews`           | Lists the reviews of a target the user owns.                                                              | S1-013         |
+| POST   | `/api/analysis-targets/[targetId]/reviews`           | Saves 1–100 reviews under a target the user owns.                                                         | S1-013         |
+| POST   | `/api/analysis-targets/[targetId]/ingestion`         | Starts asynchronous ingestion for an owned target using its stored Place ID or validated Google Maps URL. | S1-019         |
+| GET    | `/api/analysis-targets/[targetId]/ingestion`         | Reads the owned target's durable ingestion status without provider calls.                                 | S1-023         |
+| POST   | `/api/analysis-targets/[targetId]/ingestion/refresh` | Reconciles the stored owner/target/job binding and atomically saves verified results.                     | S1-023         |
+| POST   | `/api/ingestion/provider-callback/[attemptId]`       | Recovers a binding after verifying provider-body and per-attempt signatures; no review persistence.       | S1-023         |
+| POST   | `/api/analysis-targets/[targetId]/questions`         | Answers a question from the owned target's reviews and saves the exchange to its Q&A history.             | S2-011, S3-006 |
+| GET    | `/api/analysis-targets/[targetId]/questions`         | Lists the owned target's saved Q&A history, oldest first (see `docs/s3-006-persist-qa-history.md`).       | S3-006         |
 
 `POST /api/analysis-targets/[targetId]/ingestion` is disabled by default. It returns HTTP `503`
 with error code `INGESTION_DISABLED` unless the server-side `INGESTION_ENABLED` environment

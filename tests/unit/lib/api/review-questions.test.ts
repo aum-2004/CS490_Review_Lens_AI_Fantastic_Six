@@ -142,3 +142,28 @@ it("rejects arbitrary field error text from the server", async () => {
     fieldErrors: undefined,
   });
 });
+
+describe("S3-006 history status", () => {
+  it("reports an answer the server could not save to history", async () => {
+    respond(200, {
+      success: true,
+      data: { ...data, history: { saved: false, reason: "QA_HISTORY_UNAVAILABLE" } },
+    });
+    await expect(askReviewQuestion("target-a", "Question", signal())).resolves.toEqual({
+      ...data,
+      historySaved: false,
+    });
+  });
+
+  it.each([
+    { saved: true, id: "e0000000-0000-4000-8000-000000000001", createdAt: "2026-11-26T00:00Z" },
+    undefined,
+    null,
+    "not saved",
+  ])("does not flag a saved or unspecified history (%p)", async (history) => {
+    respond(200, { success: true, data: { ...data, history } });
+    const result = await askReviewQuestion("target-a", "Question", signal());
+    expect(result).not.toHaveProperty("historySaved");
+    expect(result).not.toHaveProperty("history");
+  });
+});

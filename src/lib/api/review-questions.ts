@@ -10,6 +10,11 @@ export type ReviewAnswer = {
   answer: string;
   /** Server-validated review IDs; empty for non-answers. Never displayed raw. */
   citedReviewIds: string[];
+  /**
+   * S3-006: false only when the server answered but could not save the exchange to the
+   * analysis's Q&A history. Absent or true means saved.
+   */
+  historySaved?: boolean;
 };
 
 export class ReviewQuestionError extends Error {
@@ -138,6 +143,7 @@ export async function askReviewQuestion(
           outcome: data.outcome as ReviewAnswer["outcome"],
           answer: data.answer,
           citedReviewIds,
+          ...(historyNotSaved(data) ? { historySaved: false } : {}),
         };
       }
     }
@@ -145,5 +151,16 @@ export async function askReviewQuestion(
   throw new ReviewQuestionError(
     "FAILED",
     "ReviewLens returned an unexpected response. Please try again.",
+  );
+}
+
+/** True only for an explicit `history: { saved: false }` from the server. */
+function historyNotSaved(data: object): boolean {
+  return (
+    "history" in data &&
+    typeof data.history === "object" &&
+    data.history !== null &&
+    "saved" in data.history &&
+    data.history.saved === false
   );
 }
