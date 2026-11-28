@@ -258,7 +258,7 @@ it.each(["failed", null] as const)(
       },
     ]);
     render(await ProtectedTargetWorkspace({ params }));
-    expect(screen.getByText("Previously saved bakery review")).toBeInTheDocument();
+    expect(screen.getAllByText("Previously saved bakery review")).toHaveLength(2);
     expect(screen.getAllByText(status ? "Failed" : "Not ingested")).toHaveLength(2);
     expect(screen.queryByText("Ingested", { exact: true })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
@@ -534,6 +534,8 @@ it("denies unavailable targets before accessing reviews or rendering ingestion",
   );
   expect(listReviews).not.toHaveBeenCalled();
   expect(listAnalysisTargets).not.toHaveBeenCalled();
+  expect(screen.queryByRole("region", { name: "Review browser" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Review filters")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Start ingestion" })).not.toBeInTheDocument();
   expect(document.body.textContent).not.toContain("Bakery");
 });

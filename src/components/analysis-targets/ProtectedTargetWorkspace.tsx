@@ -9,7 +9,7 @@ import {
   WorkspaceIngestionStatus,
 } from "@/components/ingestion/WorkspaceIngestionState";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
-import { ReviewList } from "@/components/reviews/ReviewList";
+import { ReviewBrowser } from "@/components/reviews/ReviewBrowser";
 import { ReviewSummaryCard } from "@/components/reviews/ReviewSummaryCard";
 import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { RetryTargetsButton } from "./RetryTargetsButton";
@@ -219,7 +219,16 @@ export async function ProtectedTargetWorkspace({
                 <RetryTargetsButton />
               </Card>
             ) : (
-              <ReviewList reviews={reviews} />
+              <ReviewBrowser
+                key={`${user.id}:${target.id}`}
+                reviews={reviews.map(({ id, text, rating, reviewerName, reviewDate }) => ({
+                  id,
+                  text,
+                  rating,
+                  reviewerName,
+                  reviewDate,
+                }))}
+              />
             )}
           </div>
         </div>
