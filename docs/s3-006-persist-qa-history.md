@@ -12,7 +12,7 @@ response text, its outcome, the reviews it cites, and when it was asked.
 
 ## What is saved
 
-Table `public.review_qa_exchanges` (migration `20261126130000_persist_review_qa_history.sql`):
+Table `public.review_qa_exchanges` (migration `20261128120000_persist_review_qa_history.sql`):
 
 | Column               | Meaning                                                                                         |
 | -------------------- | ----------------------------------------------------------------------------------------------- |
@@ -134,7 +134,39 @@ Verification on this branch: `npm run test:db` (all database tests), `npm run co
 
 ## Deployment note
 
-Following the team process (README, "Next steps for the team"), apply the migration to the shared
-Supabase project with `supabase db push` after this PR merges. Until it is applied, every answer is
-still shown, but with the "not saved" notice, and `GET .../questions` returns
-`503 QA_HISTORY_UNAVAILABLE`.
+The migration is `20261128120000_persist_review_qa_history.sql`. It was renamed from
+`20261126130000` because it has never been applied anywhere shared, and the shared Supabase history
+already records `20261127212801`. A forward version keeps it in order, so it needs no out-of-order
+procedure of its own.
+
+Remote history checked on 2026-11-27 (`supabase_migrations.schema_migrations`, posted by Shawn):
+the last recorded version is `20261127212801_enforce_trimmed_analysis_names`. The only
+reported manual applies are the four S3-002 versions, which are already repaired and recorded.
+
+Migrations in `main` plus this PR that the remote does not record yet:
+
+| Version          | Name                             | From        | Note                                  |
+| ---------------- | -------------------------------- | ----------- | ------------------------------------- |
+| `20261125000000` | `increase_review_question_quota` | #131        | Older than the last recorded version. |
+| `20261126120000` | `prevent_duplicate_reviews`      | #135 S3-011 | Older than the last recorded version. |
+| `20261128120000` | `persist_review_qa_history`      | this PR     | Newer than every recorded version.    |
+
+Because the first two are older than `20261127212801`, a plain `supabase db push` refuses them.
+No one has reported applying them by hand, so they are applied out of order with `--include-all`; their versions are
+not renamed, since they are already merged.
+
+Steps for whoever holds the linked CLI, after this PR merges:
+
+1. `supabase migration list` and confirm the remote still ends at `20261127212801`, and that the
+   three versions above are the only local-only rows. If another merged PR (for example #134 or
+   #137) added migrations, they appear here too and must be reviewed before continuing.
+2. `supabase db push --dry-run --include-all` and confirm it lists exactly those versions, in
+   version order, and nothing else. Post the output in the team channel before step 3.
+3. `supabase db push --include-all`.
+4. `supabase migration list` again and confirm every local version is recorded remotely.
+
+Do not run `supabase migration repair` for these three: repair marks a version as applied without
+running it, and none of them has been run.
+
+Until `20261128120000` is applied, every answer is still shown, but with the "not saved" notice,
+and `GET .../questions` returns `503 QA_HISTORY_UNAVAILABLE`.
