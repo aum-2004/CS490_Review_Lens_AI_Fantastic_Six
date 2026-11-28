@@ -23,6 +23,12 @@ const users = [
   { ...user, id: "00000000-0000-4000-8000-000000000014", email: "mobile-fixture@example.com" },
   { ...user, id: "00000000-0000-4000-8000-000000000015", email: "supporting-fixture@example.com" },
 ];
+// Dedicated deletion owner: other browser scenarios retain their seeded datasets/counts.
+users.push({
+  ...user,
+  id: "00000000-0000-4000-8000-000000000016",
+  email: "deletion-fixture@example.com",
+});
 const supportingTargetId = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
 const targetRows = [
   {
@@ -66,6 +72,14 @@ const targetRows = [
     created_at: "2026-11-03T12:00:00Z",
   },
 ];
+targetRows.push({
+  id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+  owner_id: "00000000-0000-4000-8000-000000000016",
+  name: "Deletion fixture",
+  platform: "google_maps",
+  source_url: "https://www.google.com/maps/place/DeletionFixture",
+  created_at: "2026-11-01T12:00:00Z",
+});
 const originalTargetNames = new Map(targetRows.map((row) => [row.id, row.name]));
 // Dedicated owner/dataset so S3-014 never changes the existing accounts' review counts.
 const supportingReviewRows = Array.from({ length: 7 }, (_, index) => ({
@@ -86,7 +100,7 @@ let createdTargetSequence = 0;
 let failNextLogout = false;
 let failStatusReads = false;
 const ingestionRows = targetRows
-  .filter((row) => row.name !== "A coffee shop")
+  .filter((row) => row.name !== "A coffee shop" && row.name !== "Deletion fixture")
   .map((target) => ({
     id: "ingestion-" + target.id,
     analysis_target_id: target.id,
@@ -267,6 +281,20 @@ createServer(async (request, response) => {
           url.searchParams.get("provider_request_id") === "eq." + row.provider_request_id),
     );
     return send(200, filter?.startsWith("eq.") ? (rows[0] ?? null) : rows);
+  }
+  if (url.pathname === "/rest/v1/rpc/delete_owned_analysis" && request.method === "POST") {
+    const identity = tokens.get(token);
+    if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) return send(401, {});
+    // Models the RPC's own ownership check, independent of the preceding target GET.
+    const index = targetRows.findIndex(
+      (row) => row.id === body.p_target_id && row.owner_id === identity.user.id,
+    );
+    if (index === -1) return send(200, false);
+    targetRows.splice(index, 1);
+    for (const attempt of ingestionRows) {
+      if (attempt.analysis_target_id === body.p_target_id) attempt.analysis_target_id = null;
+    }
+    return send(200, true);
   }
   if (url.pathname === "/rest/v1/analysis_targets" && request.method === "POST") {
     const identity = tokens.get(token);

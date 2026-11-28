@@ -6,7 +6,8 @@ import { IngestionLimitError } from "./ingestion-limits";
 
 export interface IngestionAttemptRow {
   id: string;
-  analysis_target_id: string;
+  /** Null only on retained audit rows after S3-005 deletes their parent analysis. */
+  analysis_target_id: string | null;
   owner_id: string;
   source_url: string;
   submitted_query: string;
@@ -104,7 +105,11 @@ export async function getTargetIngestionSummaries(
       provider_business_name: string | null;
     }
   >) {
-    if (row.owner_id !== ownerId || !targetIds.includes(row.analysis_target_id))
+    if (
+      row.owner_id !== ownerId ||
+      !row.analysis_target_id ||
+      !targetIds.includes(row.analysis_target_id)
+    )
       throw new IngestionPersistenceError();
     summaries.set(row.analysis_target_id, {
       state: row.state,
@@ -137,7 +142,7 @@ export function createIngestionAttemptWriter(admin: SupabaseClient) {
         .eq("id", attemptId)
         .maybeSingle<IngestionAttemptRow>();
       if (error) throw new IngestionPersistenceError();
-      return data;
+      return data?.analysis_target_id ? data : null;
     },
     reserve: (targetId: string, ownerId: string) =>
       rpc<{ attempt: IngestionAttemptRow; created: boolean }>("reserve_ingestion_attempt", {
