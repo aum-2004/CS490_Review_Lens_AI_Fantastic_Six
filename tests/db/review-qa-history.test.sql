@@ -257,4 +257,41 @@ begin
 end
 $$;
 
+-- S3-005's owner delete removes the history; another user's delete does not.
+set role authenticated;
+set request.jwt.claims to '{"sub":"36000000-0000-4000-8000-000000000002"}';
+do $$
+begin
+  assert not public.delete_owned_analysis('36000000-0000-4000-8000-000000000012'),
+    'another user deleted the analysis';
+end
+$$;
+reset role;
+do $$
+begin
+  assert (
+    select count(*) from public.review_qa_exchanges
+    where analysis_target_id = '36000000-0000-4000-8000-000000000012'
+  ) = 200, 'a foreign delete removed history';
+end
+$$;
+
+set role authenticated;
+set request.jwt.claims to '{"sub":"36000000-0000-4000-8000-000000000001"}';
+do $$
+begin
+  assert public.delete_owned_analysis('36000000-0000-4000-8000-000000000012'),
+    'owner could not delete the analysis';
+end
+$$;
+reset role;
+do $$
+begin
+  assert not exists (
+    select 1 from public.review_qa_exchanges
+    where analysis_target_id = '36000000-0000-4000-8000-000000000012'
+  ), 'history survived the owner delete';
+end
+$$;
+
 rollback;

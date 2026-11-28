@@ -129,12 +129,12 @@ existing `buildCitationView` and `SupportingReviews` components.
 
 ## Tests
 
-| Test                                                                                                    | What it proves                                                                                                                                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/db/review-qa-history.test.sql`                                                                   | Privileges and RLS; owner round trip in order with citation order kept; no cross-analysis leakage; citations from another analysis, another user or nowhere are rejected; another user cannot read or write; the cap; review removal and analysis deletion. |
-| `tests/unit/services/qa/qa-history.test.ts`                                                             | RPC arguments, full-history mapping, fail-closed handling of malformed results, query shape (target filter, ordering, cap).                                                                                                                                 |
-| `tests/unit/app/api/analysis-targets/[targetId]/questions/history-route.test.ts`                        | POST saves the shown exchange on the right analysis with the public outcome; an answer survives a failed save; failed requests save nothing; GET returns only the owner's history and maps errors without details.                                          |
-| `tests/unit/lib/api/review-questions.test.ts`, `tests/unit/components/reviews/ReviewQuestions.test.tsx` | The client flags only an explicit `saved: false`, and the form shows the notice only then, with a specific message for a full history.                                                                                                                      |
+| Test                                                                                                    | What it proves                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/db/review-qa-history.test.sql`                                                                   | Privileges and RLS; owner round trip in order with citation order kept; no cross-analysis leakage; citations from another analysis, another user or nowhere are rejected; another user cannot read or write; the cap; review removal and analysis deletion, including S3-005's `delete_owned_analysis`. |
+| `tests/unit/services/qa/qa-history.test.ts`                                                             | RPC arguments, full-history mapping, fail-closed handling of malformed results, query shape (target filter, ordering, cap).                                                                                                                                                                             |
+| `tests/unit/app/api/analysis-targets/[targetId]/questions/history-route.test.ts`                        | POST saves the shown exchange on the right analysis with the public outcome; an answer survives a failed save; failed requests save nothing; GET returns only the owner's history and maps errors without details.                                                                                      |
+| `tests/unit/lib/api/review-questions.test.ts`, `tests/unit/components/reviews/ReviewQuestions.test.tsx` | The client flags only an explicit `saved: false`, and the form shows the notice only then, with a specific message for a full history.                                                                                                                                                                  |
 
 Verification on this branch: `npm run test:db` (all database tests), `npm run coverage:changed`
 (100% changed-line coverage), `npm run lint`, `npm run typecheck`, `npm run build`,
@@ -168,23 +168,27 @@ procedure of its own.
 
 `supabase migration list --remote` against the shared project (`reviewlens-ai`): the last recorded
 version is `20261127212801_enforce_trimmed_analysis_names`, and every version up to it is recorded
-except the first two below. The four S3-002 versions applied by hand are already repaired and
+except the older ones below. The four S3-002 versions applied by hand are already repaired and
 recorded.
 
 Migrations in `main` plus this PR that the remote does not record yet:
 
-| Version          | Name                             | From        | Note                                  |
-| ---------------- | -------------------------------- | ----------- | ------------------------------------- |
-| `20261125000000` | `increase_review_question_quota` | #131        | Older than the last recorded version. |
-| `20261126120000` | `prevent_duplicate_reviews`      | #135 S3-011 | Older than the last recorded version. |
-| `20261128120000` | `persist_review_qa_history`      | this PR     | Newer than every recorded version.    |
+| Version          | Name                                        | From        | Note                                  |
+| ---------------- | ------------------------------------------- | ----------- | ------------------------------------- |
+| `20261125000000` | `increase_review_question_quota`            | #131        | Older than the last recorded version. |
+| `20261126000000` | `delete_owned_analysis`                     | #134 S3-005 | Older than the last recorded version. |
+| `20261126010000` | `reconcile_detached_ingestion_audits`       | #134 S3-005 | Older than the last recorded version. |
+| `20261126120000` | `prevent_duplicate_reviews`                 | #135 S3-011 | Older than the last recorded version. |
+| `20261128060000` | `restrict_detached_audit_ticket_references` | #134 S3-005 | Newer than every recorded version.    |
+| `20261128120000` | `persist_review_qa_history`                 | this PR     | Newer than every recorded version.    |
 
-The first two are already merged, so their versions are not renamed. No one has reported applying
+The older ones are already merged, so their versions are not renamed. No one has reported applying
 them by hand, so they are applied out of order with `--include-all`. Do not run
-`supabase migration repair` for any of the three: repair marks a version as applied without running
-it.
+`supabase migration repair` for any of these: repair marks a version as applied without running it.
+S3-005's `delete_owned_analysis` deletes the `analysis_targets` row, so this table's
+`on delete cascade` removes the history; `tests/db/review-qa-history.test.sql` checks that.
 
-### Reviewed dry run (2026-11-28, from this branch)
+### Reviewed dry run (2026-11-28, from this branch merged with main `89b7350`)
 
 Supabase CLI 3.x targets the local stack unless `--remote` is passed, so every command below uses
 it.
@@ -193,12 +197,17 @@ it.
 $ supabase db push --remote --dry-run
 Error: Found local migration files to be inserted before the last migration on remote database.
   supabase/migrations/20261125000000_increase_review_question_quota.sql
+  supabase/migrations/20261126000000_delete_owned_analysis.sql
+  supabase/migrations/20261126010000_reconcile_detached_ingestion_audits.sql
   supabase/migrations/20261126120000_prevent_duplicate_reviews.sql
 
 $ supabase db push --remote --dry-run --include-all
 Would push these migrations:
  • 20261125000000_increase_review_question_quota.sql
+ • 20261126000000_delete_owned_analysis.sql
+ • 20261126010000_reconcile_detached_ingestion_audits.sql
  • 20261126120000_prevent_duplicate_reviews.sql
+ • 20261128060000_restrict_detached_audit_ticket_references.sql
  • 20261128120000_persist_review_qa_history.sql
 ```
 
@@ -214,8 +223,8 @@ never touches the new table, and the new app shows the "not saved" notice until 
    until S3-020; locally, stop `npm run dev` instead.)
 2. On an up-to-date `main` in the linked checkout, run `npm run check:migrations` and
    `supabase migration list --remote`. Confirm the remote still ends at `20261127212801` and that
-   the three versions above are the only local-only rows. If another merged PR (for example #134 or
-   #137) added migrations, they appear here too and must be reviewed before continuing.
+   the six versions above are the only local-only rows. If another merged PR (for example #137)
+   added migrations, they appear here too and must be reviewed before continuing.
 3. Run `supabase db push --remote --dry-run --include-all`. Confirm it lists exactly those versions,
    in version order, and post the output in the team channel before continuing.
 4. Run `supabase db push --remote --include-all`.
