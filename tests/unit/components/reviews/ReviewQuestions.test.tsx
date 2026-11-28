@@ -408,6 +408,18 @@ describe("S3-006 history notice", () => {
     expect(screen.getByText(notice)).toBeInTheDocument();
   });
 
+  it("says when the answer was not saved because the history is full", async () => {
+    ask.mockResolvedValue({ ...answer, historySaved: false, historyFull: true });
+    render(<ReviewQuestions {...props} />);
+    submit();
+    expect(
+      await screen.findByText(
+        "This analysis's Q&A history is full, so this response wasn't saved.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+  });
+
   it("shows no notice when the answer was saved", async () => {
     render(<ReviewQuestions {...props} />);
     submit();

@@ -15,6 +15,8 @@ export type ReviewAnswer = {
    * analysis's Q&A history. Absent or true means saved.
    */
   historySaved?: boolean;
+  /** S3-006: true when the exchange was not saved because the history is at its limit. */
+  historyFull?: boolean;
 };
 
 export class ReviewQuestionError extends Error {
@@ -143,7 +145,7 @@ export async function askReviewQuestion(
           outcome: data.outcome as ReviewAnswer["outcome"],
           answer: data.answer,
           citedReviewIds,
-          ...(historyNotSaved(data) ? { historySaved: false } : {}),
+          ...historyStatus(data),
         };
       }
     }
@@ -154,13 +156,17 @@ export async function askReviewQuestion(
   );
 }
 
-/** True only for an explicit `history: { saved: false }` from the server. */
-function historyNotSaved(data: object): boolean {
-  return (
-    "history" in data &&
-    typeof data.history === "object" &&
-    data.history !== null &&
-    "saved" in data.history &&
-    data.history.saved === false
-  );
+/** Flags only an explicit `history: { saved: false }` from the server; anything else is saved. */
+function historyStatus(data: object): Pick<ReviewAnswer, "historySaved" | "historyFull"> {
+  if (
+    !("history" in data) ||
+    typeof data.history !== "object" ||
+    data.history === null ||
+    !("saved" in data.history) ||
+    data.history.saved !== false
+  ) {
+    return {};
+  }
+  const full = "reason" in data.history && data.history.reason === "QA_HISTORY_FULL";
+  return full ? { historySaved: false, historyFull: true } : { historySaved: false };
 }

@@ -267,7 +267,9 @@ function QuestionForm({
             {answer.outcome === "answered" && <SupportingReviews citations={view.citations} />}
             {answer.historySaved === false && (
               <p className="text-xs text-muted-foreground">
-                This response wasn&apos;t saved to the analysis&apos;s Q&amp;A history.
+                {answer.historyFull
+                  ? "This analysis's Q&A history is full, so this response wasn't saved."
+                  : "This response wasn't saved to the analysis's Q&A history."}
               </p>
             )}
           </>

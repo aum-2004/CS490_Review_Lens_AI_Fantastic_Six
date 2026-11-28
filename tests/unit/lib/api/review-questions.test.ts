@@ -155,6 +155,18 @@ describe("S3-006 history status", () => {
     });
   });
 
+  it("reports a full history separately", async () => {
+    respond(200, {
+      success: true,
+      data: { ...data, history: { saved: false, reason: "QA_HISTORY_FULL" } },
+    });
+    await expect(askReviewQuestion("target-a", "Question", signal())).resolves.toEqual({
+      ...data,
+      historySaved: false,
+      historyFull: true,
+    });
+  });
+
   it.each([
     { saved: true, id: "e0000000-0000-4000-8000-000000000001", createdAt: "2026-11-26T00:00Z" },
     undefined,

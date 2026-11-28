@@ -54,7 +54,11 @@ review, the old exchange keeps its ID, and the UI shows that citation as unavail
   4. caps history at 200 exchanges per analysis, serialized per analysis with an advisory lock.
 - **Known limitation (same as `insert_reviews`):** an owner who calls the function directly can
   write an exchange the model did not produce, but only into their own analysis and only citing
-  that analysis's reviews. The 200-exchange cap bounds the storage this can use.
+  that analysis's reviews, and without using a question quota slot. The 200-exchange cap bounds the
+  storage this can use. Acknowledged in review (#138): saved history is the owner's own record, not
+  proof of what the model said, so S3-018's Markdown export must not present it as verified model
+  output. Closing this would need the server to write history with a privileged key, which the team
+  has avoided so far.
 
 ## API
 
@@ -73,8 +77,9 @@ a paid quota slot:
 { "history": { "saved": false, "reason": "QA_HISTORY_FULL" | "QA_HISTORY_UNAVAILABLE" } }
 ```
 
-The Q&A form then shows "This response wasn't saved to the analysis's Q&A history." No database
-detail reaches the response or the logs (only the error category is logged).
+The Q&A form then shows "This response wasn't saved to the analysis's Q&A history.", or, for
+`QA_HISTORY_FULL`, "This analysis's Q&A history is full, so this response wasn't saved." No
+database detail reaches the response or the logs (only the error category is logged).
 
 ### `GET /api/analysis-targets/[targetId]/questions` (new)
 
@@ -115,7 +120,10 @@ existing `buildCitationView` and `SupportingReviews` components.
 - **Save As (S3-003)** does not copy Q&A history. The copy gets new review IDs, so copied citations
   would all need remapping. The copy starts with an empty history.
 - **Clear history (S3-008)** will delete this analysis's rows from `review_qa_exchanges` only. The
-  analysis, source URL, reviews and ingestion summary are separate tables and are not touched.
+  analysis, source URL, reviews and ingestion summary are separate tables and are not touched. It
+  must also handle a question that is still in flight when history is cleared: that answer is saved
+  after the clear unless S3-008 prevents it (for example by recording a clear time and rejecting
+  older questions in `record_review_qa_exchange`, or ignoring them in the UI).
 - **Delete analysis (S3-005)** needs no extra work: history is removed by `on delete cascade`.
 - **Markdown export (S3-018)** reads the same history through `listQaHistory`.
 
@@ -126,11 +134,28 @@ existing `buildCitationView` and `SupportingReviews` components.
 | `tests/db/review-qa-history.test.sql`                                                                   | Privileges and RLS; owner round trip in order with citation order kept; no cross-analysis leakage; citations from another analysis, another user or nowhere are rejected; another user cannot read or write; the cap; review removal and analysis deletion. |
 | `tests/unit/services/qa/qa-history.test.ts`                                                             | RPC arguments, full-history mapping, fail-closed handling of malformed results, query shape (target filter, ordering, cap).                                                                                                                                 |
 | `tests/unit/app/api/analysis-targets/[targetId]/questions/history-route.test.ts`                        | POST saves the shown exchange on the right analysis with the public outcome; an answer survives a failed save; failed requests save nothing; GET returns only the owner's history and maps errors without details.                                          |
-| `tests/unit/lib/api/review-questions.test.ts`, `tests/unit/components/reviews/ReviewQuestions.test.tsx` | The client flags only an explicit `saved: false`, and the form shows the notice only then.                                                                                                                                                                  |
+| `tests/unit/lib/api/review-questions.test.ts`, `tests/unit/components/reviews/ReviewQuestions.test.tsx` | The client flags only an explicit `saved: false`, and the form shows the notice only then, with a specific message for a full history.                                                                                                                      |
 
 Verification on this branch: `npm run test:db` (all database tests), `npm run coverage:changed`
-(114 suites, 2,093 tests; 100% changed-line coverage), `npm run lint`, `npm run typecheck`,
-`npm run build`, `npm run check:migrations`.
+(100% changed-line coverage), `npm run lint`, `npm run typecheck`, `npm run build`,
+`npm run check:migrations`.
+
+### Browser tests (requested in review)
+
+Run on 2026-11-28 at the branch head, rebased on main `3f95182` (includes #132 and #139), from a
+separate checkout with local fixtures only:
+
+| Suite                                                     | Result       |
+| --------------------------------------------------------- | ------------ |
+| `npm run test:e2e:auth` (dev server)                      | 46/46 passed |
+| `PLAYWRIGHT_AUTH_SERVER=production npm run test:e2e:auth` | 46/46 passed |
+| `npm run test:e2e` (foundation smoke)                     | 2/2 passed   |
+
+This includes `review-questions`, `switch-target`, `target-context-switching`,
+`stale-review-context` and `supporting-reviews`, so Q&A responses and target switching show no
+regressions. These specs stub `/questions` in the browser and run with `QA_ENABLED=false`, so they
+do not exercise the save path; that is covered by the route, service and database tests above. No
+live Supabase or OpenAI run is claimed.
 
 ## Deployment note
 
@@ -139,9 +164,12 @@ The migration is `20261128120000_persist_review_qa_history.sql`. It was renamed 
 already records `20261127212801`. A forward version keeps it in order, so it needs no out-of-order
 procedure of its own.
 
-Remote history checked on 2026-11-27 (`supabase_migrations.schema_migrations`, posted by Shawn):
-the last recorded version is `20261127212801_enforce_trimmed_analysis_names`. The only
-reported manual applies are the four S3-002 versions, which are already repaired and recorded.
+### Remote history (checked 2026-11-28)
+
+`supabase migration list --remote` against the shared project (`reviewlens-ai`): the last recorded
+version is `20261127212801_enforce_trimmed_analysis_names`, and every version up to it is recorded
+except the first two below. The four S3-002 versions applied by hand are already repaired and
+recorded.
 
 Migrations in `main` plus this PR that the remote does not record yet:
 
@@ -151,22 +179,54 @@ Migrations in `main` plus this PR that the remote does not record yet:
 | `20261126120000` | `prevent_duplicate_reviews`      | #135 S3-011 | Older than the last recorded version. |
 | `20261128120000` | `persist_review_qa_history`      | this PR     | Newer than every recorded version.    |
 
-Because the first two are older than `20261127212801`, a plain `supabase db push` refuses them.
-No one has reported applying them by hand, so they are applied out of order with `--include-all`; their versions are
-not renamed, since they are already merged.
+The first two are already merged, so their versions are not renamed. No one has reported applying
+them by hand, so they are applied out of order with `--include-all`. Do not run
+`supabase migration repair` for any of the three: repair marks a version as applied without running
+it.
 
-Steps for whoever holds the linked CLI, after this PR merges:
+### Reviewed dry run (2026-11-28, from this branch)
 
-1. `supabase migration list` and confirm the remote still ends at `20261127212801`, and that the
-   three versions above are the only local-only rows. If another merged PR (for example #134 or
+Supabase CLI 3.x targets the local stack unless `--remote` is passed, so every command below uses
+it.
+
+```text
+$ supabase db push --remote --dry-run
+Error: Found local migration files to be inserted before the last migration on remote database.
+  supabase/migrations/20261125000000_increase_review_question_quota.sql
+  supabase/migrations/20261126120000_prevent_duplicate_reviews.sql
+
+$ supabase db push --remote --dry-run --include-all
+Would push these migrations:
+ • 20261125000000_increase_review_question_quota.sql
+ • 20261126120000_prevent_duplicate_reviews.sql
+ • 20261128120000_persist_review_qa_history.sql
+```
+
+### Steps after this PR merges
+
+This push also applies #131's quota migration, so it follows #131's rollout order
+(`docs/s3-qa-quota-30.md`). An old app build rejects the new quota values once the database has
+them, so Q&A must be off while versions change. S3-006 itself is safe in either order: the old app
+never touches the new table, and the new app shows the "not saved" notice until the table exists.
+
+1. If a hosted deployment exists, set `QA_ENABLED=false` there, redeploy, and confirm Q&A is
+   disabled. Then deploy the merged `main` with Q&A still disabled. (No public deployment exists
+   until S3-020; locally, stop `npm run dev` instead.)
+2. On an up-to-date `main` in the linked checkout, run `npm run check:migrations` and
+   `supabase migration list --remote`. Confirm the remote still ends at `20261127212801` and that
+   the three versions above are the only local-only rows. If another merged PR (for example #134 or
    #137) added migrations, they appear here too and must be reviewed before continuing.
-2. `supabase db push --dry-run --include-all` and confirm it lists exactly those versions, in
-   version order, and nothing else. Post the output in the team channel before step 3.
-3. `supabase db push --include-all`.
-4. `supabase migration list` again and confirm every local version is recorded remotely.
+3. Run `supabase db push --remote --dry-run --include-all`. Confirm it lists exactly those versions,
+   in version order, and post the output in the team channel before continuing.
+4. Run `supabase db push --remote --include-all`.
+5. Run `supabase migration list --remote` again and confirm every local version is recorded.
+6. Smoke checks: confirm the quota checks from `docs/s3-qa-quota-30.md`; confirm
+   `GET /api/analysis-targets/<id>/questions` returns `200` for an owned analysis and `404` for
+   another user's.
+7. Turn Q&A back on (`QA_ENABLED=true`), redeploy, ask one question, and confirm there is no "not
+   saved" notice and the row appears in `review_qa_exchanges`.
 
-Do not run `supabase migration repair` for these three: repair marks a version as applied without
-running it, and none of them has been run.
+If the push or a smoke check fails, keep Q&A disabled and post the output before trying again.
 
 Until `20261128120000` is applied, every answer is still shown, but with the "not saved" notice,
 and `GET .../questions` returns `503 QA_HISTORY_UNAVAILABLE`.
