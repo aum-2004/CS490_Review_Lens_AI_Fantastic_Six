@@ -396,3 +396,34 @@ it("ignores a late success after hide/show without a replacement submission", as
   expect(screen.getByLabelText(/Question/)).toHaveValue("");
   expect(ask).toHaveBeenCalledTimes(1);
 });
+
+describe("S3-006 history notice", () => {
+  const notice = /wasn't saved to the analysis's Q&A history/;
+
+  it("tells the user when an answer was not saved to history", async () => {
+    ask.mockResolvedValue({ ...answer, historySaved: false });
+    render(<ReviewQuestions {...props} />);
+    submit();
+    expect(await screen.findByText("Reviewers like the bread.")).toBeInTheDocument();
+    expect(screen.getByText(notice)).toBeInTheDocument();
+  });
+
+  it("says when the answer was not saved because the history is full", async () => {
+    ask.mockResolvedValue({ ...answer, historySaved: false, historyFull: true });
+    render(<ReviewQuestions {...props} />);
+    submit();
+    expect(
+      await screen.findByText(
+        "This analysis's Q&A history is full, so this response wasn't saved.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+  });
+
+  it("shows no notice when the answer was saved", async () => {
+    render(<ReviewQuestions {...props} />);
+    submit();
+    expect(await screen.findByText("Reviewers like the bread.")).toBeInTheDocument();
+    expect(screen.queryByText(notice)).not.toBeInTheDocument();
+  });
+});

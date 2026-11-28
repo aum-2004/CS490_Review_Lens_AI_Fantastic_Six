@@ -10,6 +10,13 @@ export type ReviewAnswer = {
   answer: string;
   /** Server-validated review IDs; empty for non-answers. Never displayed raw. */
   citedReviewIds: string[];
+  /**
+   * S3-006: false only when the server answered but could not save the exchange to the
+   * analysis's Q&A history. Absent or true means saved.
+   */
+  historySaved?: boolean;
+  /** S3-006: true when the exchange was not saved because the history is at its limit. */
+  historyFull?: boolean;
 };
 
 export class ReviewQuestionError extends Error {
@@ -138,6 +145,7 @@ export async function askReviewQuestion(
           outcome: data.outcome as ReviewAnswer["outcome"],
           answer: data.answer,
           citedReviewIds,
+          ...historyStatus(data),
         };
       }
     }
@@ -146,4 +154,19 @@ export async function askReviewQuestion(
     "FAILED",
     "ReviewLens returned an unexpected response. Please try again.",
   );
+}
+
+/** Flags only an explicit `history: { saved: false }` from the server; anything else is saved. */
+function historyStatus(data: object): Pick<ReviewAnswer, "historySaved" | "historyFull"> {
+  if (
+    !("history" in data) ||
+    typeof data.history !== "object" ||
+    data.history === null ||
+    !("saved" in data.history) ||
+    data.history.saved !== false
+  ) {
+    return {};
+  }
+  const full = "reason" in data.history && data.history.reason === "QA_HISTORY_FULL";
+  return full ? { historySaved: false, historyFull: true } : { historySaved: false };
 }

@@ -265,6 +265,13 @@ function QuestionForm({
             </p>
             <p className="max-w-prose whitespace-pre-wrap break-words">{view.text}</p>
             {answer.outcome === "answered" && <SupportingReviews citations={view.citations} />}
+            {answer.historySaved === false && (
+              <p className="text-xs text-muted-foreground">
+                {answer.historyFull
+                  ? "This analysis's Q&A history is full, so this response wasn't saved."
+                  : "This response wasn't saved to the analysis's Q&A history."}
+              </p>
+            )}
           </>
         )}
       </div>
