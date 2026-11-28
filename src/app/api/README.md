@@ -46,8 +46,16 @@ Review Q&A uses a separate account-wide rolling quota of 30 durable attempts per
 24 hours across all targets. Failed answer-service attempts remain charged. Deploy
 `20261125000000_increase_review_question_quota.sql` with the compatible application
 release as described in `docs/s3-qa-quota-30.md`.
-Browser users cannot DELETE analysis_targets through the Data API; there is no
-target deletion route. This preserves billing holds and the recovery audit.
+Browser users cannot directly DELETE `analysis_targets` through the Data API.
+S3-005 adds `DELETE /api/analysis-targets/[targetId]`: it verifies the session and target
+ownership, ignores body/query identity claims, and calls the authenticated
+`delete_owned_analysis(p_target_id)` RPC, which independently checks `auth.uid()` inside
+the deletion. Success returns `{ success: true, data: { deleted: true } }`; missing,
+foreign and malformed IDs return the same `404 TARGET_NOT_FOUND`. Responses are private/no-store.
+Reviews cascade with their analysis; ingestion audits are detached and retained, and both
+ingestion and Q&A usage reservations remain charged. The reviewed migration must be applied
+before the delete UI is exposed; see `docs/s3-005-delete-owned-analysis.md` for deployment,
+retention and rollback requirements. The existing PATCH rename handler remains available.
 
 ### Target child routes (S1-013)
 

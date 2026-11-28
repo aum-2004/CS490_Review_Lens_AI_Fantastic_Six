@@ -1,6 +1,23 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const target = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1";
+
+test("leaves a stale workspace when deletion returns an empty 404", async ({ page }) => {
+  const owned = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3";
+  await login(page, "fixture@example.com");
+  await page.goto(`/analysis-targets/${owned}`);
+  await expect(page.getByRole("heading", { name: "A bakery", level: 1 })).toBeVisible();
+  await page.route(`**/api/analysis-targets/${owned}`, async (route) => {
+    if (route.request().method() === "DELETE") await route.fulfill({ status: 404, body: "" });
+    else await route.continue();
+  });
+  await page.getByRole("button", { name: "Delete analysis", exact: true }).click();
+  await page.getByRole("button", { name: "Permanently delete", exact: true }).click();
+  await expect(page).toHaveURL("/analysis-targets");
+  await expect(page.getByRole("heading", { name: "My Targets", level: 1 })).toBeVisible();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+});
+
 async function login(page: Page, email: string) {
   await page.goto("/login?next=%2Fanalysis-targets");
   await page.getByLabel("Email *").fill(email);
@@ -20,6 +37,13 @@ test("confirms owned deletion, retries failure, denies other users and removes t
   await page.goto(`/analysis-targets/${target}`);
   await expect(page.getByRole("heading", { name: "Deletion fixture", level: 1 })).toBeVisible();
   await expect(page.getByText("Saved review for Deletion fixture", { exact: true })).toBeVisible();
+  // Reconciliation with S3-002 must preserve PATCH and DELETE on the same owned target.
+  await page.getByRole("button", { name: "Rename analysis", exact: true }).click();
+  const rename = page.getByRole("form", { name: "Rename analysis" });
+  await rename.getByRole("textbox", { name: /Analysis name/ }).fill("Renamed deletion fixture");
+  await rename.getByRole("button", { name: "Save name", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Renamed deletion fixture");
+  await expect(page.getByText("Saved review for Deletion fixture", { exact: true })).toBeVisible();
   const other = await browser.newContext();
   try {
     const b = await other.newPage();
@@ -34,6 +58,7 @@ test("confirms owned deletion, retries failure, denies other users and removes t
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Delete analysis?" });
     await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Renamed deletion fixture");
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
     await page.screenshot({ path: "test-results/s3-005-delete-mobile.png", fullPage: true });
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -80,11 +105,11 @@ test("confirms owned deletion, retries failure, denies other users and removes t
       "No saved analyses yet.",
     );
     await expect(page.getByRole("region", { name: "Saved analyses" })).not.toContainText(
-      "Deletion fixture",
+      "Renamed deletion fixture",
     );
     await page.reload();
     await expect(page.getByRole("heading", { name: "My Targets", level: 1 })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open Deletion fixture" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Open Renamed deletion fixture" })).toHaveCount(0);
     expect((await page.request.get(`/api/analysis-targets/${target}/reviews`)).status()).toBe(404);
     expect((await page.request.delete(`/api/analysis-targets/${target}`)).status()).toBe(404);
     expect(

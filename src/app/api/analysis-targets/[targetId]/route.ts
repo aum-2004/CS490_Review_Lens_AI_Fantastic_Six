@@ -83,7 +83,7 @@ function browserOriginAllowed(request: NextRequest) {
     // Next may normalize the internal URL to localhost. Like Server Actions, compare
     // Origin to the browser-facing Host (or the deployment proxy's forwarded Host).
     const host =
-      request.headers.get("x-forwarded-host") ??
+      request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ??
       request.headers.get("host") ??
       request.nextUrl.host;
     return (url.protocol === "http:" || url.protocol === "https:") && url.host === host;

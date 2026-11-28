@@ -105,30 +105,57 @@ it("prevents duplicate submits and blocks Escape/cancel during deletion", async 
   );
   expect(done).toHaveBeenCalledTimes(1);
 });
-it("ignores late success after Activity hides/restores the old workspace", async () => {
-  let resolve!: (value: unknown) => void;
-  fetchMock.mockReturnValueOnce(
-    new Promise((r) => {
-      resolve = r;
-    }),
-  );
-  const view = (mode: "visible" | "hidden") => (
-    <Activity mode={mode}>
-      <DeleteAnalysis {...props} />
-    </Activity>
-  );
-  const { rerender } = render(view("visible"));
+it.each([200, 404])(
+  "ignores late %s after Activity hides/restores the old workspace",
+  async (status) => {
+    let resolve!: (value: unknown) => void;
+    fetchMock.mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const view = (mode: "visible" | "hidden") => (
+      <Activity mode={mode}>
+        <DeleteAnalysis {...props} />
+      </Activity>
+    );
+    const { rerender } = render(view("visible"));
+    open();
+    remove();
+    const signal = fetchMock.mock.calls[0][1].signal;
+    rerender(view("hidden"));
+    rerender(view("visible"));
+    await act(async () =>
+      resolve({
+        status,
+        ok: status === 200,
+        json: async () => ({ success: true, data: { deleted: true } }),
+      }),
+    );
+    expect(signal.aborted).toBe(true);
+    expect(done).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+);
+
+it("leaves an unavailable workspace on 404 without reading or displaying the error body", async () => {
+  const json = jest.fn().mockRejectedValue(new Error("PRIVATE ERROR"));
+  fetchMock.mockResolvedValueOnce({ status: 404, ok: false, json });
+  render(<DeleteAnalysis {...props} />);
   open();
   remove();
-  const signal = fetchMock.mock.calls[0][1].signal;
-  rerender(view("hidden"));
-  rerender(view("visible"));
-  await act(async () =>
-    resolve({ ok: true, json: async () => ({ success: true, data: { deleted: true } }) }),
-  );
-  expect(signal.aborted).toBe(true);
+  await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  expect(json).not.toHaveBeenCalled();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it.each([401, 403, 500])("does not navigate on HTTP %s", async (status) => {
+  fetchMock.mockResolvedValueOnce({ status, ok: false, json: async () => ({ success: false }) });
+  render(<DeleteAnalysis {...props} />);
+  open();
+  remove();
+  await screen.findByRole("alert");
   expect(done).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it.each([

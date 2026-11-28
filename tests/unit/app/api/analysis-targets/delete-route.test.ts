@@ -131,6 +131,10 @@ it.each<Record<string, string>>([
   { origin: "ftp://localhost" },
   { origin: "https://attacker.example", host: "public.example" },
   { origin: "https://public.example", "x-forwarded-host": "other.example" },
+  { origin: "https://public.example", "x-forwarded-host": "other.example, public.example" },
+  { origin: "https://public.example", "x-forwarded-host": ", public.example" },
+  { origin: "https://public.example", host: "public.example", "x-forwarded-host": " " },
+  { origin: "https://public.example", "x-forwarded-host": "https://public.example, proxy.example" },
 ])("rejects a cross-origin browser request before lookup: %p", async (headers) => {
   expect((await request(A, headers)).status).toBe(403);
   expect(client.from).not.toHaveBeenCalled();
@@ -143,6 +147,11 @@ it.each<Record<string, string>>([
     origin: "https://public.example",
     host: "internal.example",
     "x-forwarded-host": "public.example",
+  },
+  {
+    origin: "https://public.example:8443",
+    host: "internal.example",
+    "x-forwarded-host": " public.example:8443 , proxy.example",
   },
 ])("accepts the actual browser-facing host when Next uses an internal URL: %p", async (headers) => {
   expect((await request(A, headers)).status).toBe(200);

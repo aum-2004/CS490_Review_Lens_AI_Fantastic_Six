@@ -166,7 +166,8 @@ class FakeReviewDatabase {
       errorCode: string | null,
     ): Promise<IngestionAttemptRow> => {
       const attempt = this.attempts.get(attemptId);
-      if (!attempt || attempt.owner_id !== ownerId) throw new IngestionPersistenceError();
+      if (!attempt || attempt.owner_id !== ownerId || attempt.analysis_target_id === null)
+        throw new IngestionPersistenceError();
       if (attempt.status !== "processing") return { ...attempt };
       const failure = this.failNextFinish;
       this.failNextFinish = null;
@@ -322,6 +323,26 @@ afterEach(() => {
   jest.restoreAllMocks();
   if (originalKey === undefined) delete process.env.OUTSCRAPER_API_KEY;
   else process.env.OUTSCRAPER_API_KEY = originalKey;
+});
+
+it("rejects completion of a detached audit without writing reviews or changing the reservation", async () => {
+  const attempt = db.openAttempt(TARGET_A, "detached-job");
+  attempt.analysis_target_id = null;
+  const before = { ...attempt };
+
+  await expect(
+    db.finish(
+      attempt.id,
+      TARGET_A.ownerId,
+      [{ text: "Late detached result", rating: 5, source_review_id: "detached-review" }],
+      0,
+      null,
+      null,
+    ),
+  ).rejects.toBeInstanceOf(IngestionPersistenceError);
+
+  expect(db.reviews).toEqual([]);
+  expect(db.attempts.get(attempt.id)).toEqual(before);
 });
 
 it("[1] a review first seen without an id adopts the id when it appears", async () => {

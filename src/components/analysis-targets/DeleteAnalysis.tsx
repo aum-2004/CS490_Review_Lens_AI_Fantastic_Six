@@ -66,6 +66,12 @@ export function DeleteAnalysis({
         cache: "no-store",
         signal: controller.signal,
       });
+      // A missing/foreign target is no longer available to this workspace. Do not
+      // parse an error body or claim deletion; discard the stale workspace instead.
+      if (response.status === 404) {
+        if (request.current === controller && !controller.signal.aborted) onDeleted();
+        return;
+      }
       const body: unknown = await response.json();
       if (
         !response.ok ||
