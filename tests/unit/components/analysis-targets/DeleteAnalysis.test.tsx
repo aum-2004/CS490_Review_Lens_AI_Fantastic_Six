@@ -138,6 +138,48 @@ it.each([200, 404])(
   },
 );
 
+it.each([
+  ["unmount", 200],
+  ["unmount", 404],
+  ["hide", 200],
+  ["hide", 404],
+] as const)(
+  "ignores late %s response with HTTP %s before any workspace restore",
+  async (leave, status) => {
+    let finish!: (response: unknown) => void;
+    fetchMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const view = (mode: "visible" | "hidden") => (
+      <Activity mode={mode}>
+        <DeleteAnalysis {...props} />
+      </Activity>
+    );
+    const { unmount, rerender } = render(view("visible"));
+    open();
+    remove();
+    const signal: AbortSignal = fetchMock.mock.calls[0][1].signal;
+    if (leave === "unmount") unmount();
+    else rerender(view("hidden"));
+    expect(signal.aborted).toBe(true);
+
+    // Resolve despite abort: navigation must be guarded even if the transport already completed.
+    const json = jest.fn(async () => ({ success: true, data: { deleted: true } }));
+    await act(async () => {
+      finish({ status, ok: status === 200, json });
+    });
+    expect(done).not.toHaveBeenCalled();
+    if (status === 404) expect(json).not.toHaveBeenCalled();
+    if (leave === "hide") {
+      rerender(view("visible"));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(done).not.toHaveBeenCalled();
+    }
+  },
+);
+
 it("leaves an unavailable workspace on 404 without reading or displaying the error body", async () => {
   const json = jest.fn().mockRejectedValue(new Error("PRIVATE ERROR"));
   fetchMock.mockResolvedValueOnce({ status: 404, ok: false, json });

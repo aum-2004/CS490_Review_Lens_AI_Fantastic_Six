@@ -85,12 +85,71 @@ Before an authorized hosted deployment:
    If either deletion migration is unapplied and older than the remote head, obtain a reviewed
    forward-version change or an explicitly approved out-of-order deployment plan. Do not rename
    an already applied migration or repair history merely to silence a mismatch.
-3. Review the linked CLI's dry-run output and record the exact intended migration list before
-   applying it. Do not use an unreviewed blanket push or assume it deploys only S3-005. Preserve
+3. On the linked CLI version supporting these flags, run
+   `supabase db push --dry-run --include-all --linked` and have the deployment reviewer compare
+   its complete version/name list with the remote history before approving application. The dry
+   run includes every missing migration, including older versions, not just S3-005. Confirm the
+   equivalent explicit remote selector with `supabase db push --help` on other CLI versions.
+   Do not use an unreviewed blanket push or assume it deploys only S3-005. Preserve
    the Q&A-disabled rollout sequence in `docs/s3-qa-quota-30.md` if quota changes are pending.
 4. Apply the approved database changes before exposing deletion controls, then perform authorized
    two-user deletion, retained-audit/quota and late-callback checks. Record the deployed application
-   and migration versions. No shared-project history, dry run or hosted acceptance is claimed here.
+   and migration versions. No CLI dry run or hosted acceptance has been performed by this work.
+
+### Shared migration history supplied November 28
+
+Shawn supplied the result of the read-only query
+`select version, name from supabase_migrations.schema_migrations order by version` for the shared
+ReviewLens project. This is user-supplied evidence, not an independent CLI connection from this
+checkout. All 13 reported version/name pairs match repository files:
+
+| Recorded version | Name                                   |
+| ---------------- | -------------------------------------- |
+| `20261103120000` | `create_analysis_targets`              |
+| `20261104000000` | `create_reviews`                       |
+| `20261107000000` | `create_ingestion_attempts`            |
+| `20261107010000` | `harden_ingestion_lifecycle`           |
+| `20261107020000` | `enforce_ingestion_safety_limits`      |
+| `20261107030000` | `bound_ingestion_completions`          |
+| `20261108000000` | `harden_review_writes`                 |
+| `20261113000000` | `create_review_summary`                |
+| `20261115043442` | `limit_paid_review_questions`          |
+| `20261125000100` | `allow_owned_analysis_rename`          |
+| `20261125010000` | `validate_owned_analysis_rename`       |
+| `20261127000000` | `reject_invisible_only_analysis_names` |
+| `20261127212801` | `enforce_trimmed_analysis_names`       |
+
+Comparing those records with this branch's 18 migration files gives the exact expected pending
+list below, in application order, **provided no unrecorded manual SQL has applied these changes**:
+
+| Pending version  | Name                                        | Requirement                                         |
+| ---------------- | ------------------------------------------- | --------------------------------------------------- |
+| `20261125000000` | `increase_review_question_quota`            | Coordinate the Q&A-disabled rollout first           |
+| `20261126000000` | `delete_owned_analysis`                     | Install before exposing Delete                      |
+| `20261126010000` | `reconcile_detached_ingestion_audits`       | Requires deletion migration                         |
+| `20261126120000` | `prevent_duplicate_reviews`                 | Preserve live-parent checks with detached audits    |
+| `20261128060000` | `restrict_detached_audit_ticket_references` | Requires reconciliation RPC; ticket-only references |
+
+The first four versions are older than the remote history's latest version. Keep existing files
+unchanged and use the reviewed out-of-order path, rather than assuming a plain push will work:
+
+```sh
+supabase migration list --linked
+supabase db push --dry-run --include-all --linked
+```
+
+The linked operator must confirm the intended shared project and CLI flags, obtain confirmation
+about manual SQL, and attach the dry-run output for review. It must match all five entries above
+exactly on this checkout; stop and reconcile any missing, additional or already-existing schema
+objects. Another checkout/PR can have a different pending set. After separate authorization,
+apply only that reviewed set with the same explicit target and inclusion flags, then verify the
+recorded versions and hosted smoke checks before exposing Delete or re-enabling Q&A.
+
+This checkout has no linked Supabase CLI. **The pending-list comparison is complete; the actual
+CLI dry run and deployment-review approval are still outstanding.** Migration history alone
+does not prove that SQL Editor changes were never applied without being recorded.
+
+CLI flag reference: https://supabase.com/docs/reference/cli/introduction#supabase-db-push
 
 ### Pause/rollback and retained audits
 
@@ -122,8 +181,12 @@ operator's reconciliation evidence; it does not assert that a provider completed
 Ordinary bind/completion parent checks remain unchanged and detached jobs cannot resume.
 
 An authorized operator must first independently confirm the provider/billing disposition and
-record it in the restricted incident process. Pass only that ticket/reference (1–500 characters),
-not credentials or provider payloads, using the team's approved administrative tooling. No browser
+record it in the restricted incident process. Forward migration `20261128060000` restricts new
+references to `GH-<issue number>` (one to ten digits, no leading zero), for example `GH-1234`.
+The identifier refers to a ticket in this repository; confidential incident details must remain
+in the team's restricted process. The database validates only the identifier's syntax, not the
+ticket's existence or contents. URLs, prose, email addresses and provider payloads are rejected.
+Existing recorded references are not rewritten. Use the team's approved administrative tooling. No browser
 endpoint or new service-key configuration is introduced. A repeat with the same trimmed reference
 returns the existing record unchanged; a different reference is rejected to preserve the audit.
 Inspect retained job/owner/quota fields afterward. Neither function verifies the ticket's contents;
@@ -283,3 +346,17 @@ Verification of the reconciled source snapshot:
 
 No shared Supabase changes, provider calls or GitHub writes were performed. Current-head remote CI,
 re-review, team retention sign-off and the authorized deployment/acceptance plan remain outstanding.
+
+### Follow-up to re-review of `c6877f68` (local, not pushed)
+
+- Added explicit late-200 and late-404 tests for unmount and Activity hide, resolving the promise
+  before any restoration. All 25 deletion-component tests pass. Removing the success navigation
+  guard fails the two new 200 cases; removing the 404 guard fails the two new 404 cases.
+- Added ticket-only validation as a new forward migration rather than modifying either original
+  migration whose shared deployment status is unknown. The detached-audit SQL assertions reject
+  invalid ticket IDs, URLs, prose and email addresses while retaining ownership, immutable evidence,
+  service-role-only access and unchanged quota/lifecycle checks.
+- Merge S3-005 before S3-009 / #137. Its owner must reconcile the workspace changes and nullable
+  `analysis_target_id`, rerun the combined checks and retain the live-parent guards after rebasing.
+- Team S3-BR-008 sign-off and the linked CLI's reviewed dry run remain pending. The shared history
+  supplied November 28 and exact five-entry pending comparison are recorded above.

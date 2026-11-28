@@ -28,7 +28,7 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"66666666-6666-4666-8666-666666666601"}';
 do $$ begin
   begin
-    perform public.reconcile_detached_ingestion_attempt('66666666-6666-4666-8666-000000000001', auth.uid(), 'ticket');
+    perform public.reconcile_detached_ingestion_attempt('66666666-6666-4666-8666-000000000001', auth.uid(), 'GH-1234');
     raise exception 'Browser reconciled an audit';
   exception when insufficient_privilege then null; end;
 end $$;
@@ -43,32 +43,34 @@ begin
       perform public.reconcile_detached_ingestion_attempt(
         ('66666666-6666-4666-8666-' || lpad(n::text, 12, '0'))::uuid,
         case when n = 5 then '66666666-6666-4666-8666-666666666699'::uuid
-          else '66666666-6666-4666-8666-666666666601'::uuid end, 'ticket');
+          else '66666666-6666-4666-8666-666666666601'::uuid end, 'GH-1234');
       raise exception 'Unavailable audit accepted';
     exception when no_data_found then
       assert sqlerrm = 'Detached attempt unavailable', 'Failure reveals a different state';
     end;
   end loop;
-  foreach bad_ref in array array[null::text, '', '   ', repeat('x', 501)] loop
+  foreach bad_ref in array array[null::text, '', '   ', repeat('x', 501),
+    'incident details', 'https://github.com/team/repo/issues/1234', 'person@example.com',
+    'GH-0', 'GH-01', 'GH-12345678901', 'gh-1234', 'GH-1234 provider payload'] loop
     begin
       perform public.reconcile_detached_ingestion_attempt('66666666-6666-4666-8666-000000000001',
         '66666666-6666-4666-8666-666666666601', bad_ref);
       raise exception 'Invalid evidence accepted';
     exception when raise_exception then
-      if sqlerrm <> 'Resolution evidence required' then raise; end if;
+      if sqlerrm <> 'Resolution ticket ID required' then raise; end if;
     end;
   end loop;
   for n in 1..4 loop
     select * into strict before_row from public.ingestion_attempts
       where id = ('66666666-6666-4666-8666-' || lpad(n::text, 12, '0'))::uuid;
-    after_row := public.reconcile_detached_ingestion_attempt(before_row.id, before_row.owner_id, ' ticket/provider-confirmation ');
-    assert after_row.resolution_reference = 'ticket/provider-confirmation' and after_row.resolved_at is not null, 'Evidence missing';
+    after_row := public.reconcile_detached_ingestion_attempt(before_row.id, before_row.owner_id, ' GH-1234 ');
+    assert after_row.resolution_reference = 'GH-1234' and after_row.resolved_at is not null, 'Evidence missing';
     assert (to_jsonb(before_row) - 'resolution_reference' - 'resolved_at') =
       (to_jsonb(after_row) - 'resolution_reference' - 'resolved_at'), 'Reconciliation changed lifecycle, quota, binding or owner';
-    repeated := public.reconcile_detached_ingestion_attempt(before_row.id, before_row.owner_id, 'ticket/provider-confirmation');
+    repeated := public.reconcile_detached_ingestion_attempt(before_row.id, before_row.owner_id, 'GH-1234');
     assert to_jsonb(repeated) = to_jsonb(after_row), 'Retry changed the original audit';
     begin
-      perform public.reconcile_detached_ingestion_attempt(before_row.id, before_row.owner_id, 'replacement-ticket');
+      perform public.reconcile_detached_ingestion_attempt(before_row.id, before_row.owner_id, 'GH-5678');
       raise exception 'Existing evidence overwritten';
     exception when raise_exception then
       if sqlerrm <> 'Reconciliation already recorded' then raise; end if;
