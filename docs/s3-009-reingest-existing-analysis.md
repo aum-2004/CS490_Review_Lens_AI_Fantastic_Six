@@ -130,13 +130,26 @@ Consequently:
 ### Retrying a failed refresh
 
 The Ingestion panel's "Try again" calls `POST .../ingestion/reingest` (a new attempt) when the
-failed attempt is a refresh. The workspace decides this from recorded state: the latest attempt's
-`attempt_kind = 'reingest'` (read by `loadLatestAttemptKind` through the RLS session client,
-because the `select *` columns of `latest_ingestion_attempts` predate `attempt_kind`), **or** an
-existing successful dataset. The second rule covers a refresh that fails in the open page before
-the server data reloads: for a target with a successful attempt, `POST .../ingestion` can only
-answer with that earlier success, so retrying it would collect nothing. A failed **first**
-collection has no successful attempt and still retries through `POST .../ingestion`. During a
+failed attempt is a refresh. The workspace classifies the failed run as `refresh`, `initial`, or
+`unknown` (`classifyRetry` in `ingestion-reingest-state.ts`), in this order:
+
+1. The latest attempt's persisted `attempt_kind`, when it was read: `reingest` → `refresh`,
+   `initial` → `initial`. `loadLatestAttemptKind` reads it through the RLS session client,
+   because the `select *` columns of `latest_ingestion_attempts` predate `attempt_kind`.
+2. Otherwise the last-successful-attempt lookup: a successful dataset → `refresh`; none →
+   `initial`. This covers a refresh that fails in the open page before the server data reloads:
+   for a target with a successful attempt, `POST .../ingestion` can only answer with that earlier
+   success, so retrying it would collect nothing.
+3. Otherwise (both lookups failed, or the baseline read returned a row that fails its owner,
+   target, or status re-check, which is treated as unreadable rather than "nothing collected")
+   → `unknown`.
+
+A failed **first** collection has no successful attempt and still retries through
+`POST .../ingestion`. In the `unknown` state "Try again" is disabled, and the panel says it
+couldn't confirm whether the failed run was a refresh or a first collection. `POST .../ingestion`
+is never used as a fallback, and a refresh is never guessed. "Check again" reloads the page's
+server data (`router.refresh()`), which re-runs both lookups. It sends no client request, so there
+is no late response to guard. Saved reviews, the summary, and questions stay available. During a
 billing hold the button stays disabled.
 
 - **Late completion of an older attempt**: an older attempt cannot be processing while a newer
@@ -177,6 +190,10 @@ unavailable."):
 - after a failed refresh: "This was a refresh of reviews already collected for this target. They
   are unchanged and still available. Try again starts a new refresh." (the last sentence is
   omitted during a billing hold).
+- failed run of unknown kind: "We couldn't confirm whether the run that failed was a refresh or a
+  first collection, so Try again is paused to avoid starting the wrong one. Any saved reviews are
+  unchanged." (`role="status"`, the disabled button's description), with a "Check again" button.
+  Not shown during a billing hold, which has its own copy.
 
 ### Stale responses
 
@@ -212,14 +229,19 @@ Ingestion panel then polls a running attempt).
   that fails in the workspace is retried from the Ingestion panel through `/reingest` while the
   saved reviews stay visible; with the baseline unreadable, the persisted `attempt_kind` alone
   routes "Try again" to `/reingest` (`reingest`) or `POST .../ingestion` (`initial`), on the first
-  load and after a reload; a failed first collection still retries through `POST .../ingestion`).
+  load and after a reload; a failed first collection still retries through `POST .../ingestion`;
+  when both lookups fail, "Try again" is disabled with feedback and nothing is posted, also across
+  reloads, until "Check again" recovers a kind or a baseline; each single-lookup failure routes
+  safely). `ingestion-reingest.test.ts` has the `classifyRetry` table.
 - Browser: `tests/e2e/auth/target-workspace.spec.ts` asserts the exact "unavailable" copy variant
   for a collected target and that the old "Further collection is unavailable" copy is gone.
 - Mutation-checked: removing the active-run check, removing the ownership predicates, or making
   completion drop absent reviews each fails the DB tests. Reverting the panel's retry routing fails
   the workspace and panel tests; routing on `attempt_kind` alone fails the in-workspace retry test;
   ignoring `attempt_kind` fails the persisted-kind workspace test; removing the "Try again"
-  stale-response checks and abort fails the panel's late-response tests.
+  stale-response checks and abort fails the panel's late-response tests; mapping `unknown` back to
+  `initial` fails the both-lookups-failed tests; making "Check again" post, or re-enabling "Try
+  again" while `unknown`, fails the unknown-state tests.
 
 ## Known limitations
 

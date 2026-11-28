@@ -10,6 +10,7 @@ import { IngestionPersistenceError } from "@/services/ingestion/ingestion-attemp
 import { IngestionLimitError } from "@/services/ingestion/ingestion-limits";
 import { getOwnedTargetOrThrow } from "@/services/analysis-targets/target-ownership";
 import { NO_INGESTION, type IngestionSummary } from "@/services/ingestion/ingestion-state";
+import { classifyRetry } from "@/services/ingestion/ingestion-reingest-state";
 
 jest.mock("@/lib/supabase/ingestion-admin", () => ({
   createIngestionAdminClient: () => {
@@ -285,5 +286,38 @@ describe("loadReingestBaseline", () => {
       operation: "reingest-baseline",
       category: "LOAD_FAILED",
     });
+  });
+});
+
+describe("classifyRetry (PR #137 review: unknown is never initial)", () => {
+  const dataset = { finishedAt: "2026-11-20T12:01:00Z", savedCount: 3 };
+  it.each([
+    ["reingest", dataset, "refresh"],
+    ["reingest", null, "refresh"],
+    ["reingest", undefined, "refresh"],
+    ["initial", null, "initial"],
+    ["initial", undefined, "initial"],
+    [null, dataset, "refresh"],
+    [null, null, "initial"],
+    [null, undefined, "unknown"],
+  ] as const)("kind %s with baseline %p → %s", (kind, baseline, expected) => {
+    expect(classifyRetry(kind, baseline)).toBe(expected);
+  });
+});
+
+describe("loadReingestBaseline with a row that fails the re-check (PR #137 review)", () => {
+  it.each([
+    ["a failed attempt", { status: "failed" }],
+    ["another owner's attempt", { owner_id: "someone-else" }],
+    ["another target's attempt", { analysis_target_id: "other-target" }],
+    ["a detached audit row", { analysis_target_id: null }],
+  ])("treats %s as unreadable, not as nothing collected", async (_name, override) => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    const { client } = queryClient({ data: { ...successRow, ...override }, error: null });
+    await expect(
+      loadReingestBaseline(client, OWNER, TARGET, { ...NO_INGESTION, state: "failed" }),
+    ).resolves.toBeUndefined();
+    // getLastSuccessfulAttempt itself still never presents such a row as the dataset.
+    await expect(getLastSuccessfulAttempt(client, OWNER, TARGET)).resolves.toBeNull();
   });
 });

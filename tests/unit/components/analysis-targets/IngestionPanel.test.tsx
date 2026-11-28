@@ -7,7 +7,10 @@ import {
 } from "@/components/ingestion/WorkspaceIngestionState";
 import { WorkspaceIngestion } from "@/components/ingestion/WorkspaceIngestion";
 import { NO_INGESTION, type IngestionSummary } from "@/services/ingestion/ingestion-state";
-import { reingestErrorMessage } from "@/services/ingestion/ingestion-reingest-state";
+import {
+  reingestErrorMessage,
+  type RetryClassification,
+} from "@/services/ingestion/ingestion-reingest-state";
 const fetchMock = jest.fn();
 const router = { replace: jest.fn(), refresh: jest.fn() };
 jest.mock("next/navigation", () => ({ useRouter: () => router }));
@@ -31,6 +34,7 @@ function workspace(
         targetName="Bakery"
         sourceUrl="https://www.google.com/maps/place/Synthetic"
         unavailableReason={reason}
+        retryClassification="initial"
       />
     </WorkspaceIngestionProvider>
   );
@@ -291,7 +295,7 @@ const failedRefresh = {
 };
 function refreshWorkspace(
   summary: IngestionSummary,
-  retryAsReingest: boolean,
+  retryClassification: RetryClassification,
   reason: string | null = null,
 ) {
   return (
@@ -301,7 +305,7 @@ function refreshWorkspace(
         targetName="Bakery"
         sourceUrl="https://www.google.com/maps/place/Synthetic"
         unavailableReason={reason}
-        retryAsReingest={retryAsReingest}
+        retryClassification={retryClassification}
       />
     </WorkspaceIngestionProvider>
   );
@@ -317,7 +321,7 @@ function conflict(code: string, status: number) {
 it("retries a failed refresh through the refresh endpoint, once", async () => {
   let finish!: (value: unknown) => void;
   fetchMock.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-  render(refreshWorkspace(failedRefresh, true));
+  render(refreshWorkspace(failedRefresh, "refresh"));
   const button = screen.getByRole("button", { name: "Try again" });
   fireEvent.click(button);
   fireEvent.click(button);
@@ -333,7 +337,7 @@ it("retries a failed refresh through the refresh endpoint, once", async () => {
 
 it("keeps retrying a failed first collection through the original start path", async () => {
   fetchMock.mockResolvedValue(response(processing, 202));
-  render(refreshWorkspace(failedRefresh, false));
+  render(refreshWorkspace(failedRefresh, "initial"));
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   await screen.findByText("Collecting reviews for Bakery from Google Maps…");
   expect(fetchMock).toHaveBeenCalledWith("/api/analysis-targets/target-a/ingestion", {
@@ -354,7 +358,7 @@ it.each([
   ["INGESTION_START_LIMIT", 429, false],
 ])("shows safe copy when a refresh retry returns %s", async (code, status, reloads) => {
   fetchMock.mockResolvedValue(conflict(code, status));
-  render(refreshWorkspace(failedRefresh, true));
+  render(refreshWorkspace(failedRefresh, "refresh"));
   fireEvent.click(screen.getByRole("button", { name: "Try again" }));
   await waitFor(() =>
     expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toContain(
@@ -366,7 +370,7 @@ it.each([
 });
 
 it("explains that a failed refresh left the collected reviews in place", () => {
-  render(refreshWorkspace(failedRefresh, true));
+  render(refreshWorkspace(failedRefresh, "refresh"));
   expect(
     screen.getByText(
       "This was a refresh of reviews already collected for this target. They are unchanged and still available. Try again starts a new refresh.",
@@ -376,7 +380,7 @@ it("explains that a failed refresh left the collected reviews in place", () => {
 });
 
 it("does not promise a retry for a refresh held for reconciliation", () => {
-  render(refreshWorkspace({ ...failedRefresh, errorCode: "SUBMISSION_UNCERTAIN" }, true));
+  render(refreshWorkspace({ ...failedRefresh, errorCode: "SUBMISSION_UNCERTAIN" }, "refresh"));
   expect(
     screen.getByText(
       "This was a refresh of reviews already collected for this target. They are unchanged and still available.",
@@ -387,7 +391,7 @@ it("does not promise a retry for a refresh held for reconciliation", () => {
 });
 
 it("says why newer reviews can't be collected while collection is unavailable", () => {
-  render(refreshWorkspace(succeeded, false, "Storage permission is pending."));
+  render(refreshWorkspace(succeeded, "initial", "Storage permission is pending."));
   expect(
     screen.getByText(
       "Reviews have been collected for this target. Collecting newer reviews is unavailable right now; the reason is shown below.",
@@ -411,7 +415,7 @@ function retryWorkspace({
   mode = "visible" as "visible" | "hidden" | "unmounted",
   userId = "user-a",
   targetId = "target-a",
-  retryAsReingest = true,
+  retryClassification = "refresh" as RetryClassification,
 } = {}) {
   // No provider key: the panel itself must reject a stale response while it stays mounted.
   return (
@@ -425,7 +429,7 @@ function retryWorkspace({
             targetName="Bakery"
             sourceUrl="https://www.google.com/maps/place/Synthetic"
             unavailableReason={null}
-            retryAsReingest={retryAsReingest}
+            retryClassification={retryClassification}
           />
         </Activity>
       )}
@@ -588,13 +592,112 @@ it("still redirects a 401 for the current target, including after a stale retry"
 
 it("guards a failed first collection's retry the same way, on its original start path", async () => {
   const calls = deferredFetch();
-  const view = render(retryWorkspace({ retryAsReingest: false }));
+  const view = render(retryWorkspace({ retryClassification: "initial" }));
   fireEvent.click(tryAgain());
   expect(calls[0].url).toBe("/api/analysis-targets/target-a/ingestion");
 
-  act(() => view.rerender(retryWorkspace({ retryAsReingest: false, mode: "unmounted" })));
+  act(() => view.rerender(retryWorkspace({ retryClassification: "initial", mode: "unmounted" })));
   expect(calls[0].signal.aborted).toBe(true);
   await act(async () => calls[0].resolve(response(processing, 202)));
   expect(sharedState()).toHaveTextContent("failed|false");
   expect(router.refresh).not.toHaveBeenCalled();
 });
+
+// ---------------------------------------------------------------------------------------------
+// PR #137 review (Shawn): a failed run of unknown kind is never restarted on a guessed path
+// ---------------------------------------------------------------------------------------------
+const UNKNOWN_COPY =
+  "We couldn't confirm whether the run that failed was a refresh or a first collection, so Try again is paused to avoid starting the wrong one. Any saved reviews are unchanged.";
+
+it("disables Try again for a failed run of unknown kind and offers Check again instead", () => {
+  render(refreshWorkspace(failedRefresh, "unknown"));
+  const retry = screen.getByRole("button", { name: "Try again" });
+  expect(retry).toBeDisabled();
+  expect(retry).toHaveAccessibleDescription(UNKNOWN_COPY);
+  expect(screen.getByText(UNKNOWN_COPY)).toHaveAttribute("role", "status");
+  fireEvent.click(retry);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(screen.queryByText(/This was a refresh/)).not.toBeInTheDocument();
+
+  const check = screen.getByRole("button", { name: "Check again" });
+  expect(check.tagName).toBe("BUTTON");
+  fireEvent.click(check);
+  // Check again reloads the server data that runs both lookups; it starts nothing itself.
+  expect(router.refresh).toHaveBeenCalledTimes(1);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it("leaves a held run of unknown kind to the hold copy", () => {
+  render(refreshWorkspace({ ...failedRefresh, errorCode: "SUBMISSION_UNCERTAIN" }, "unknown"));
+  expect(screen.getByRole("button", { name: "Try again" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
+});
+
+it.each([
+  ["refresh", "/api/analysis-targets/target-a/ingestion/reingest"],
+  ["initial", "/api/analysis-targets/target-a/ingestion"],
+] as const)("routes Try again once the classification arrives as %s", async (kind, url) => {
+  fetchMock.mockResolvedValue(response(processing, 202));
+  const view = render(refreshWorkspace(failedRefresh, "unknown"));
+  view.rerender(refreshWorkspace(failedRefresh, kind));
+  expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await screen.findByText("Collecting reviews for Bakery from Google Maps…");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledWith(url, { method: "POST", signal: expect.any(AbortSignal) });
+});
+
+it("never starts a run when a status reload recovers a failed run of unknown kind", async () => {
+  fetchMock.mockResolvedValue(response(failedRefresh));
+  render(
+    <WorkspaceIngestionProvider initialSummary={null}>
+      <WorkspaceIngestion
+        targetId="target-a"
+        targetName="Bakery"
+        sourceUrl="https://www.google.com/maps/place/Synthetic"
+        unavailableReason={null}
+        retryClassification="unknown"
+      />
+    </WorkspaceIngestionProvider>,
+  );
+  // With no status, Try again only reloads the status (a GET), which is not a start.
+  fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+  await screen.findByRole("button", { name: "Check again" });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledWith("/api/analysis-targets/target-a/ingestion", {
+    method: "GET",
+    signal: expect.any(AbortSignal),
+  });
+  const retry = screen.getByRole("button", { name: "Try again" });
+  expect(retry).toBeDisabled();
+  fireEvent.click(retry);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+// The reload path sends no client request: nothing can arrive late, abort, or redirect.
+const unknownKind = { retryClassification: "unknown" as RetryClassification };
+const leavesWhileUnknown = {
+  unmount: (view: ReturnType<typeof render>) =>
+    view.rerender(retryWorkspace({ ...unknownKind, mode: "unmounted" })),
+  "Activity hide and restore": (view: ReturnType<typeof render>) => {
+    view.rerender(retryWorkspace({ ...unknownKind, mode: "hidden" }));
+    view.rerender(retryWorkspace(unknownKind));
+  },
+  "target change": (view: ReturnType<typeof render>) =>
+    view.rerender(retryWorkspace({ ...unknownKind, targetId: "target-b" })),
+  "account change": (view: ReturnType<typeof render>) =>
+    view.rerender(retryWorkspace({ ...unknownKind, userId: "user-b" })),
+};
+it.each(Object.entries(leavesWhileUnknown))(
+  "Check again followed by %s fetches nothing, redirects nowhere, and changes no shared state",
+  async (_leave, leaveWorkspace) => {
+    const view = render(retryWorkspace(unknownKind));
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await act(async () => leaveWorkspace(view));
+
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+    expect(router.replace).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sharedState()).toHaveTextContent("failed|false");
+  },
+);

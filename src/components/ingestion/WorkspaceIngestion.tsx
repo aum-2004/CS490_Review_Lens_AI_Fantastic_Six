@@ -4,6 +4,7 @@ import { IngestionPanel } from "./IngestionPanel";
 import { TargetCreatedNotice } from "@/components/analysis-targets/TargetCreatedNotice";
 import { Card } from "@/components/ui/Card";
 import { useWorkspaceIngestion } from "./WorkspaceIngestionState";
+import type { RetryClassification } from "@/services/ingestion/ingestion-reingest-state";
 
 export function WorkspaceIngestion({
   targetId,
@@ -11,7 +12,7 @@ export function WorkspaceIngestion({
   sourceUrl,
   unavailableReason,
   created = false,
-  retryAsReingest = false,
+  retryClassification,
   userId,
 }: {
   targetId: string;
@@ -19,8 +20,8 @@ export function WorkspaceIngestion({
   sourceUrl: string;
   unavailableReason: string | null;
   created?: boolean;
-  /** S3-009: a failed attempt here is a refresh (recorded kind or existing dataset), so "Try again" refreshes. */
-  retryAsReingest?: boolean;
+  /** S3-009: what "Try again" starts after a failed attempt: refresh, initial, or unknown (disabled). */
+  retryClassification: RetryClassification;
   /** S3-009: the verified account, so a late response never acts on another account's page. */
   userId?: string;
 }) {
@@ -64,7 +65,7 @@ export function WorkspaceIngestion({
         onSummary={setSummary}
         onPendingChange={setPending}
         unavailableReason={unavailableReason}
-        retryAsReingest={retryAsReingest}
+        retryClassification={retryClassification}
         userId={userId}
       />
     </>

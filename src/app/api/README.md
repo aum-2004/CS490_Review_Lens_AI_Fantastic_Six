@@ -128,7 +128,9 @@ owned target that already has a successful one. Details: `docs/s3-009-reingest-e
 - **Progress and retry:** progress uses the existing `POST .../ingestion/refresh` and
   `GET .../ingestion`. After a failed refresh, the workspace's "Retry refresh" and the Ingestion
   panel's "Try again" both call this endpoint; a failed first collection still retries through
-  `POST .../ingestion`. Both browser callers drop a late response after the user leaves the
+  `POST .../ingestion`. If the workspace can't tell which kind of run failed (both lookups failed),
+  "Try again" stays disabled until a reload classifies it: `POST .../ingestion` is never used as a
+  fallback. Both browser callers drop a late response after the user leaves the
   workspace or the account or target changes; that aborts only the browser request, and the
   server-side attempt keeps running (there is no cancel endpoint).
 

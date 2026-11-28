@@ -36,6 +36,7 @@ import { ingestionEnabled, ingestionStorageApproved } from "@/services/ingestion
 import { ingestionRecoveryConfigured } from "@/services/ingestion/ingestion-recovery";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
 import { ReingestReviews } from "@/components/ingestion/ReingestReviews";
+import { classifyRetry } from "@/services/ingestion/ingestion-reingest-state";
 import {
   loadLatestAttemptKind,
   loadReingestBaseline,
@@ -216,9 +217,9 @@ export async function ProtectedTargetWorkspace({
               targetName={target.name}
               sourceUrl={target.sourceUrl}
               unavailableReason={unavailableReason}
-              // A recorded refresh, or any target with a successful dataset: there the create path
-              // could only return that success, so a retry must be a new refresh.
-              retryAsReingest={latestAttemptKind === "reingest" || !!reingestBaseline}
+              // Persisted attempt_kind first, else the baseline lookup; both unreadable → "unknown",
+              // which keeps "Try again" disabled instead of falling back to the create path.
+              retryClassification={classifyRetry(latestAttemptKind, reingestBaseline)}
             />
             <ReingestReviews
               key={`reingest:${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}

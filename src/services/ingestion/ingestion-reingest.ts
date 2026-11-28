@@ -94,6 +94,19 @@ export async function getLastSuccessfulAttempt(
   ownerId: string,
   targetId: string,
 ): Promise<BaselineRow | null> {
+  const row = await readLastSuccessfulAttempt(client, ownerId, targetId);
+  return row === "mismatch" ? null : row;
+}
+
+/**
+ * The same read, but a row that fails the re-check is reported as "mismatch" instead of null.
+ * null must mean "no successful attempt": the workspace classifies that as a first collection.
+ */
+async function readLastSuccessfulAttempt(
+  client: SupabaseClient,
+  ownerId: string,
+  targetId: string,
+): Promise<BaselineRow | null | "mismatch"> {
   const { data, error } = await client
     .from("ingestion_attempts")
     .select("id, analysis_target_id, owner_id, status, started_at, finished_at, saved_count")
@@ -105,14 +118,14 @@ export async function getLastSuccessfulAttempt(
     .limit(1)
     .maybeSingle<BaselineRow>();
   if (error) throw new IngestionPersistenceError();
+  if (!data) return null;
   // Re-check every filter: a dropped filter must never present another attempt as the dataset.
   if (
-    !data ||
     data.status !== "succeeded" ||
     data.owner_id !== ownerId ||
     data.analysis_target_id !== targetId
   )
-    return null;
+    return "mismatch";
   return data;
 }
 
@@ -132,7 +145,10 @@ export async function loadReingestBaseline(
   if (latest.state === "succeeded")
     return { finishedAt: latest.finishedAt, savedCount: latest.savedCount };
   try {
-    const row = await getLastSuccessfulAttempt(client, ownerId, targetId);
+    const row = await readLastSuccessfulAttempt(client, ownerId, targetId);
+    // A row that fails the re-check is an unreliable read, not "nothing collected": returning null
+    // here would classify the retry as a first collection.
+    if (row === "mismatch") throw new IngestionPersistenceError();
     return row ? { finishedAt: row.finished_at, savedCount: row.saved_count } : null;
   } catch {
     console.error("Workspace operation failed", {

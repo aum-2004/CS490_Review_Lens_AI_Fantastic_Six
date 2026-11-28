@@ -110,11 +110,11 @@ const refreshFailed: IngestionAttemptRow = {
 /**
  * The session client answers the last-successful-attempt read (filtered by status) and, when
  * given, the latest-attempt-kind read (unfiltered). Without `latest`, both get `lastSuccess`.
- * "unreadable" fails only the last-successful-attempt read.
+ * "unreadable" fails that read (as `lastSuccess`: the baseline read; as `latest`: the kind read).
  */
 function sessionClient(
   lastSuccess: IngestionAttemptRow | null | "unreadable",
-  latest?: IngestionAttemptRow & { attempt_kind: "initial" | "reingest" },
+  latest?: (IngestionAttemptRow & { attempt_kind: "initial" | "reingest" }) | "unreadable",
 ) {
   return {
     from: jest.fn(() => {
@@ -410,3 +410,192 @@ it.each([
     expect(client.from).toHaveBeenCalledWith("ingestion_attempts");
   },
 );
+
+// ---------------------------------------------------------------------------------------------
+// PR #137 review (Shawn): an unknown retry classification never falls back to the initial start
+// ---------------------------------------------------------------------------------------------
+const UNKNOWN_FEEDBACK =
+  /We couldn't confirm whether the run that failed was a refresh or a first collection/;
+const kindRow = (kind: "initial" | "reingest") => ({ ...refreshFailed, attempt_kind: kind });
+function serveLookups(next: ReturnType<typeof sessionClient>) {
+  client = next;
+  jest.mocked(createSupabaseServerClient).mockResolvedValue(client as never);
+}
+function tryAgainButton() {
+  return within(ingestionPanel()).getByRole("button", { name: "Try again" });
+}
+function checkAgainButton() {
+  return within(ingestionPanel()).getByRole("button", { name: "Check again" });
+}
+/** Inspects every fetch: no start (initial or refresh) was posted. */
+function expectNothingPosted(fetchMock: jest.Mock) {
+  const posts = fetchMock.mock.calls.filter(([, init]) => init?.method === "POST");
+  expect(posts).toEqual([]);
+  expect(fetchMock).not.toHaveBeenCalledWith(START_ENDPOINT, expect.anything());
+  expect(fetchMock).not.toHaveBeenCalledWith(REINGEST_ENDPOINT, expect.anything());
+}
+const bothLookupsFail = {
+  "with read errors": () => sessionClient("unreadable"),
+  "with a throwing client": () =>
+    ({
+      from: jest.fn(() => {
+        throw new Error("private");
+      }),
+    }) as unknown as ReturnType<typeof sessionClient>,
+};
+
+it.each(Object.entries(bothLookupsFail))(
+  "disables Try again with retry feedback when both lookups fail (%s)",
+  async (_how, lookups) => {
+    jest.mocked(getLatestAttempt).mockResolvedValue(refreshFailed);
+    serveLookups(lookups());
+    const fetchMock = jest.mocked(global.fetch);
+    render(await ProtectedTargetWorkspace({ params }));
+
+    expect(tryAgainButton()).toBeDisabled();
+    expect(tryAgainButton()).toHaveAccessibleDescription(UNKNOWN_FEEDBACK);
+    expect(checkAgainButton()).toBeEnabled();
+    await act(async () => fireEvent.click(tryAgainButton()));
+    // The refresh card can't refresh without its baseline either.
+    expect(within(refreshCard()).getByRole("button", { name: "Refresh reviews" })).toBeDisabled();
+    expectNothingPosted(fetchMock);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(ingestionPanel()).not.toHaveTextContent("This was a refresh");
+    expectSavedReviewsVisible();
+    expect(screen.getByRole("button", { name: "Ask question" })).toBeEnabled();
+  },
+);
+
+it.each([
+  [
+    "a persisted refresh kind",
+    () => sessionClient(success, kindRow("reingest")),
+    REINGEST_ENDPOINT,
+    START_ENDPOINT,
+  ],
+  [
+    "a successful baseline (kind still unreadable)",
+    () => sessionClient(success, "unreadable"),
+    REINGEST_ENDPOINT,
+    START_ENDPOINT,
+  ],
+  [
+    "a persisted initial kind",
+    () => sessionClient(null, kindRow("initial")),
+    START_ENDPOINT,
+    REINGEST_ENDPOINT,
+  ],
+])(
+  "after Check again recovers %s, Try again posts to the matching endpoint only",
+  async (_recovered, recovered, expected, never) => {
+    jest.mocked(getLatestAttempt).mockResolvedValue(refreshFailed);
+    serveLookups(sessionClient("unreadable"));
+    const fetchMock = jest.mocked(global.fetch).mockResolvedValue(ok(202, processingSummary));
+    const view = render(await ProtectedTargetWorkspace({ params }));
+
+    fireEvent.click(checkAgainButton());
+    // Check again reloads the server data (router.refresh), which re-runs both lookups.
+    expect(mockRouter.refresh).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    serveLookups(recovered());
+    view.rerender(await ProtectedTargetWorkspace({ params }));
+
+    expect(tryAgainButton()).toBeEnabled();
+    expect(ingestionPanel()).not.toHaveTextContent(UNKNOWN_FEEDBACK);
+    await act(async () => fireEvent.click(tryAgainButton()));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(expected, {
+      method: "POST",
+      signal: expect.any(AbortSignal),
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith(never, expect.anything());
+    expectSavedReviewsVisible();
+  },
+);
+
+it.each([
+  [
+    "only the kind lookup fails and a dataset exists",
+    () => sessionClient(success, "unreadable"),
+    REINGEST_ENDPOINT,
+    START_ENDPOINT,
+  ],
+  [
+    "only the kind lookup fails and there is no dataset",
+    () => sessionClient(null, "unreadable"),
+    START_ENDPOINT,
+    REINGEST_ENDPOINT,
+  ],
+  [
+    "only the baseline lookup fails and the kind is reingest",
+    () => sessionClient("unreadable", kindRow("reingest")),
+    REINGEST_ENDPOINT,
+    START_ENDPOINT,
+  ],
+  [
+    "only the baseline lookup fails and the kind is initial",
+    () => sessionClient("unreadable", kindRow("initial")),
+    START_ENDPOINT,
+    REINGEST_ENDPOINT,
+  ],
+  [
+    "both lookups succeed",
+    () => sessionClient(success, kindRow("reingest")),
+    REINGEST_ENDPOINT,
+    START_ENDPOINT,
+  ],
+])("routes Try again safely when %s", async (_case, lookups, expected, never) => {
+  jest.mocked(getLatestAttempt).mockResolvedValue(refreshFailed);
+  serveLookups(lookups());
+  const fetchMock = jest.mocked(global.fetch).mockResolvedValue(ok(202, processingSummary));
+  render(await ProtectedTargetWorkspace({ params }));
+  expect(ingestionPanel()).not.toHaveTextContent(UNKNOWN_FEEDBACK);
+
+  await act(async () => fireEvent.click(tryAgainButton()));
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalledWith(expected, {
+    method: "POST",
+    signal: expect.any(AbortSignal),
+  });
+  expect(fetchMock).not.toHaveBeenCalledWith(never, expect.anything());
+  expectSavedReviewsVisible();
+});
+
+it("stays paused with feedback, and posts nothing, while reloads keep failing", async () => {
+  jest.mocked(getLatestAttempt).mockResolvedValue(refreshFailed);
+  serveLookups(sessionClient("unreadable"));
+  const fetchMock = jest.mocked(global.fetch);
+  const view = render(await ProtectedTargetWorkspace({ params }));
+
+  for (const reload of [1, 2]) {
+    fireEvent.click(checkAgainButton());
+    expect(mockRouter.refresh).toHaveBeenCalledTimes(reload);
+    view.rerender(await ProtectedTargetWorkspace({ params }));
+    expect(tryAgainButton()).toBeDisabled();
+    expect(ingestionPanel()).toHaveTextContent(UNKNOWN_FEEDBACK);
+    await act(async () => fireEvent.click(tryAgainButton()));
+  }
+  // A full page reload is still unknown too.
+  view.unmount();
+  render(await ProtectedTargetWorkspace({ params }));
+  expect(tryAgainButton()).toBeDisabled();
+  expect(ingestionPanel()).toHaveTextContent(UNKNOWN_FEEDBACK);
+
+  expectNothingPosted(fetchMock);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expectSavedReviewsVisible();
+});
+
+it("treats a baseline row that fails its re-check as unknown, posting nothing", async () => {
+  jest.mocked(getLatestAttempt).mockResolvedValue(refreshFailed);
+  serveLookups(sessionClient({ ...success, analysis_target_id: "other-target" }, "unreadable"));
+  const fetchMock = jest.mocked(global.fetch);
+  render(await ProtectedTargetWorkspace({ params }));
+
+  expect(tryAgainButton()).toBeDisabled();
+  expect(ingestionPanel()).toHaveTextContent(UNKNOWN_FEEDBACK);
+  await act(async () => fireEvent.click(tryAgainButton()));
+  expectNothingPosted(fetchMock);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expectSavedReviewsVisible();
+});
