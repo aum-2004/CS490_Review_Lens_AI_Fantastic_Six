@@ -12,14 +12,17 @@ export function WorkspaceIngestion({
   unavailableReason,
   created = false,
   retryAsReingest = false,
+  userId,
 }: {
   targetId: string;
   targetName: string;
   sourceUrl: string;
   unavailableReason: string | null;
   created?: boolean;
-  /** S3-009: the failed latest attempt is a refresh, so "Try again" refreshes. */
+  /** S3-009: a failed attempt here is a refresh (recorded kind or existing dataset), so "Try again" refreshes. */
   retryAsReingest?: boolean;
+  /** S3-009: the verified account, so a late response never acts on another account's page. */
+  userId?: string;
 }) {
   const { summary, setSummary, pending, setPending } = useWorkspaceIngestion();
   const canStart =
@@ -62,6 +65,7 @@ export function WorkspaceIngestion({
         onPendingChange={setPending}
         unavailableReason={unavailableReason}
         retryAsReingest={retryAsReingest}
+        userId={userId}
       />
     </>
   );

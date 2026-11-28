@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +12,7 @@ import {
   type ReingestBaseline,
 } from "@/services/ingestion/ingestion-reingest-state";
 import { useWorkspaceIngestion } from "./WorkspaceIngestionState";
+import { useLatestRequest } from "./useLatestRequest";
 
 const HOLDS = ["SUBMISSION_UNCERTAIN", "RESULT_WINDOW_EXPIRED"];
 
@@ -63,41 +64,14 @@ export function ReingestReviews({
 
   // A response can arrive after the user left this workspace (unmount or Activity hide) or after
   // the target or account changed. Only the newest request of the current, visible scope may
-  // navigate, update shared state, or clear its own pending state.
-  const scope = `${userId}:${targetId}`;
-  const request = useRef<AbortController | null>(null);
-  const generation = useRef(0);
-  const activeScope = useRef<string | null>(null);
-  const resyncScope = useRef<string | null>(null);
-  const routerRef = useRef(router);
-  useLayoutEffect(() => {
-    routerRef.current = router;
+  // navigate, update shared state, or clear its own pending state. On restore after an abandoned
+  // request, the hook reloads the persisted status (the Ingestion panel then polls a running one).
+  const beginRequest = useLatestRequest(`${userId}:${targetId}`, (abandoned) => {
+    if (abandoned) setPending(false);
+    setSubmitting(false);
+    setError(null);
+    setStarted(false);
   });
-  useLayoutEffect(() => {
-    activeScope.current = scope;
-    if (resyncScope.current === scope) {
-      // A request was abandoned while hidden; the server may have started the run anyway.
-      // Reload the persisted status (the Ingestion panel then polls a running attempt).
-      resyncScope.current = null;
-      routerRef.current.refresh();
-    }
-    return () => {
-      generation.current += 1;
-      activeScope.current = null;
-      const abandoned = request.current;
-      request.current = null;
-      if (abandoned) {
-        // Aborts only this browser request. The ingestion attempt and any paid provider job keep
-        // running server-side; nothing is cancelled and no cancel request exists.
-        abandoned.abort();
-        resyncScope.current = scope;
-        setPending(false);
-      }
-      setSubmitting(false);
-      setError(null);
-      setStarted(false);
-    };
-  }, [scope, setPending]);
 
   if (baseline === null) return null;
 
@@ -116,15 +90,9 @@ export function ReingestReviews({
     !summary;
 
   async function refresh() {
-    if (request.current) return;
-    const controller = new AbortController();
-    const requestGeneration = ++generation.current;
-    const requestScope = scope;
-    request.current = controller;
-    const current = () =>
-      !controller.signal.aborted &&
-      generation.current === requestGeneration &&
-      activeScope.current === requestScope;
+    const request = beginRequest();
+    if (!request) return;
+    const { current } = request;
     setSubmitting(true);
     setPending(true);
     setError(null);
@@ -136,7 +104,7 @@ export function ReingestReviews({
           method: "POST",
           credentials: "same-origin",
           cache: "no-store",
-          signal: controller.signal,
+          signal: request.signal,
         },
       );
       if (!current()) return;
@@ -166,8 +134,7 @@ export function ReingestReviews({
       setError("We couldn't reach ReviewLens. Please try again.");
     } finally {
       // Cleanup already reset a stale request; never clear a newer request's pending state.
-      if (request.current === controller) {
-        request.current = null;
+      if (request.release()) {
         setSubmitting(false);
         setPending(false);
       }

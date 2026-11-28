@@ -210,15 +210,18 @@ export async function ProtectedTargetWorkspace({
           <div className="workspace-source space-y-4">
             <WorkspaceIngestion
               key={`${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
+              userId={user.id}
               targetId={target.id}
               created={!!created}
               targetName={target.name}
               sourceUrl={target.sourceUrl}
               unavailableReason={unavailableReason}
-              retryAsReingest={latestAttemptKind === "reingest"}
+              // A recorded refresh, or any target with a successful dataset: there the create path
+              // could only return that success, so a retry must be a new refresh.
+              retryAsReingest={latestAttemptKind === "reingest" || !!reingestBaseline}
             />
             <ReingestReviews
-              key={`${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
+              key={`reingest:${target.id}:${ingestion?.state}:${ingestion?.finishedAt}`}
               userId={user.id}
               targetId={target.id}
               targetName={target.name}

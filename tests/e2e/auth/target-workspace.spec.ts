@@ -100,7 +100,14 @@ test("shows provider-resolved URL identity without claiming an independent match
         .and(page.locator(':not([aria-labelledby="review-summary-title"] *)')),
     ).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Ingestion complete" })).toBeDisabled();
-    await expect(page.getByText(/Further collection is unavailable/)).toBeVisible();
+    // S3-009: a collected target can be refreshed; with collection disabled the panel says why not.
+    await expect(
+      page.getByText(
+        "Reviews have been collected for this target. Collecting newer reviews is unavailable right now; the reason is shown below.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(page.getByText(/Further collection is unavailable/)).toHaveCount(0);
     await expect(page.getByRole("list", { name: "Saved reviews" })).toContainText(
       "Saved review for A coffee shop",
     );

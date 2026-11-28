@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { IngestionStatus } from "./IngestionStatus";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
 import { reingestErrorMessage } from "@/services/ingestion/ingestion-reingest-state";
+import { useLatestRequest } from "./useLatestRequest";
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_AUTOMATIC_RETRIES = 2;
@@ -21,6 +22,7 @@ export function IngestionPanel({
   onPendingChange,
   unavailableReason,
   retryAsReingest = false,
+  userId = "",
 }: {
   targetId: string;
   targetName: string;
@@ -28,14 +30,21 @@ export function IngestionPanel({
   onSummary: (summary: IngestionSummary) => void;
   onPendingChange: (pending: boolean) => void;
   unavailableReason: string | null;
-  /** S3-009: the failed latest attempt is a refresh (recorded attempt_kind = 'reingest'). */
+  /** S3-009: retry a failure as a refresh: recorded attempt_kind 'reingest', or a successful dataset exists. */
   retryAsReingest?: boolean;
+  /** The verified account; with targetId it scopes late responses (S3-009). */
+  userId?: string;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pollFailed, setPollFailed] = useState(false);
-  const submitting = useRef(false);
+  // S3-009: the same late-response guard as Refresh reviews, scoped to the account and target.
+  const beginRequest = useLatestRequest(`${userId}:${targetId}`, (abandoned) => {
+    if (!abandoned) return;
+    setPending(false);
+    onPendingChange(false);
+  });
   const endpoint = `/api/analysis-targets/${encodeURIComponent(targetId)}/ingestion`;
 
   useEffect(() => {
@@ -82,8 +91,8 @@ export function IngestionPanel({
   }, [summary?.state, pollFailed, endpoint, targetId, onSummary, router]);
 
   async function performAction() {
-    if (submitting.current) return;
-    submitting.current = true;
+    const request = beginRequest();
+    if (!request) return;
     setPending(true);
     onPendingChange(true);
     setError(null);
@@ -100,8 +109,10 @@ export function IngestionPanel({
               ? `${endpoint}/refresh`
               : endpoint
             : endpoint,
-        { method: refreshing && !summary ? "GET" : "POST" },
+        { method: refreshing && !summary ? "GET" : "POST", signal: request.signal },
       );
+      // A stale response (left, hidden, or another account/target) must not act on this page.
+      if (!request.current()) return;
       if (response.status === 401) {
         router.replace(`/login?next=${encodeURIComponent(`/analysis-targets/${targetId}`)}`);
         return;
@@ -111,6 +122,7 @@ export function IngestionPanel({
         return;
       }
       const result = await response.json();
+      if (!request.current()) return;
       if (!response.ok || result.success !== true || !isSummary(result.data)) {
         // Same messages as before for every existing code, plus the S3-009 refresh codes.
         setError(reingestErrorMessage(result.error?.code));
@@ -122,11 +134,15 @@ export function IngestionPanel({
       setPollFailed(false);
       if (result.data.state !== "processing") router.refresh();
     } catch {
+      // An abort after leaving (AbortError) is not a failure: no banner for a stale request.
+      if (!request.current()) return;
       setError("We couldn't reach ReviewLens. Please try again.");
     } finally {
-      submitting.current = false;
-      setPending(false);
-      onPendingChange(false);
+      // A stale request never clears a newer request's pending state (cleanup already did).
+      if (request.release()) {
+        setPending(false);
+        onPendingChange(false);
+      }
     }
   }
 
