@@ -25,6 +25,7 @@ Current endpoints:
 | POST   | `/api/analysis-targets/[targetId]/ingestion`         | Starts asynchronous ingestion for an owned target using its stored Place ID or validated Google Maps URL. | S1-019     |
 | GET    | `/api/analysis-targets/[targetId]/ingestion`         | Reads the owned target's durable ingestion status without provider calls.                                 | S1-023     |
 | POST   | `/api/analysis-targets/[targetId]/ingestion/refresh` | Reconciles the stored owner/target/job binding and atomically saves verified results.                     | S1-023     |
+| POST   | `/api/analysis-targets/[targetId]/save-as`           | Copies an owned analysis, its reviews and its ingestion summary into a new analysis with a new name.      | S3-003     |
 | POST   | `/api/ingestion/provider-callback/[attemptId]`       | Recovers a binding after verifying provider-body and per-attempt signatures; no review persistence.       | S1-023     |
 
 `POST /api/analysis-targets/[targetId]/ingestion` is disabled by default. It returns HTTP `503`
@@ -56,6 +57,13 @@ Reviews cascade with their analysis; ingestion audits are detached and retained,
 ingestion and Q&A usage reservations remain charged. The reviewed migration must be applied
 before the delete UI is exposed; see `docs/s3-005-delete-owned-analysis.md` for deployment,
 retention and rollback requirements. The existing PATCH rename handler remains available.
+S3-003 adds `POST /api/analysis-targets/[targetId]/save-as` with `{ "name": "..." }` (JSON,
+at most 4 KB, same name rules as rename). It checks ownership, then calls the authenticated
+`save_analysis_as(p_source_target_id, p_name)` RPC, which checks `auth.uid()` again, copies the
+reviews (new IDs) and the last successful ingestion summary, and never writes the source. Success
+returns `201` with the new analysis; missing, foreign and malformed IDs return `404
+TARGET_NOT_FOUND`; an owner with 200 analyses gets `409 ANALYSIS_LIMIT` (this cap applies to Save As only). Q&A history is not
+copied. See `docs/s3-003-save-as.md`.
 
 ### Target child routes (S1-013)
 
