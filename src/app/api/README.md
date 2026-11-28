@@ -62,7 +62,7 @@ at most 4 KB, same name rules as rename). It checks ownership, then calls the au
 `save_analysis_as(p_source_target_id, p_name)` RPC, which checks `auth.uid()` again, copies the
 reviews (new IDs) and the last successful ingestion summary, and never writes the source. Success
 returns `201` with the new analysis; missing, foreign and malformed IDs return `404
-TARGET_NOT_FOUND`; an owner with 200 analyses gets `409 ANALYSIS_LIMIT`. Q&A history is not
+TARGET_NOT_FOUND`; an owner with 200 analyses gets `409 ANALYSIS_LIMIT` (this cap applies to Save As only). Q&A history is not
 copied. See `docs/s3-003-save-as.md`.
 
 ### Target child routes (S1-013)

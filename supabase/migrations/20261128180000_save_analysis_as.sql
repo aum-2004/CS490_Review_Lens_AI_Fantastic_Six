@@ -58,7 +58,8 @@ end $$;
 revoke all on function public.reserve_ingestion_attempt(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.reserve_ingestion_attempt(uuid, uuid) to service_role;
 
--- Most analyses one owner may hold for Save As to add another (the target list shows up to 200).
+-- Save As only: most analyses one owner may hold for Save As to add another (the target list shows
+-- up to 200). Creating a new analysis from a URL is not capped here.
 -- Each copy duplicates a review dataset, so the cap bounds the storage one account can create.
 create function public.save_analysis_as(p_source_target_id uuid, p_name text)
 returns uuid language plpgsql security definer set search_path = '' as $$
@@ -88,7 +89,14 @@ begin
     raise exception 'Invalid analysis name' using errcode = '23514';
   end if;
 
-  -- Serialize this owner's Save As requests so two at once cannot both pass the cap.
+  -- Consistent snapshot of the source: a refresh merges reviews and records its successful attempt
+  -- in one transaction under this per-target lock (merge_target_reviews, 20261126120000). Holding
+  -- it here makes Save As wait for an in-flight refresh, so the copied reviews and the copied
+  -- ingestion summary always come from the same committed state.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('reviewlens:review-merge:' || source.id::text, 0));
+
+  -- Serialize this owner's Save As requests so two at once cannot both pass the Save As cap.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('reviewlens:save-as:' || caller::text, 0));
   if (select count(*) from public.analysis_targets where owner_id = caller) >= 200 then

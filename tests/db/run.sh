@@ -44,4 +44,7 @@ bash tests/db/review-deduplication-concurrency.test.sh "$db"
 echo "Running pre-existing duplicate review migration regression"
 bash tests/db/review-deduplication-migration.test.sh "$db"
 
+echo "Running two-session Save As consistency regression"
+bash tests/db/save-analysis-as-concurrency.test.sh "$db"
+
 echo "All database tests passed."
