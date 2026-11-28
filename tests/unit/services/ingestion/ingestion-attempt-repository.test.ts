@@ -1,6 +1,7 @@
 /** @jest-environment node */
 import {
   getTargetIngestionSummaries,
+  createIngestionAttemptWriter,
   IngestionPersistenceError,
 } from "@/services/ingestion/ingestion-attempt-repository";
 function database(data: unknown, error: unknown = null) {
@@ -80,4 +81,43 @@ it("rejects unexpected cross-user rows even if the database client misbehaves", 
       "target-a",
     ]),
   ).rejects.toBeInstanceOf(IngestionPersistenceError);
+});
+
+it("rejects a detached audit row from an attached-target status response", async () => {
+  await expect(
+    getTargetIngestionSummaries(database([{ ...row, analysis_target_id: null }]).client, "user-a", [
+      "target-a",
+    ]),
+  ).rejects.toBeInstanceOf(IngestionPersistenceError);
+});
+
+it.each([
+  null,
+  { id: "attempt", analysis_target_id: null },
+  { id: "attempt", analysis_target_id: "target-a" },
+])("only exposes an attached attempt for callback recovery: %p", async (data) => {
+  const query = {
+    select: jest.fn(),
+    eq: jest.fn(),
+    maybeSingle: jest.fn().mockResolvedValue({ data, error: null }),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  const admin = { from: jest.fn(() => query) };
+  const result = await createIngestionAttemptWriter(admin as never).findForRecovery("attempt");
+  expect(result).toEqual(data?.analysis_target_id ? data : null);
+  expect(query.eq).toHaveBeenCalledWith("id", "attempt");
+});
+
+it("fails closed when callback recovery cannot read the audit", async () => {
+  const query = {
+    select: jest.fn(),
+    eq: jest.fn(),
+    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: { message: "PRIVATE" } }),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  await expect(
+    createIngestionAttemptWriter({ from: () => query } as never).findForRecovery("attempt"),
+  ).rejects.toThrow("We couldn't load or save the ingestion result.");
 });
