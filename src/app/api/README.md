@@ -107,6 +107,45 @@ definitive provider/identity/no-review failure evidence return retryable feedbac
 and preserve the accepted job. Bound attempts have a four-hour database deadline;
 expired attempts become Failed but remain blocked against new paid submissions
 until operator reconciliation. The expiry/release RPCs are not browser-accessible.
+Since S3-009, an owner refreshes a collected target through a separate endpoint (below);
+`POST .../ingestion` still answers a duplicate start with the earlier successful attempt.
+
+### Refreshing an owned analysis (S3-009)
+
+`POST /api/analysis-targets/[targetId]/ingestion/reingest` starts a new ingestion attempt for an
+owned target that already has a successful one. Details: `docs/s3-009-reingest-existing-analysis.md`.
+
+- **Auth and ownership:** `requireApiUser()` (`401 AUTH_REQUIRED`, or `503 AUTH_UNAVAILABLE`), then
+  ownership through the RLS session client and again inside `reserve_reingestion_attempt` under
+  the target lock. Missing, foreign, and malformed ids get the same `404 TARGET_NOT_FOUND`.
+- **Request:** no body or query is read; the owner comes from the session and the target from the
+  path.
+- **Origin:** `403 FORBIDDEN` for `Sec-Fetch-Site: cross-site` or an `Origin` whose host differs
+  from `X-Forwarded-Host` (or `Host`). Clients without `Origin` still need a session and ownership.
+- **Gates:** the same `503 INGESTION_DISABLED`, `STORAGE_NOT_APPROVED`, and
+  `RECOVERY_NOT_CONFIGURED` as `POST .../ingestion`, before any database work;
+  `422 SOURCE_NOT_CONFIGURED` for an invalid stored source.
+- **Success:** `{ success: true, data: <ingestion summary> }`, the same summary shape as
+  `GET .../ingestion` (no job ids). `202` while the new attempt is processing; `200` with
+  `state: "failed"` when the provider rejects the submission immediately (nothing is saved).
+- **Errors** (`{ success: false, error: { code, message } }`, fixed messages):
+  `409 REINGEST_IN_PROGRESS` (a run is active for this target), `409 REINGEST_BLOCKED` (a billing
+  hold awaits reconciliation), `409 REINGEST_UNAVAILABLE` (no successful collection yet),
+  `429 INGESTION_START_LIMIT` (daily limit reached), `503 INGESTION_RESULT_LIMIT`,
+  `503 JOB_BINDING_PENDING`, and `500 REINGEST_START_FAILED`.
+- **Headers:** every response is `Cache-Control: private, no-store`.
+- **Limits:** one active run per target. A refresh is a paid start: it counts toward the same five
+  reservations per owner per rolling 24 hours, failed attempts included, with no refund.
+- **Merge-only:** completion goes through `finish_ingestion_attempt` → `merge_target_reviews`
+  (S3-011). Reviews missing from a later response stay; no refresh removes or deactivates a review.
+- **Progress and retry:** progress uses the existing `POST .../ingestion/refresh` and
+  `GET .../ingestion`. After a failed refresh, the workspace's "Retry refresh" and the Ingestion
+  panel's "Try again" both call this endpoint; a failed first collection still retries through
+  `POST .../ingestion`. If the workspace can't tell which kind of run failed (both lookups failed),
+  "Try again" stays disabled until a reload classifies it: `POST .../ingestion` is never used as a
+  fallback. Both browser callers drop a late response after the user leaves the
+  workspace or the account or target changes; that aborts only the browser request, and the
+  server-side attempt keeps running (there is no cancel endpoint).
 
 Other target, ingestion, and review endpoints arrive with their respective stories. Every protected
 handler must independently use `requireApiUser()` from `@/services/auth/access-control` and return

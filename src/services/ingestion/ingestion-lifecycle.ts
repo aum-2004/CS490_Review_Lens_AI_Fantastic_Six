@@ -28,6 +28,8 @@ export interface IngestionDependencies {
   storageApproved: boolean;
   recoveryUrl: (attemptId: string) => string;
   retryDelay?: (milliseconds: number) => Promise<void>;
+  /** S3-009: a refresh reserves through its own RPC; everything after reservation is shared. */
+  reserve?: ReturnType<typeof createIngestionAttemptWriter>["reserve"];
 }
 export class IngestionGateError extends Error {
   constructor(
@@ -88,7 +90,7 @@ export async function beginIngestion(
   ) {
     throw new IngestionGateError("SOURCE_NOT_CONFIGURED");
   }
-  const reserved = await deps.writer.reserve(target.id, ownerId);
+  const reserved = await (deps.reserve ?? deps.writer.reserve)(target.id, ownerId);
   if (!reserved.created) return summarizeAttempt(reserved.attempt);
   log("start", "PROCESSING");
   let started;

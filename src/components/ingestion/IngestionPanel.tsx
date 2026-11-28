@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +8,11 @@ import { Spinner } from "@/components/shared/Spinner";
 import { ErrorAlert } from "@/components/shared/ErrorAlert";
 import { IngestionStatus } from "./IngestionStatus";
 import { ingestionErrorMessage, type IngestionSummary } from "@/services/ingestion/ingestion-state";
+import {
+  reingestErrorMessage,
+  type RetryClassification,
+} from "@/services/ingestion/ingestion-reingest-state";
+import { useLatestRequest } from "./useLatestRequest";
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_AUTOMATIC_RETRIES = 2;
@@ -19,6 +24,8 @@ export function IngestionPanel({
   onSummary,
   onPendingChange,
   unavailableReason,
+  retryClassification,
+  userId = "",
 }: {
   targetId: string;
   targetName: string;
@@ -26,13 +33,32 @@ export function IngestionPanel({
   onSummary: (summary: IngestionSummary) => void;
   onPendingChange: (pending: boolean) => void;
   unavailableReason: string | null;
+  /** S3-009: what "Try again" starts after a failed attempt (see classifyRetry). No default:
+   * "unknown" must never fall back to the initial start. */
+  retryClassification: RetryClassification;
+  /** The verified account; with targetId it scopes late responses (S3-009). */
+  userId?: string;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pollFailed, setPollFailed] = useState(false);
-  const submitting = useRef(false);
+  // S3-009: the same late-response guard as Refresh reviews, scoped to the account and target.
+  const beginRequest = useLatestRequest(`${userId}:${targetId}`, (abandoned) => {
+    if (!abandoned) return;
+    setPending(false);
+    onPendingChange(false);
+  });
   const endpoint = `/api/analysis-targets/${encodeURIComponent(targetId)}/ingestion`;
+  // S3-009: a failed run whose kind couldn't be read is neither restarted as a first collection
+  // nor guessed as a refresh. "Check again" reloads this page's server data, which re-runs both
+  // lookups and passes the new classification down. It sends no client request, so there is no
+  // late response that could act on a page the user has left.
+  const retryUnknown = summary?.state === "failed" && retryClassification === "unknown";
+  const held =
+    summary?.errorCode === "SUBMISSION_UNCERTAIN" || summary?.errorCode === "RESULT_WINDOW_EXPIRED";
+  const [checking, startChecking] = useTransition();
+  const unknownId = useId();
 
   useEffect(() => {
     if (summary?.state !== "processing" || pollFailed) return;
@@ -78,17 +104,30 @@ export function IngestionPanel({
   }, [summary?.state, pollFailed, endpoint, targetId, onSummary, router]);
 
   async function performAction() {
-    if (submitting.current) return;
-    submitting.current = true;
+    if (retryUnknown) return;
+    const request = beginRequest();
+    if (!request) return;
     setPending(true);
     onPendingChange(true);
     setError(null);
     const refreshing = !summary || summary.state === "processing";
+    // S3-009: retrying a failed refresh starts a new refresh. The create path would only return
+    // the earlier successful attempt without collecting anything.
+    const retryRefresh =
+      !refreshing && summary.state === "failed" && retryClassification === "refresh";
     try {
       const response = await fetch(
-        refreshing ? (summary ? `${endpoint}/refresh` : endpoint) : endpoint,
-        { method: refreshing && !summary ? "GET" : "POST" },
+        retryRefresh
+          ? `${endpoint}/reingest`
+          : refreshing
+            ? summary
+              ? `${endpoint}/refresh`
+              : endpoint
+            : endpoint,
+        { method: refreshing && !summary ? "GET" : "POST", signal: request.signal },
       );
+      // A stale response (left, hidden, or another account/target) must not act on this page.
+      if (!request.current()) return;
       if (response.status === 401) {
         router.replace(`/login?next=${encodeURIComponent(`/analysis-targets/${targetId}`)}`);
         return;
@@ -98,19 +137,27 @@ export function IngestionPanel({
         return;
       }
       const result = await response.json();
+      if (!request.current()) return;
       if (!response.ok || result.success !== true || !isSummary(result.data)) {
-        setError(ingestionErrorMessage(result.error?.code));
+        // Same messages as before for every existing code, plus the S3-009 refresh codes.
+        setError(reingestErrorMessage(result.error?.code));
+        // A refresh started elsewhere (another tab): load it so this panel shows and polls it.
+        if (result.error?.code === "REINGEST_IN_PROGRESS") router.refresh();
         return;
       }
       onSummary(result.data);
       setPollFailed(false);
       if (result.data.state !== "processing") router.refresh();
     } catch {
+      // An abort after leaving (AbortError) is not a failure: no banner for a stale request.
+      if (!request.current()) return;
       setError("We couldn't reach ReviewLens. Please try again.");
     } finally {
-      submitting.current = false;
-      setPending(false);
-      onPendingChange(false);
+      // A stale request never clears a newer request's pending state (cleanup already did).
+      if (request.release()) {
+        setPending(false);
+        onPendingChange(false);
+      }
     }
   }
 
@@ -170,7 +217,9 @@ export function IngestionPanel({
       {error && <ErrorAlert message={error} />}
       <Button
         onClick={performAction}
+        aria-describedby={retryUnknown && !held ? unknownId : undefined}
         disabled={
+          retryUnknown ||
           pending ||
           summary?.state === "succeeded" ||
           summary?.errorCode === "RESULT_WINDOW_EXPIRED" ||
@@ -192,7 +241,36 @@ export function IngestionPanel({
       </Button>
       {summary?.state === "succeeded" && (
         <p className="max-w-prose text-sm text-muted-foreground">
-          Reviews have already been ingested for this target. Further collection is unavailable.
+          {unavailableReason
+            ? "Reviews have been collected for this target. Collecting newer reviews is unavailable right now; the reason is shown below."
+            : "Reviews have been collected for this target. To collect newer reviews, use Refresh reviews. New reviews are merged into this dataset and reviews already collected are kept."}
+        </p>
+      )}
+      {retryUnknown && !held && !pending && (
+        <div className="space-y-2">
+          <p id={unknownId} role="status" className="max-w-prose text-sm">
+            We couldn&apos;t confirm whether the run that failed was a refresh or a first
+            collection, so Try again is paused to avoid starting the wrong one. Any saved reviews
+            are unchanged.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => startChecking(() => router.refresh())}
+            disabled={checking}
+          >
+            {checking && <Spinner />}
+            {checking ? "Checking…" : "Check again"}
+          </Button>
+        </div>
+      )}
+      {summary?.state === "failed" && retryClassification === "refresh" && !pending && (
+        <p className="max-w-prose text-sm text-muted-foreground">
+          This was a refresh of reviews already collected for this target. They are unchanged and
+          still available.
+          {summary.errorCode === "SUBMISSION_UNCERTAIN" ||
+          summary.errorCode === "RESULT_WINDOW_EXPIRED"
+            ? ""
+            : " Try again starts a new refresh."}
         </p>
       )}
       {unavailableReason && (
