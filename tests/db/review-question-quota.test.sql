@@ -25,12 +25,12 @@ end $$;
 
 set local request.jwt.claims to '{"sub":"99999999-9999-4999-8999-999999999991"}';
 do $$ declare i integer; begin
-  for i in 1..5 loop
-    assert public.reserve_review_question() = 5 - i;
+  for i in 1..30 loop
+    assert public.reserve_review_question() = 30 - i;
   end loop;
   begin
     perform public.reserve_review_question();
-    raise exception 'Sixth paid reservation was allowed';
+    raise exception 'Thirty-first paid reservation was allowed';
   exception when raise_exception then
     if sqlerrm <> 'QA_DAILY_LIMIT' then raise; end if;
   end;
@@ -41,10 +41,10 @@ do $$ declare i integer; begin
 end $$;
 
 set local request.jwt.claims to '{"sub":"99999999-9999-4999-8999-999999999992"}';
-do $$ begin assert public.reserve_review_question() = 4; end $$;
+do $$ begin assert public.reserve_review_question() = 29; end $$;
 reset role;
 do $$ begin
-  assert (select count(*) from public.review_question_reservations where owner_id = '99999999-9999-4999-8999-999999999991') = 5;
+  assert (select count(*) from public.review_question_reservations where owner_id = '99999999-9999-4999-8999-999999999991') = 30;
   assert (select count(*) from public.review_question_reservations where owner_id = '99999999-9999-4999-8999-999999999992') = 1;
 end $$;
 

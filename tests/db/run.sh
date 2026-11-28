@@ -38,4 +38,10 @@ bash tests/db/ingestion-start-limit-concurrency.test.sh "$db"
 echo "Running concurrent paid Q&A reservation regression"
 bash tests/db/review-question-quota-concurrency.test.sh "$db"
 
+echo "Running two-session duplicate review regression"
+bash tests/db/review-deduplication-concurrency.test.sh "$db"
+
+echo "Running pre-existing duplicate review migration regression"
+bash tests/db/review-deduplication-migration.test.sh "$db"
+
 echo "All database tests passed."

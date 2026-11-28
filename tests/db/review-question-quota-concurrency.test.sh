@@ -9,7 +9,7 @@ psql "${args[@]}" --command "insert into auth.users(id) values ('$caller');"
 test_output=$(mktemp -d)
 trap 'rm -f "$test_output"/*.out; rmdir "$test_output"' EXIT
 pids=()
-for i in {1..12}; do
+for i in {1..40}; do
   (
     if psql "${args[@]}" --command "begin; set local role authenticated; set local request.jwt.claims = '{\"sub\":\"$caller\"}'; select public.reserve_review_question(); commit;" >"$test_output/$i.out" 2>&1; then
       echo allowed >>"$test_output/$i.out"
@@ -22,7 +22,9 @@ for i in {1..12}; do
 done
 for pid in "${pids[@]}"; do wait "$pid"; done
 allowed=$(grep -l '^allowed$' "$test_output"/*.out | wc -l)
-[[ "$allowed" -eq 5 ]] || { echo "Expected five winners, got $allowed"; exit 1; }
+denied=$(grep -l '^denied$' "$test_output"/*.out | wc -l)
+[[ "$allowed" -eq 30 ]] || { echo "Expected 30 winners, got $allowed"; exit 1; }
+[[ "$denied" -eq 10 ]] || { echo "Expected 10 denied requests, got $denied"; exit 1; }
 stored=$(psql "${args[@]}" --tuples-only --no-align --command "select count(*) from public.review_question_reservations where owner_id = '$caller';")
-[[ "$stored" -eq 5 ]] || { echo "Expected five stored reservations, got $stored"; exit 1; }
-echo 'Paid Q&A quota concurrency: five allowed, seven denied.'
+[[ "$stored" -eq 30 ]] || { echo "Expected 30 stored reservations, got $stored"; exit 1; }
+echo 'Paid Q&A quota concurrency: 30 allowed, 10 denied.'

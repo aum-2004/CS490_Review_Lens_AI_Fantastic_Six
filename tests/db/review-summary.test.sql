@@ -17,8 +17,10 @@ insert into public.analysis_targets (id, owner_id, name, platform, source_url) v
   ('56000000-0000-4000-8000-000000000013', '56000000-0000-4000-8000-000000000001',
    'Empty summary target', 'google_maps', 'https://maps.google.com/?cid=5603');
 
+-- Each row is a distinct review: S3-011 stores identical reviews of one target only once.
 insert into public.reviews (analysis_target_id, review_text, rating)
-select '56000000-0000-4000-8000-000000000011', 'large dataset review', ((series % 5) + 1)::numeric
+select '56000000-0000-4000-8000-000000000011', 'large dataset review ' || series,
+  ((series % 5) + 1)::numeric
 from generate_series(1, 1001) series;
 
 insert into public.reviews (analysis_target_id, review_text, rating)

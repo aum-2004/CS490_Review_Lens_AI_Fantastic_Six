@@ -15,6 +15,7 @@ import { ReviewQuestions } from "@/components/reviews/ReviewQuestions";
 import { RetryTargetsButton } from "./RetryTargetsButton";
 import { TargetSwitcher } from "./TargetSwitcher";
 import { DeleteAnalysis } from "./DeleteAnalysis";
+import { RenameAnalysis } from "./RenameAnalysis";
 import {
   listAnalysisTargets,
   type AnalysisTargetListItem,
@@ -144,6 +145,9 @@ export async function ProtectedTargetWorkspace({
           { label: target?.name ?? "Target workspace" },
         ]}
       />
+      {target && (
+        <RenameAnalysis key={`${user.id}:${target.id}`} targetId={target.id} name={target.name} />
+      )}
       {!target ? (
         <ErrorState
           message={

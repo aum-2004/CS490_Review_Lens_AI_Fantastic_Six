@@ -164,6 +164,13 @@ describe("validateAnalysisTargetInput", () => {
       "\u200c",
       "\u200d",
       " \u200c \u200d ",
+      "\u034f",
+      "\ufe0f",
+      " \u034f\ufe0f\u200d ",
+      "\u115f\u1160",
+      "\u3164\uffa0",
+      "\u180b",
+      "\u{e0100}",
     ])("treats an invisible-only name as missing: %p", (name) => {
       expectFailure(validateAnalysisTargetInput({ name, sourceUrl: validSourceUrl }), [
         {
@@ -176,6 +183,10 @@ describe("validateAnalysisTargetInput", () => {
 
     it.each([
       ["NJIT", "NJIT"],
+      ["Cafe\u0301", "Cafe\u0301"],
+      ["\u2764\ufe0f", "\u2764\ufe0f"],
+      ["\u0915\u093f", "\u0915\u093f"],
+      ["\u4e00\u{e0100}", "\u4e00\u{e0100}"],
       ["  Café 東京  ", "Café 東京"],
       ["\u200b  New Jersey Institute of Technology \u2060", "New Jersey Institute of Technology"],
       ["Family 👨\u200d👩\u200d👧\u200d👦", "Family 👨\u200d👩\u200d👧\u200d👦"],

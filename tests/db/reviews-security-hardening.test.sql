@@ -179,17 +179,20 @@ begin
   assert char_length(raw_text) <= 10000, 'API review text exceeds its character limit';
   assert octet_length(app_metadata) <= 16384, 'API metadata exceeds its compact byte limit';
 
+  -- S3-011 stores identical reviews of one target once, so each row gets a distinct review time.
+  -- Every timestamp has the same length, so the byte-size assertions below are unchanged.
   select jsonb_agg(jsonb_build_object(
     'review_text', raw.value->>'text',
     'rating', (raw.value->>'rating')::numeric,
     'source_review_id', null,
     'reviewer_name', null,
-    'review_date', '2026-01-01T00:00:00.000Z',
+    'review_date', '2026-01-01T00:' || lpad(((raw.position - 1) / 60)::text, 2, '0') || ':'
+      || lpad(((raw.position - 1) % 60)::text, 2, '0') || '.000Z',
     'review_url', null,
     'source_metadata', raw.value->'metadata'
-  ))
+  ) order by raw.position)
   into normalized_rows
-  from jsonb_array_elements((api_request::jsonb)->'reviews') raw(value);
+  from jsonb_array_elements((api_request::jsonb)->'reviews') with ordinality raw(value, position);
 
   assert octet_length((normalized_rows->0->'source_metadata')::text) <= 32768,
     'normalized metadata exceeds its database limit';

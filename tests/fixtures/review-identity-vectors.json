@@ -1,0 +1,198 @@
+{
+  "_comment": "S3-011 golden vectors shared by tests/unit/services/reviews/review-identity.test.ts and tests/db/review-deduplication.test.sql (source id normalization and fp2 fingerprint). Regenerate only together with a new fingerprint prefix.",
+  "vectors": [
+    {
+      "name": "source id is kept apart from the fingerprint",
+      "input": {
+        "sourceReviewId": "ChZDSUhNMG9nS0VJQ0FnSUQ",
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.000Z",
+        "rating": 5,
+        "text": "Great food"
+      },
+      "expectedSourceId": "ChZDSUhNMG9nS0VJQ0FnSUQ",
+      "expectedFingerprint": "fp2:3af14646e357d68471b2896d85345bbf21a6635e7a2e7fcdcee0a07015c52153"
+    },
+    {
+      "name": "source id is trimmed but case-sensitive",
+      "input": {
+        "sourceReviewId": " \t ChZdsuhm0OGs \u00a0",
+        "rating": 5,
+        "text": "Great food"
+      },
+      "expectedSourceId": "ChZdsuhm0OGs",
+      "expectedFingerprint": "fp2:526e451be218989e0d480dd82294ccddd34710dae5100bcb6814126540f8931e"
+    },
+    {
+      "name": "blank source id normalizes to null",
+      "input": {
+        "sourceReviewId": " \u3000 ",
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.000Z",
+        "rating": 5,
+        "text": "Great food"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:3af14646e357d68471b2896d85345bbf21a6635e7a2e7fcdcee0a07015c52153"
+    },
+    {
+      "name": "fingerprint with every field",
+      "input": {
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 4.5,
+        "text": "Great food"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:44859ba500f4f2605997eeff3fa1a7b5037b1b61b99566cbc82adb743b702ff0"
+    },
+    {
+      "name": "fingerprint whitespace and ASCII case variant",
+      "input": {
+        "reviewerName": "  SAM ",
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 4.5,
+        "text": "\ufeff GREAT\u00a0\u00a0food\n\t "
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:44859ba500f4f2605997eeff3fa1a7b5037b1b61b99566cbc82adb743b702ff0"
+    },
+    {
+      "name": "fingerprint missing optional fields",
+      "input": {
+        "rating": 3,
+        "text": "Fine"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:3218fbbde973bd70ecabf40c91e0464e61f1705ce77124bbe1dc6c3d42f10f66"
+    },
+    {
+      "name": "fingerprint integer rating",
+      "input": {
+        "rating": 4,
+        "text": "Fine"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:0e2a1fd3d5712c9df7a529efface7fcbd91e882789358de870774202e828d411"
+    },
+    {
+      "name": "fingerprint fractional rating",
+      "input": {
+        "rating": 4.25,
+        "text": "Fine"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:90d6855ffe9d804e4626a99b8198c4a1974756e91877ba8e8bd4a3a71591d43f"
+    },
+    {
+      "name": "fingerprint pre-1970 date",
+      "input": {
+        "reviewDate": "1969-12-31T23:59:59.999Z",
+        "rating": 2,
+        "text": "Old"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:b6c0846603ab4b5448a8c48a4f40fcee526333b67a657df24dea99eb46c849d0"
+    },
+    {
+      "name": "fingerprint composed accent",
+      "input": {
+        "rating": 5,
+        "text": "Caf\u00e9"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:8fcaa10855856d60e49f94ad15133ad4e967d9f25466dce140d1271629ddebcd"
+    },
+    {
+      "name": "fingerprint decomposed accent",
+      "input": {
+        "rating": 5,
+        "text": "Cafe\u0301"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:8fcaa10855856d60e49f94ad15133ad4e967d9f25466dce140d1271629ddebcd"
+    },
+    {
+      "name": "fingerprint non-ASCII uppercase is not folded",
+      "input": {
+        "rating": 5,
+        "text": "\u00c9TOILE"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:8f22982e21ca8a15d78ec999c5359c6dbb10be9ea18a04e42e5c358fd33dbefa"
+    },
+    {
+      "name": "fingerprint emoji and delimiters",
+      "input": {
+        "reviewerName": "a|b",
+        "rating": 1,
+        "text": "1:x|~ \ud83d\ude00"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:86bb7991ad643cfefef8ecd4d0315819bc2bff5febcb9f5942dddbf1e65e811b"
+    },
+    {
+      "name": "fingerprint delimiter shift",
+      "input": {
+        "reviewerName": "a",
+        "rating": 1,
+        "text": "b|1:x|~ \ud83d\ude00"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:fd1a9f354365df16b7a5c48b249d7dd1014e9aa0c2bfa1953bc489e655025019"
+    },
+    {
+      "name": "author-time tier ignores an edited text",
+      "input": {
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 2,
+        "text": "Actually, it was bad"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:44859ba500f4f2605997eeff3fa1a7b5037b1b61b99566cbc82adb743b702ff0"
+    },
+    {
+      "name": "author-time tier ignores source id",
+      "input": {
+        "sourceReviewId": "g-77",
+        "reviewerName": "Sam",
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 4.5,
+        "text": "Great food"
+      },
+      "expectedSourceId": "g-77",
+      "expectedFingerprint": "fp2:44859ba500f4f2605997eeff3fa1a7b5037b1b61b99566cbc82adb743b702ff0"
+    },
+    {
+      "name": "content tier without reviewer",
+      "input": {
+        "reviewDate": "2026-10-01T12:00:00.123Z",
+        "rating": 4.5,
+        "text": "Great food"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:1165f5377b497e7517c717e31c829789911710c41402801ef94eba09530bfc21"
+    },
+    {
+      "name": "content tier without date",
+      "input": {
+        "reviewerName": "Sam",
+        "rating": 4.5,
+        "text": "Great food"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:ba0a11cb989040e12f739c9e36c2778736c237071f727f7b50df9b511c27a79a"
+    },
+    {
+      "name": "content tier without date, edited text",
+      "input": {
+        "reviewerName": "Sam",
+        "rating": 4.5,
+        "text": "Great food, slow service"
+      },
+      "expectedSourceId": null,
+      "expectedFingerprint": "fp2:ed9acbab6395dbf26f6eb0bed2c5834b92d5cd5d832499a61447d5628a8f5620"
+    }
+  ]
+}
