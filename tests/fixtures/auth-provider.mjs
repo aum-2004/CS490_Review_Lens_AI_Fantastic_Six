@@ -80,6 +80,18 @@ targetRows.push({
   source_url: "https://www.google.com/maps/place/DeletionFixture",
   created_at: "2026-11-01T12:00:00Z",
 });
+// Dedicated Save As owner (S3-003): copies never change other accounts' target counts.
+const saveAsOwnerId = "00000000-0000-4000-8000-000000000017";
+users.push({ ...user, id: saveAsOwnerId, email: "save-as-fixture@example.com" });
+targetRows.push({
+  id: "f5000000-0000-4000-8000-000000000001",
+  owner_id: saveAsOwnerId,
+  name: "Save As bakery",
+  platform: "google_maps",
+  source_url: "https://www.google.com/maps/place/SaveAsBakery",
+  created_at: "2026-11-04T12:00:00Z",
+});
+let saveAsSequence = 1;
 const originalTargetNames = new Map(targetRows.map((row) => [row.id, row.name]));
 // Dedicated owner/dataset so S3-014 never changes the existing accounts' review counts.
 const supportingReviewRows = Array.from({ length: 7 }, (_, index) => ({
@@ -100,7 +112,12 @@ let createdTargetSequence = 0;
 let failNextLogout = false;
 let failStatusReads = false;
 const ingestionRows = targetRows
-  .filter((row) => row.name !== "A coffee shop" && row.name !== "Deletion fixture")
+  .filter(
+    (row) =>
+      row.name !== "A coffee shop" &&
+      row.name !== "Deletion fixture" &&
+      row.owner_id !== saveAsOwnerId,
+  )
   .map((target) => ({
     id: "ingestion-" + target.id,
     analysis_target_id: target.id,
@@ -133,6 +150,24 @@ const ingestionRows = targetRows
         ? { placeId: "ChIJSynthetic", businessName: target.name }
         : null,
   }));
+ingestionRows.push({
+  id: "ingestion-f5000000-0000-4000-8000-000000000001",
+  analysis_target_id: "f5000000-0000-4000-8000-000000000001",
+  owner_id: saveAsOwnerId,
+  source_url: "https://www.google.com/maps/place/SaveAsBakery",
+  submitted_query: "https://www.google.com/maps/place/SaveAsBakery",
+  query_kind: "source_url",
+  expected_place_id: null,
+  provider_request_id: "synthetic-job-save-as",
+  status: "succeeded",
+  started_at: "2026-11-06T12:00:00Z",
+  finished_at: "2026-11-06T12:01:00Z",
+  saved_count: 1,
+  skipped_count: 0,
+  error_code: null,
+  identity_basis: "provider_resolved",
+  verified_identity: { placeId: "ChIJSaveAs", businessName: "Save As Bakery Co" },
+});
 
 function session(lifetime = 3600, sessionUser = user) {
   const now = Math.floor(Date.now() / 1000);
@@ -281,6 +316,35 @@ createServer(async (request, response) => {
           url.searchParams.get("provider_request_id") === "eq." + row.provider_request_id),
     );
     return send(200, filter?.startsWith("eq.") ? (rows[0] ?? null) : rows);
+  }
+  if (url.pathname === "/rest/v1/rpc/save_analysis_as" && request.method === "POST") {
+    const identity = tokens.get(token);
+    if (!identity || identity.expiry <= Math.floor(Date.now() / 1000)) return send(401, {});
+    // Models the RPC: its own ownership check, a new id, copied reviews and ingestion summary.
+    const source = targetRows.find(
+      (row) => row.id === body.p_source_target_id && row.owner_id === identity.user.id,
+    );
+    if (!source) return send(404, { code: "P0002", message: "Target unavailable" });
+    if (Object.keys(body).sort().join(",") !== "p_name,p_source_target_id") return send(400, {});
+    const copy = {
+      ...source,
+      id: `f5000000-0000-4000-8000-${String(++saveAsSequence).padStart(12, "0")}`,
+      name: body.p_name,
+      created_at: new Date(Date.UTC(2026, 10, 8, 12, 0, saveAsSequence)).toISOString(),
+    };
+    targetRows.push(copy);
+    originalTargetNames.set(copy.id, originalTargetNames.get(source.id));
+    const attempt = ingestionRows.find(
+      (row) => row.analysis_target_id === source.id && row.status === "succeeded",
+    );
+    if (attempt)
+      ingestionRows.push({
+        ...attempt,
+        id: "ingestion-" + copy.id,
+        analysis_target_id: copy.id,
+        provider_request_id: "save-as:" + copy.id,
+      });
+    return send(200, copy.id);
   }
   if (url.pathname === "/rest/v1/rpc/delete_owned_analysis" && request.method === "POST") {
     const identity = tokens.get(token);

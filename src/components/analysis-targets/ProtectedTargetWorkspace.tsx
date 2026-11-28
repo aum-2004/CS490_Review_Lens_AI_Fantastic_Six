@@ -16,6 +16,7 @@ import { RetryTargetsButton } from "./RetryTargetsButton";
 import { TargetSwitcher } from "./TargetSwitcher";
 import { DeleteAnalysis } from "./DeleteAnalysis";
 import { RenameAnalysis } from "./RenameAnalysis";
+import { SaveAnalysisAs } from "./SaveAnalysisAs";
 import {
   listAnalysisTargets,
   type AnalysisTargetListItem,
@@ -146,7 +147,14 @@ export async function ProtectedTargetWorkspace({
         ]}
       />
       {target && (
-        <RenameAnalysis key={`${user.id}:${target.id}`} targetId={target.id} name={target.name} />
+        <div className="flex flex-wrap items-start gap-x-3">
+          <RenameAnalysis key={`${user.id}:${target.id}`} targetId={target.id} name={target.name} />
+          <SaveAnalysisAs
+            key={`${user.id}:${target.id}:save-as`}
+            targetId={target.id}
+            name={target.name}
+          />
+        </div>
       )}
       {!target ? (
         <ErrorState

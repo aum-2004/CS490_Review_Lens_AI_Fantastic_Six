@@ -198,3 +198,75 @@ export async function renameAnalysisTarget(
   }
   return payload.data;
 }
+
+export class AnalysisSaveAsError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly issues: readonly AnalysisTargetValidationIssue[] = [],
+  ) {
+    super(message);
+    this.name = "AnalysisSaveAsError";
+  }
+}
+
+/** S3-003: creates a separate analysis from `targetId` and returns the new analysis. */
+export async function saveAnalysisAs(
+  targetId: string,
+  name: string,
+  signal?: AbortSignal,
+): Promise<AnalysisTarget> {
+  let response: Response;
+  try {
+    response = await fetch(`/api/analysis-targets/${encodeURIComponent(targetId)}/save-as`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+      signal,
+    });
+  } catch {
+    throw new AnalysisSaveAsError(
+      "SAVE_AS_UNAVAILABLE",
+      "We couldn't reach ReviewLens. Check your connection and try again.",
+    );
+  }
+  const payload = await readJson(response);
+  if (response.status === 401)
+    throw new AnalysisSaveAsError(
+      "AUTHENTICATION_REQUIRED",
+      "Your session has expired. Please sign in again.",
+    );
+  if (response.status === 400 && isErrorPayload(payload)) {
+    throw new AnalysisSaveAsError(
+      "INVALID_ANALYSIS_TARGET_INPUT",
+      "Please fix the highlighted fields.",
+      readValidationIssues(payload.error.issues),
+    );
+  }
+  if (response.status === 404)
+    throw new AnalysisSaveAsError(
+      "TARGET_NOT_FOUND",
+      "This analysis isn't available to your account. Go back to My Targets.",
+    );
+  if (
+    response.status === 409 &&
+    isErrorPayload(payload) &&
+    payload.error.code === "ANALYSIS_LIMIT" &&
+    typeof payload.error.message === "string"
+  ) {
+    throw new AnalysisSaveAsError("ANALYSIS_LIMIT", payload.error.message);
+  }
+  if (
+    response.status !== 201 ||
+    !isRecord(payload) ||
+    payload.success !== true ||
+    !isAnalysisTarget(payload.data) ||
+    payload.data.id === targetId
+  ) {
+    throw new AnalysisSaveAsError(
+      "SAVE_AS_FAILED",
+      "We couldn't save a copy of this analysis. Please try again.",
+    );
+  }
+  return payload.data;
+}
